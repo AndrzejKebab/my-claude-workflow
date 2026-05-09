@@ -269,6 +269,22 @@ SOURCES_BY_SLUG = {
         "path": "/mnt/archive4/PAPERS/amanatides-woo-1987-voxel-traversal.pdf",
         "type": "pdf",
     },
+    "laine-karras-2010-sparse-voxel-octrees": {
+        "path": "/home/midori/Downloads/1730804.1730814.pdf",
+        "type": "pdf",
+    },
+    "young-2017-multilevel-voxel": {
+        "path": "/home/midori/Downloads/Young_iastate_0097M_16385.pdf",
+        "type": "pdf",
+    },
+    "mittring-2008-advanced-virtual-texture-topics": {
+        "path": "/home/midori/Downloads/1404435.1404438.pdf",
+        "type": "pdf",
+    },
+    "gobbetti-marton-2005-far-voxels": {
+        "path": "/mnt/archive4/PAPERS/gobbetti-marton-2005-far-voxels.pdf",
+        "type": "pdf",
+    },
 }
 
 

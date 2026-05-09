@@ -17,6 +17,15 @@ from pptx import Presentation
 from pptx.enum.shapes import MSO_SHAPE_TYPE
 
 from openocr_engine import ocr_image as _ocr_image_path
+import marker_extract
+
+# Marker prepass routing (decided in main()).
+# Paper-PDFs that classify as text-rich go through marker for body text +
+# real markdown structure (headings, lists, tables, LaTeX equations) instead
+# of PyMuPDF's flat span-walker. Slide-deck PDFs and scanned PDFs are
+# unchanged.
+_MARKER_ENABLED = True  # --no-marker turns this off
+_MARKER_USE_LLM = True  # --no-llm runs marker locally without Gemini
 
 
 def _ocr_image_bytes(png_bytes: bytes) -> str:
@@ -525,6 +534,33 @@ SOURCES = [
         # something to read for the figure + code listings. Filename pattern: pNNN-slide.png.
         "slide_deck": True,
     },
+    {
+        "path": "/home/midori/Downloads/1730804.1730814.pdf",
+        "slug": "laine-karras-2010-sparse-voxel-octrees",
+        "type": "pdf",
+        "title": "Efficient Sparse Voxel Octrees (Laine & Karras — NVIDIA Research / I3D 2010)",
+        "slide_deck": False,
+    },
+    {
+        "path": "/home/midori/Downloads/Young_iastate_0097M_16385.pdf",
+        "slug": "young-2017-multilevel-voxel",
+        "type": "pdf",
+        "title": "Multi-level Voxel Representation for GPU-Accelerated Solid Modeling (Young, MS thesis, Iowa State 2017)",
+        "slide_deck": False,
+    },
+    {
+        "path": "/mnt/archive4/PAPERS/gobbetti-marton-2005-far-voxels.pdf",
+        "slug": "gobbetti-marton-2005-far-voxels",
+        "type": "pdf",
+        "title": "Far Voxels: A Multiresolution Framework for Interactive Rendering of Huge Complex 3D Models on Commodity Graphics Platforms (Gobbetti & Marton, SIGGRAPH 2005)",
+    },
+    {
+        "path": "/home/midori/Downloads/1404435.1404438.pdf",
+        "slug": "mittring-2008-advanced-virtual-texture-topics",
+        "type": "pdf",
+        "title": "Advanced Virtual Texture Topics (Martin Mittring — Crytek GmbH; Chapter 2 of \"Advances in Real-Time Rendering in 3D Graphics and Games Course\", N. Tatarchuk ed., SIGGRAPH 2008)",
+        "slide_deck": False,
+    },
 ]
 
 
@@ -609,16 +645,78 @@ def is_slide_deck_pdf(doc: fitz.Document) -> bool:
     return landscape == page_count and slide_ratio == page_count
 
 
-def extract_pdf(source: dict, scale: float = 2.0) -> Document:
+def _page_has_figure(page: fitz.Page, drawings_threshold: int = 12) -> bool:
+    """Triage: does this paper-mode page carry a figure worth rendering?
+
+    Vision pass is expensive — a 200-page thesis with figures only on 60% of
+    pages should not produce 200 page renders. We render only pages that
+    plausibly carry a figure / diagram / plot / table. The heuristic accepts:
+
+      - Any embedded raster image (`page.get_images(full=True)` non-empty).
+        Even one embedded image means the page has a real figure worth a
+        vision pass.
+      - "Many" vector drawings (`len(page.get_drawings()) >= drawings_threshold`).
+        Vector flowcharts / cone diagrams / cache-architecture diagrams appear
+        as dozens of stroke / fill operations rather than embedded rasters,
+        and the threshold is set above what running text + page chrome /
+        underline marks typically produce.
+
+    The heuristic intentionally errs on the side of including pages: a small
+    over-render is cheap, missing a figure costs a vision-pass blind spot.
+    """
+    if page.get_images(full=True):
+        return True
+    try:
+        drawings = page.get_drawings()
+    except Exception:
+        drawings = []
+    return len(drawings) >= drawings_threshold
+
+
+def _classify_paper_pdf(doc: fitz.Document, sample: int = 10, min_chars: int = 50) -> str:
+    """Decide whether a non-slide-deck PDF is text-rich or scanned.
+
+    Marker (and PyMuPDF span-walking) both rely on a usable text layer.
+    Scanned papers without OCR text layers must keep the existing OCR
+    fallback path. Sample up to `sample` pages and count those with at
+    least `min_chars` of native text. Majority decides.
+    """
+    n = min(sample, len(doc))
+    if n == 0:
+        return "scanned"
+    rich = 0
+    for i in range(n):
+        if len(doc[i].get_text("text").strip()) >= min_chars:
+            rich += 1
+    return "text-paper" if rich * 2 >= n else "scanned"
+
+
+def extract_pdf(source: dict, scale: float = 2.0, paper_scale: float = 2.5) -> Document:
     """Extract PDF.
 
-    For slide-deck PDFs (detected via metadata + aspect ratio), each page is
-    rendered as a single PNG (`pNNN-slide.png`) — no per-figure cutout
-    extraction, since slide-deck PDFs decompose visuals into many small
-    embedded image objects that lose meaning when separated.
+    BOTH slide-deck and paper PDFs render full pages for the vision pass.
+    Paper PDFs render only figure-bearing pages (per `_page_has_figure`)
+    so a 200-page paper does not produce 200 PNGs; pages of pure body text
+    are skipped because their text-layer extraction is already canonical
+    and a vision pass on running prose adds no value.
 
-    For regular PDFs (papers, technical reports), embedded images are
-    extracted as figures and saved as `pNNN-figXX.png`.
+    Asset filename pattern:
+      - Slide-deck PDFs (and PPTX):  `sNNN-slide.png`  (one per page)
+      - Paper PDFs:                  `pNNN-page.png`   (one per figure-bearing page)
+
+    Embedded-image cutout extraction (`pNNN-figXX.png`) is intentionally
+    REMOVED. PDF figures are typically PostScript / vector composites — a
+    single authored figure (e.g. cone-tracing diagram, octree pyramid,
+    cache architecture) decomposes into 5-40 separate xref entries, and
+    each cutout is a meaningless fragment. The vision agent describing
+    those fragments must lean on text-layer prose anchoring rather than
+    on the visual itself, which defeats the point of a vision pass. Render
+    the page as the reader saw it; the figure boundary is preserved.
+
+    `paper_scale` defaults higher than `scale` because papers tend to pack
+    smaller-detail figures (sub-panel labels, axis tick marks, equation
+    glyphs) into the page than slide decks do, and the vision agent needs
+    the extra resolution to read them.
     """
     path = source["path"]
     file_size = os.path.getsize(path) / (1024 * 1024)
@@ -626,6 +724,36 @@ def extract_pdf(source: dict, scale: float = 2.0) -> Document:
 
     forced = source.get("slide_deck")
     slide_deck = forced if forced is not None else is_slide_deck_pdf(doc)
+
+    # Marker prepass for text-rich paper-PDFs only. Slide-decks render as
+    # full-page images (their text layer is auxiliary, the visual is canonical),
+    # and scanned PDFs lack the text layer marker depends on — those still
+    # route through the legacy PyMuPDF span-walker + OpenOCR fallback.
+    use_marker = (
+        _MARKER_ENABLED
+        and not slide_deck
+        and _classify_paper_pdf(doc) == "text-paper"
+    )
+    marker_pages: dict[int, str] = {}
+    if use_marker:
+        cache_dir = ASSETS_DIR / source["slug"]
+        try:
+            result = marker_extract.convert_pdf(
+                path,
+                cache_dir=cache_dir,
+                use_llm=_MARKER_USE_LLM,
+            )
+            marker_pages = result.pages
+            cache_note = " [cached]" if result.used_cache else ""
+            llm_note = (
+                f" [llm: {result.llm_request_count} req / {result.llm_token_count} tok]"
+                if result.used_llm and not result.used_cache
+                else ""
+            )
+            print(f"  marker: {len(marker_pages)} pages{cache_note}{llm_note}")
+        except Exception as exc:
+            print(f"  marker FAILED ({exc!r}); falling back to PyMuPDF span-walker")
+            use_marker = False
 
     document = Document(
         slug=source["slug"],
@@ -641,72 +769,77 @@ def extract_pdf(source: dict, scale: float = 2.0) -> Document:
         page = doc[page_idx]
         page_data = PageData(number=page_idx + 1)
 
-        # Extract text with structure (for both modes — text layer is independent of imagery)
-        text_dict = page.get_text("dict")
-        all_text_parts = []
-        heading_candidate = None
+        if use_marker:
+            # Marker path: per-page markdown body straight from the prepass.
+            # First markdown heading on the page is the section anchor
+            # (replaces the old font-size>14 heuristic, which produces noise
+            # on PDFs whose body font happens to be ~15pt).
+            md_body = marker_pages.get(page_idx, "")
+            page_data.text = md_body
+            page_data.heading = marker_extract.first_heading(md_body)
+        else:
+            # Legacy path: PyMuPDF text-dict span walker. Used for slide-decks
+            # (text layer is auxiliary), scanned paper PDFs (handled together
+            # with the OCR fallback below), and when --no-marker is passed.
+            text_dict = page.get_text("dict")
+            all_text_parts = []
+            heading_candidate = None
 
-        for block in text_dict.get("blocks", []):
-            if block["type"] != 0:  # text block
-                continue
-            for line in block.get("lines", []):
-                line_text = ""
-                max_font_size = 0
-                for span in line.get("spans", []):
-                    line_text += span["text"]
-                    max_font_size = max(max_font_size, span["size"])
-                line_text = line_text.strip()
-                if not line_text:
+            for block in text_dict.get("blocks", []):
+                if block["type"] != 0:  # text block
                     continue
-                all_text_parts.append(line_text)
-                if heading_candidate is None and max_font_size > 14:
-                    heading_candidate = line_text
+                for line in block.get("lines", []):
+                    line_text = ""
+                    max_font_size = 0
+                    for span in line.get("spans", []):
+                        line_text += span["text"]
+                        max_font_size = max(max_font_size, span["size"])
+                    line_text = line_text.strip()
+                    if not line_text:
+                        continue
+                    all_text_parts.append(line_text)
+                    if heading_candidate is None and max_font_size > 14:
+                        heading_candidate = line_text
 
-        page_data.text = "\n".join(all_text_parts)
-        page_data.heading = heading_candidate
+            page_data.text = "\n".join(all_text_parts)
+            page_data.heading = heading_candidate
 
         if slide_deck:
-            # Slide-deck mode: render the whole page once. No per-figure cutouts.
+            # Slide-deck mode: render every page once.
             pix = page.get_pixmap(matrix=fitz.Matrix(scale, scale))
             page_data.slide_image = ImageData(data=pix.tobytes("png"), ext="png")
         else:
-            # Paper mode: extract embedded images as figures.
-            # Honour the page's display rotation — PDF stores rotation as a
-            # display-time hint (clockwise degrees) and the underlying image
-            # bytes are unrotated. Without this, scanner-produced PDFs (which
-            # commonly tag rotation=180) extract upside-down.
-            image_list = page.get_images(full=True)
-            page_rot = page.rotation  # 0 / 90 / 180 / 270
-            for img_info in image_list:
-                xref = img_info[0]
-                try:
-                    pix = fitz.Pixmap(doc, xref)
-                    if pix.width < 32 or pix.height < 32:
-                        continue
-                    if pix.n > 4 or pix.n == 4:
-                        pix = fitz.Pixmap(fitz.csRGB, pix)
-                    png_bytes = pix.tobytes("png")
-                    if page_rot:
-                        # PIL.rotate is counter-clockwise; PDF rotation is clockwise.
-                        img = Image.open(io.BytesIO(png_bytes))
-                        img = img.rotate(-page_rot, expand=True)
-                        buf = io.BytesIO()
-                        img.save(buf, format="PNG")
-                        png_bytes = buf.getvalue()
-                    page_data.images.append(ImageData(data=png_bytes, ext="png"))
-                except Exception:
-                    continue
+            # Paper mode: render the whole page IF it carries a figure.
+            # Pure-body-text pages are skipped — the text layer is already the
+            # canonical representation and a vision pass on running prose adds
+            # no value (and would burn tokens to no end).
+            if _page_has_figure(page):
+                pix = page.get_pixmap(matrix=fitz.Matrix(paper_scale, paper_scale))
+                png_bytes = pix.tobytes("png")
+                page_rot = page.rotation  # 0 / 90 / 180 / 270
+                if page_rot:
+                    # PIL.rotate is counter-clockwise; PDF rotation is clockwise.
+                    img = Image.open(io.BytesIO(png_bytes))
+                    img = img.rotate(-page_rot, expand=True)
+                    buf = io.BytesIO()
+                    img.save(buf, format="PNG")
+                    png_bytes = buf.getvalue()
+                page_data.slide_image = ImageData(data=png_bytes, ext="png")
 
         # Body-text OCR fallback: when the page has no native text layer
         # (typical of scanned PDFs and image-only slides exported as
         # raster), OCR the page's own image asset and use the result as
-        # the page body. This is the ONLY path on which OCR enters the
-        # canonical document body — image inclusions inside a text-rich
-        # doc are NEVER OCR'd here. The vision pass reads images directly
-        # with full visual context and outclasses any CPU OCR engine; OCR
+        # the page body. Skipped on the marker path — marker has already
+        # decided what text the page carries, and an empty marker page is
+        # a deliberate "figure-only with captions, vision pass takes it
+        # from here" signal, not a missing text layer. This is the ONLY
+        # path on which OCR enters the canonical document body — image
+        # inclusions inside a text-rich doc are NEVER OCR'd here. The
+        # vision pass reads images directly with full visual context and
+        # outclasses any CPU OCR engine; OCR
         # scaffolding alongside an image only narrows what the vision
         # agent looks at and primes it with mistakes.
-        if len(page_data.text.strip()) < 20:
+        if not use_marker and len(page_data.text.strip()) < 20:
             target_bytes = None
             if page_data.slide_image is not None:
                 target_bytes = page_data.slide_image.data
@@ -864,6 +997,9 @@ def write_markdown(doc: Document):
     # Page label: PPTX and slide-deck PDFs both use "Slide". Regular PDFs use "Page".
     page_label = "Slide" if doc.is_slide_deck else "Page"
     prefix = "s" if doc.is_slide_deck else "p"
+    # Render-asset suffix: slide-decks render every page as a "slide";
+    # paper PDFs render only figure-bearing pages as a "page".
+    render_suffix = "slide" if doc.is_slide_deck else "page"
     filename = Path(doc.source_path).name
 
     lines = [
@@ -893,24 +1029,18 @@ def write_markdown(doc: Document):
             lines.append(page.text.strip())
             lines.append("")
 
-        # Slide-deck mode: ONE rendered slide image per page.
+        # Render the full page (slide-deck: every page; paper-mode: figure-bearing
+        # pages only — see _page_has_figure). Per-figure-cutout extraction was
+        # removed because PDF figures are vector composites that PyMuPDF
+        # over-segments into meaningless fragments — see the SKILL.md "Vision pass
+        # MUST run on full-page renders" section for the reasoning.
         if page.slide_image is not None:
-            slide_name = f"{prefix}{page.number:03d}-slide.{page.slide_image.ext}"
-            slide_path = slug_assets / slide_name
-            slide_path.write_bytes(page.slide_image.data)
+            asset_name = f"{prefix}{page.number:03d}-{render_suffix}.{page.slide_image.ext}"
+            asset_path = slug_assets / asset_name
+            asset_path.write_bytes(page.slide_image.data)
             total_images += 1
-            rel_path = f"assets/{doc.slug}/{slide_name}"
-            lines.append(f"![{slide_name}]({rel_path})")
-            lines.append("")
-
-        # Paper mode: per-figure cutouts
-        for fig_idx, img in enumerate(page.images):
-            fig_name = f"{prefix}{page.number:03d}-fig{fig_idx + 1:02d}.{img.ext}"
-            fig_path = slug_assets / fig_name
-            fig_path.write_bytes(img.data)
-            total_images += 1
-            rel_path = f"assets/{doc.slug}/{fig_name}"
-            lines.append(f"![{fig_name}]({rel_path})")
+            rel_path = f"assets/{doc.slug}/{asset_name}"
+            lines.append(f"![{asset_name}]({rel_path})")
             lines.append("")
 
         # Speaker notes (PPTX)
@@ -998,6 +1128,16 @@ def main():
     for arg in sys.argv[1:]:
         if arg.startswith("--only="):
             only_slugs.update(arg.split("=", 1)[1].split(","))
+
+    # Marker prepass routing flags (see _MARKER_ENABLED / _MARKER_USE_LLM
+    # at module top). `--no-marker` reverts text-paper PDFs to the legacy
+    # PyMuPDF span-walker; `--no-llm` runs marker locally without Gemini
+    # (no API key needed, lower quality on tables / equations / form fields).
+    global _MARKER_ENABLED, _MARKER_USE_LLM
+    if "--no-marker" in sys.argv:
+        _MARKER_ENABLED = False
+    if "--no-llm" in sys.argv:
+        _MARKER_USE_LLM = False
 
     results = []
     for source in SOURCES:

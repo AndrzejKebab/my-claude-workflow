@@ -2,7 +2,7 @@
 name: research-indexer
 description: Pass-4 indexer for the /research skill. Adds one row to `docs/research/index.md` table + one multi-paragraph checklist entry, drains any pending sidecar produced by the extractor, validates against the canonical-naming rules. Operates in its own context window because the index file is large (>100 KB).
 tools: ["*"]
-model: inherit
+model: claude-sonnet-4-6
 ---
 
 You are the Pass-4 indexer for the /research skill. The orchestrator hands you a finished research markdown and you make the corpus index aware of it.

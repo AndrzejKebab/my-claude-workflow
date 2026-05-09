@@ -93,6 +93,8 @@ You are the orchestrator for the /research skill. You do **not** read 268-slide 
 
 You may also dispatch additional vision-pass batches **between** Pass 2 and 3 (e.g. "vision-pass slides 100-130 of the same doc, focusing on plot panels") if the first pass missed coverage.
 
+**Sub-agent model pin**: all four agents (`research-extractor`, `research-vision`, `research-refiner`, `research-indexer`) are pinned to `claude-sonnet-4-6` in their frontmatter. Vision Pass 2 is the cost-dominant workload — hundreds of slide images per deck dispatched in batches of ~30 — and Sonnet 4.6 vision quality is strong at meaningfully lower cost per token than Opus. Pass 3 refinement is mostly mechanical heading / LaTeX / typo cleanup, which Sonnet handles comfortably. The orchestrator (this skill) inherits whatever model the parent session is running on; only the dispatched sub-agents are pinned.
+
 ### Running inside a /delegate orchestrator
 
 If your top-level invocation came from `/delegate` (the multi-agent orchestration mode that uses shared `docs/orchestrate/<topic>/` files), you are **doubly orchestrating**: /delegate dispatched you to handle the research portion, and you in turn dispatch the four research sub-agents. In that mode:
@@ -242,28 +244,57 @@ The argument is a URL or file path:
 
 - YouTube URL → download video, detect slides, OCR + transcribe, output markdown
 - HLS stream (m3u8 URL) → download via ffmpeg, transcribe with faster-whisper, then video pipeline
-- `.pdf` path → extract text via PyMuPDF + per-page rendering (slide deck) **or** per-figure cutouts (paper)
+- `.pdf` path → extract text via marker (paper-PDFs with text-layer) or PyMuPDF (slide-deck PDFs and scanned PDFs) + full-page rendering (every page for slide decks, figure-bearing pages only for papers). Marker uses Gemini `gemini-2.0-flash` for structural cleanup (headings, tables, equations); requires `GOOGLE_API_KEY` (or `GEMINI_API_KEY`) in env. Cached per-document at `assets/<slug>/marker.md` so re-runs are free.
 - `.pptx` path → render every slide via LibreOffice → PDF → PNG, plus python-pptx text + speaker notes
 - `.mp4`/`.mkv`/`.webm` local path → video pipeline with `--title` and `--slug` flags
 
-## REQUIRED: Slide-deck vs Paper image policy
+## REQUIRED: Vision pass MUST run on full-page renders
 
-Every PDF/PPTX is classified once at extraction time as **slide deck** or **paper**, and the image-extraction strategy follows:
+**The vision pass NEVER runs on per-figure cutouts extracted from a PDF.** This rule supersedes the older "paper-mode extracts embedded images as figures" policy, which produced unusable input for the vision agent and is now removed.
 
-| Class | Image strategy | Asset filename pattern |
-|---|---|---|
-| **Slide deck** (PPTX, or PDF exported from PowerPoint / Keynote / Google Slides / Beamer / Impress, or any landscape PDF with standard 4:3 / 16:10 / 16:9 aspect ratio across all pages) | One **rendered slide image per page** at 2× scale via PyMuPDF `get_pixmap`. **Never** extract embedded image objects — slide-deck PDFs decompose visuals into many small embedded image blobs (chart chrome split from plot, photo split from frame, decorative banner separated from photo) that lose meaning when separated. The vision pass reads the rendered slide — that's the whole slide as the audience saw it. | `assets/<slug>/sNNN-slide.png` |
-| **Paper** (academic paper, technical report, portrait-orientation PDF without slide-export metadata) | Extract embedded image objects as **figures** — these are real per-figure assets (Fig. 1, Fig. 2, …) embedded by the author. | `assets/<slug>/pNNN-figXX.png` |
+**Why cutouts fail.** PDF figures — diagrams, flowcharts, plots, cone-tracing illustrations, octree pyramids, cache-architecture diagrams — are typically authored as PostScript/vector composites or as tiled raster mosaics. PyMuPDF's `page.get_images(full=True)` decomposes a *single authored figure* into 5-40 separate xref entries: chart chrome split from plot data, sub-panels (a, b, c, d) split apart, vector strokes split from filled regions, decorative banners separated from the photo they frame. When the vision agent receives these cutouts, it cannot recover the authored figure — each cutout is a meaningless fragment. The agent then leans entirely on text-layer prose anchoring to write the description, which means the "vision pass" is in fact a *prose-paraphrase pass with image attribution*. That defeats the entire point of attaching `**Diagram (LLM vision pass):**` blocks for auditability.
 
-**Detection** (in `tools/extract_research.py`):
+**The unified rule.** Every PDF (paper or slide deck) and PPTX (always a slide deck) renders **full-page images** for the vision pass. The vision agent sees the page exactly as a reader would — caption, figure boundary, surrounding context, and full visual fidelity intact.
+
+| Source class | What renders | Asset filename pattern | Naming rationale |
+|---|---|---|---|
+| **PPTX** (always slide deck) | every slide | `assets/<slug>/sNNN-slide.png` | one render per slide |
+| **Slide-deck PDF** (PowerPoint / Keynote / Google Slides / Beamer / Impress export, or any landscape PDF with 4:3 / 16:10 / 16:9 aspect ratio across all pages) | every page | `assets/<slug>/sNNN-slide.png` | one render per slide |
+| **Paper PDF** (academic paper, technical report, thesis, portrait-orientation PDF without slide-export metadata) | figure-bearing pages only (per `_page_has_figure`) | `assets/<slug>/pNNN-page.png` | one render per figure-bearing page; pure-body-text pages skipped |
+
+**Triage (paper PDFs only)**: paper-mode does NOT render every page. A 200-page thesis with figures on 60% of pages produces ~120 page renders, not 200. The extractor's `_page_has_figure(page)` heuristic accepts a page if **either**:
+
+- It has any embedded raster image (`page.get_images(full=True)` non-empty), OR
+- It has at least 12 vector drawing operations (`len(page.get_drawings()) >= 12`) — this catches vector flowcharts, cone diagrams, cache-architecture schematics, octree pyramids, and the like.
+
+Pages of pure body text (running prose, equation list, references) are NOT rendered. Their text-layer extraction is already canonical, and a vision pass on running prose burns tokens to no benefit.
+
+**Slide-deck classification** (`is_slide_deck_pdf`):
 
 - PPTX → always `is_slide_deck = True`. Rendered via `soffice --headless --convert-to pdf`, then PyMuPDF rasterises each page.
 - PDF → `is_slide_deck_pdf(doc)` triggers True if **any** of:
   - Metadata `creator` / `producer` / `title` / `subject` mentions PowerPoint / Keynote / Google Slides / Beamer / Impress / "presentation".
   - **All** pages are landscape AND aspect ratio is in `[1.25, 1.85]` (4:3 ≈ 1.33, 16:10 ≈ 1.6, 16:9 ≈ 1.78), AND page count ≥ 3.
-- Override per-source: set `"slide_deck": True/False` in the SOURCES entry to force a particular mode (e.g. for a portrait-orientation slide deck export, or a landscape figure-heavy paper).
+- Override per-source: set `"slide_deck": True/False` in the SOURCES entry to force a particular mode.
 
-**Why this matters**: when `extract_research.py` mistakenly enters paper-mode on a slide deck, the cutout images are useless fragments and the vision pass — which reads those cutouts — fails to recover the slide content. Going straight to per-page rendering for slide decks removes the failure mode entirely.
+**Paper-PDF body-text classification** (`_classify_paper_pdf`):
+
+- For PDFs that are NOT slide-decks, sample first 10 pages and count those with ≥ 50 chars of text-layer content.
+- Majority text-rich → `text-paper` → marker prepass via `marker_extract.convert_pdf` (real markdown structure, LaTeX equations, table reconstruction). Per-page markdown becomes `PageData.text`; `marker_extract.first_heading()` populates `PageData.heading` (replaces font-size > 14 heuristic).
+- Otherwise → `scanned` → existing OpenOCR fallback path on PyMuPDF page renders. Marker is NOT used (its quality on scan-only PDFs without a usable text layer is poor; OpenOCR's CPU pipeline is the canonical fallback here).
+- Override: `--no-marker` reverts text-paper PDFs to the legacy PyMuPDF span-walker. `--no-llm` runs marker locally (surya OCR + layout) without Gemini API calls — viable when offline, but loses table-merge / equation / form / section-header repair.
+
+**Marker prepass output** (text-paper route only):
+
+- Input: paper-PDF path + per-source `assets/<slug>/` cache dir.
+- Cache: `assets/<slug>/marker.md` (paginated markdown) + `assets/<slug>/marker-meta.json` (PDF mtime + use_llm flag + LLM token totals). Cache invalidates on PDF mtime change or use_llm flag flip; bypass with `--force`.
+- Processor list = marker's defaults MINUS `LLMImageDescriptionProcessor` — that processor auto-describes every figure with Gemini, which would duplicate the /research vision pass with a less-strict prompt and inflate the LLM bill ~10×. Image FILES are also not extracted (we use PyMuPDF page renders for the vision pass).
+- API key: `GoogleGeminiService` reads `GOOGLE_API_KEY` then `GEMINI_API_KEY` via the google-genai SDK env-var fallback. `convert_pdf` raises a clear error if neither is set when `use_llm=True`.
+- Cost envelope on a typical mid-length paper: 1–10 LLM calls / 2–20 K tokens / ≪ $0.01. Re-runs are free thanks to the cache.
+
+**Render scale**: slide decks render at 2.0× (a slide is already large with low information density per pixel), papers render at 2.5× (paper figures pack smaller-detail axis labels, sub-panel letters, equation glyphs that need extra resolution to be vision-readable).
+
+**Removed**: the old `pNNN-figXX.png` cutout pattern. Existing extractions that used it must be re-run with `--force` against the updated `extract_research.py`. Any vision-pass blocks generated against cutouts are suspect — re-run the vision pass on the new full-page renders.
 
 ### PPTX rendering dependency: LibreOffice
 
@@ -397,20 +428,22 @@ If you find yourself wanting yet-another redetection knob (different colourspace
 
 #### Dispatch pattern
 
-The orchestrator decides which slides need vision treatment, then dispatches one `research-vision` agent per batch of ~20-40 slides. For very large decks, dispatch multiple batches **sequentially** (not in parallel — they all Edit the same file). For papers (per-figure cutouts) where each figure is independent, batches can run in parallel.
+The orchestrator decides which pages / slides need vision treatment, then dispatches one `research-vision` agent per batch. Batches are typically 20-40 images. For very large decks/theses, dispatch multiple batches **sequentially** (not in parallel — they all Edit the same file).
+
+**Triage step (orchestrator does this BEFORE the first dispatch):** the extractor only renders figure-bearing pages for paper PDFs (per `_page_has_figure`), but even within those, not every figure is worth a vision pass. The orchestrator should skim the table of contents / chapter structure and decide which sections are load-bearing for the project's purposes, then list those page ranges in the dispatch brief. For a 200-page thesis, skipping intro / related-work / conclusion / appendix chapters typically halves the vision-pass token cost.
 
 For each batch, the brief MUST contain:
 
 1. The canonical slug (e.g. `suzuki-yasutomi-2023-gt7-sky-dome`).
 2. The exact list of slide / page numbers to process (e.g. "slides 30, 32-46, 50-55, 65, 78-80, 88, 90, 94").
 3. Already-tagged slides to skip (slides that already have a `**X (LLM vision pass):**` block from a prior batch — re-tagging would duplicate).
-4. Path to `tools/.venv/bin/python3` if the agent might need to render extra crops (paper-mode multi-figure pages).
+4. Project context: a one-paragraph description of what the project cares about, so the agent can lean on the relevant aspects when describing each diagram (cone aperture parameterisation, cache-architecture details, encoding bit-layouts, perf numbers, …).
 
 The agent is responsible for the format — `**Diagram (LLM vision pass):**` / `**Plot (LLM vision pass):**` / `**Image (LLM vision pass):**` / `**Table (LLM vision pass):**` / `**Code (LLM vision pass):**`. See agent definition `~/.claude/agents/research-vision.md` and the "Diagram description policy" section earlier in this skill.
 
 #### Inputs the orchestrator prepares
 
-- **Image targets**: slide decks → one `pNNN-slide.png` (PDF) or `sNNN-slide.png` (PPTX) per page; papers → multiple `pNNN-figXX.png` per page; videos → `frame-XXXX-NNNN.jpg` scenes.
+- **Image targets**: PPTX and slide-deck PDFs → `sNNN-slide.png` (one per slide); paper PDFs → `pNNN-page.png` (one per figure-bearing page); videos → `frame-XXXX-NNNN.jpg` scene captures. Per-figure cutouts (`pNNN-figXX.png`) are no longer produced — see "Vision pass MUST run on full-page renders" earlier in this skill.
 - **No OCR scaffolding adjacent to images**: previous versions of this skill dropped per-image OCR blocks under each figure reference. That has been removed — OCR labels without visual context only narrow what the vision agent looks at and prime it with mistakes. The vision agent reads each image directly with full visual context and writes its description from scratch.
 - **Transcript** (YouTube / HLS / PPTX speaker notes / PDF Notes-Pages text-layer split): the orchestrator runs the transcript loader and verifies blockquotes are populated **before** dispatching the vision agent. The vision agent does not touch transcript content.
 
