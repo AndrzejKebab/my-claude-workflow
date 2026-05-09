@@ -1,0 +1,5 @@
++sync:.megaignore
+-dpR:^(.*/)?\.venv$
+-dpR:^(.*/)?__pycache__$
+-nG:*.pyc
+-dnG:.uv-cache
