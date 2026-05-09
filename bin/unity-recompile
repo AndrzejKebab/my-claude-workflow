@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# unity-recompile — single canonical recompile + post-compile error check.
+#
+# Sequence:
+#   1. Focus Unity window (Hyprland) so the editor processes the refresh request.
+#      Without focus, the IPC signal stalls and unity-cli returns immediately
+#      (or backgrounds), leaving the editor un-recompiled.
+#   2. Trigger Unity asset refresh + force compile (60-min timeout).
+#   3. Sleep 30 s — covers Unity's post-recompile freeze (domain reload,
+#      assembly reload, deferred initialisation).
+#   4. Print up to 5 console error lines.
+#
+# DO NOT decompose this into raw `unity-cli editor refresh ...` calls.
+# All recompile triggers must go through this script.
+#
+# Long compiles: if a Bash invocation of this script runs in background mode,
+# wait for its completion notification — DO NOT set up polling / monitoring.
+
+set -uo pipefail
+
+hyprctl dispatch focuswindow "class:Unity" >/dev/null 2>&1 || true
+
+unity-cli editor refresh --compile --force --timeout 3600000
+refresh_status=$?
+
+sleep 30
+
+unity-cli console --filter error --lines 5
+
+exit "$refresh_status"

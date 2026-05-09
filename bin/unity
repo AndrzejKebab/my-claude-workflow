@@ -1,0 +1,43 @@
+#!/bin/bash
+# Convenience wrapper: unity <project-path>
+# Launches Unity via unity-launch with nohup, detached, output silenced.
+
+if [[ -z "$1" ]]; then
+    echo "Usage: unity <project-path>" >&2
+    exit 1
+fi
+
+VERSION_FILE="$1/ProjectSettings/ProjectVersion.txt"
+if [[ ! -f "$VERSION_FILE" ]]; then
+    echo "Error: $VERSION_FILE not found" >&2
+    exit 1
+fi
+
+VERSION=$(grep -oP 'm_EditorVersion:\s*\K\S+' "$VERSION_FILE")
+if [[ -z "$VERSION" ]]; then
+    echo "Error: could not parse version from $VERSION_FILE" >&2
+    exit 1
+fi
+
+UNITY_EDITOR="/home/midori/Unity/Hub/Editor/$VERSION/Editor/Unity"
+if [[ ! -f "$UNITY_EDITOR" ]]; then
+    echo "Error: Unity editor not found at $UNITY_EDITOR" >&2
+    exit 1
+fi
+
+# Refuse to double-launch. Only one Unity editor instance is ever wanted on this
+# machine, and a second launch silently hangs on the project lock — agents then
+# loop "launch → hang → launch" forever. Detect any running Unity editor process
+# and bail with code 1 so the caller waits for the existing instance to finish
+# loading instead of stacking more.
+RUNNING_PIDS=$(pgrep -f "/home/midori/Unity/Hub/Editor/.*/Editor/Unity" || true)
+if [[ -n "$RUNNING_PIDS" ]]; then
+    echo "Unity is already running (pids: $(echo $RUNNING_PIDS | tr '\n' ' ')). Wait for it to finish loading — do NOT launch a second instance." >&2
+    echo "If you believe this is stale, inspect with: ps -fp $(echo $RUNNING_PIDS | tr '\n' ',')" >&2
+    exit 1
+fi
+
+rm -rf "$1/Temp/__Backupscenes" 2>/dev/null
+nohup unity-launch "$UNITY_EDITOR" -projectPath "$1" > /dev/null 2>&1 &
+disown
+echo "Launched Unity $VERSION for: $1"

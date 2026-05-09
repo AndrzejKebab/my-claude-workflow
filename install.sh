@@ -34,6 +34,11 @@ link_dir agents
 chmod +x "$SCRIPT_DIR/skills/claude-status/claude-status.sh"
 chmod +x "$SCRIPT_DIR/skills/enforce/enforce.sh"
 
+# Make launcher scripts in bin/ executable
+if [[ -d "$SCRIPT_DIR/bin" ]]; then
+    chmod +x "$SCRIPT_DIR/bin"/*
+fi
+
 echo ""
 echo "Installation complete!"
 echo ""
@@ -43,5 +48,15 @@ echo ""
 echo "Agents installed:"
 ls -1 "$SCRIPT_DIR/agents" | sed 's/^/  - /'
 echo ""
+if [[ -d "$SCRIPT_DIR/bin" ]]; then
+    echo "Launchers in bin/ (add $SCRIPT_DIR/bin to PATH):"
+    ls -1 "$SCRIPT_DIR/bin" | sed 's/^/  - /'
+    echo ""
+    if ! echo ":$PATH:" | grep -q ":$SCRIPT_DIR/bin:"; then
+        echo "  (PATH does NOT currently contain $SCRIPT_DIR/bin —"
+        echo "   add it to ~/.bashrc_custom, ~/.zshrc_custom, ~/.config/fish/config.fish)"
+        echo ""
+    fi
+fi
 echo "Parameterized skills (use \${PROJECT_NAME}):"
 echo "  - merge, worktree, todo, maketodo, picktodo"
