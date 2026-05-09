@@ -515,6 +515,16 @@ SOURCES = [
         "title": "GigaVoxels: A Voxel-Based Rendering Pipeline for Efficient Exploration of Large and Detailed Scenes (Cyril Crassin — PhD thesis, Université de Grenoble, 2011)",
         "slide_deck": False,
     },
+    {
+        "path": "/mnt/archive4/PAPERS/amanatides-woo-1987-voxel-traversal.pdf",
+        "slug": "amanatides-woo-1987-voxel-traversal",
+        "type": "pdf",
+        "title": "A Fast Voxel Traversal Algorithm for Ray Tracing (John Amanatides & Andrew Woo — Dept. of Computer Science, University of Toronto, Eurographics '87)",
+        # PDF v1.2 has no embedded image objects — Figure 1 is vector PostScript paths.
+        # Force slide-deck mode so PyMuPDF rasterises each page, giving the vision pass
+        # something to read for the figure + code listings. Filename pattern: pNNN-slide.png.
+        "slide_deck": True,
+    },
 ]
 
 

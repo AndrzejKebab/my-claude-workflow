@@ -265,6 +265,10 @@ SOURCES_BY_SLUG = {
         "path": "/mnt/archive4/PAPERS/crassin-2011-gigavoxels-thesis.pdf",
         "type": "pdf",
     },
+    "amanatides-woo-1987-voxel-traversal": {
+        "path": "/mnt/archive4/PAPERS/amanatides-woo-1987-voxel-traversal.pdf",
+        "type": "pdf",
+    },
 }
 
 
