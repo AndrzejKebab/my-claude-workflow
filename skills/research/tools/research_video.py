@@ -27,9 +27,10 @@ from PIL import Image
 
 from openocr_engine import ocr_numpy as _ocr_numpy_engine
 
-# Resolve from invocation cwd, not script location (skill-shipped scripts).
-PROJECT_ROOT = Path(os.environ.get("RESEARCH_PROJECT_ROOT", os.getcwd())).resolve()
-OUTPUT_DIR = PROJECT_ROOT / "docs" / "research"
+# The extracted markdown corpus lives at a single hardcoded global location,
+# independent of cwd / which project invoked /research.
+OUTPUT_DIR = Path("/mnt/archive4/PAPERS/Prepared")
+PROJECT_ROOT = OUTPUT_DIR  # display base for relative_to() in log output
 ASSETS_DIR = OUTPUT_DIR / "assets"
 
 

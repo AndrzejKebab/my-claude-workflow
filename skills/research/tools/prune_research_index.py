@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Strike rows from docs/research/index_missing.md by 1-indexed line number.
+"""Strike rows from /mnt/archive4/PAPERS/Prepared/index_missing.md by 1-indexed line number.
 
 Companion to `audit_research_index.py`. After /research dispatches add new
 papers to the corpus, run the audit to find false-positive rows in
@@ -58,9 +58,9 @@ def main():
     ap.add_argument("lines", nargs="+", type=int, help="1-indexed line numbers to strike")
     ap.add_argument(
         "--index",
-        default="docs/research/index_missing.md",
+        default="/mnt/archive4/PAPERS/Prepared/index_missing.md",
         type=Path,
-        help="Path to index_missing.md (default: docs/research/index_missing.md)",
+        help="Path to index_missing.md (default: /mnt/archive4/PAPERS/Prepared/index_missing.md)",
     )
     ap.add_argument("--dry-run", action="store_true", help="Show what would be removed without writing")
     args = ap.parse_args()

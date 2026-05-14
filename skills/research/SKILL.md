@@ -3,7 +3,7 @@ name: research
 description: Extract research content from YouTube presentations, PDFs, or PPTX files into structured markdown. Dispatches each pass to a dedicated sub-agent (research-extractor / research-vision / research-refiner / research-indexer) so per-deck vision passes scale to hundreds of slides without bloating the parent context.
 ---
 
-Extract research material into `docs/research/` as annotated markdown with images, transcripts, and OCR. The orchestrator (you) is a thin coordinator: every load-bearing pass runs in a dedicated sub-agent's context window so the parent session stays small.
+Extract research material into `/mnt/archive4/PAPERS/Prepared/` as annotated markdown with images, transcripts, and OCR. The orchestrator (you) is a thin coordinator: every load-bearing pass runs in a dedicated sub-agent's context window so the parent session stays small.
 
 ## Toolchain layout
 
@@ -99,7 +99,7 @@ You are the orchestrator for the /research skill. You do **not** read 268-slide 
 | 2.5 — validate | _(orchestrator runs inline)_ | Run `tools/validate_research.py --only=<slug>`: every LaTeX block (`$…$`, `$$…$$`) is parsed by KaTeX and every Mermaid fenced block by `mermaid.parse()`. Errors are written to `findings-pass2.5-validate.md` for the refiner to fix, and to stderr for the orchestrator. Optional `--html` produces a browser-openable preview. |
 | 3 — refine | `research-refiner` | Heading fixes, broken-Unicode equation re-transcription, speaker-notes typo cleanup, optional top-of-doc summary. Brief MUST cite the Pass-2.5 sidecar so the refiner has a concrete error list to address |
 | 3.5 — re-validate | _(orchestrator runs inline, optional)_ | Re-run `tools/validate_research.py --only=<slug>` as a clean-room check after refine. If anything regressed (new errors introduced, old errors not fixed), block Pass 4 and re-dispatch the refiner |
-| 4 — index | `research-indexer` | Add table row + checklist entry to `docs/research/index.md`, drain the extractor's pending sidecar |
+| 4 — index | `research-indexer` | Add table row + checklist entry to `/mnt/archive4/PAPERS/Prepared/index.md`, drain the extractor's pending sidecar |
 
 You may also dispatch additional vision-pass batches **between** Pass 2 and 3 (e.g. "vision-pass slides 100-130 of the same doc, focusing on plot panels") if the first pass missed coverage. Multiple batches against the **same** paper must run sequentially — they all Edit the same `<slug>.md` and concurrent edits collide.
 
@@ -148,7 +148,7 @@ Every pass writes a findings sidecar to disk. The next pass reads it as required
 - write the sidecar itself from the agent's return text, or
 - instruct agents (in their briefs) to "return the full content verbatim if the write fails."
 
-Both of those force the orchestrator to read the agent's entire output AND then write a document — the content passes through the orchestrator's context twice, which is the precise token-budget anti-pattern the agent boundary exists to eliminate. An agent that cannot write its sidecar must emit a one-line `SIDECAR WRITE FAILED: <path> — <reason>` and stop; the orchestrator treats that as a re-dispatch signal, not a cue to do the work itself. (If sub-agent writes are failing systemically, the root cause is usually a missing `Write`/`Edit` permission-allow rule for the `docs/research/**` path in the project's `.claude/settings.local.json` — fix that, don't work around it.)
+Both of those force the orchestrator to read the agent's entire output AND then write a document — the content passes through the orchestrator's context twice, which is the precise token-budget anti-pattern the agent boundary exists to eliminate. An agent that cannot write its sidecar must emit a one-line `SIDECAR WRITE FAILED: <path> — <reason>` and stop; the orchestrator treats that as a re-dispatch signal, not a cue to do the work itself. (If sub-agent writes are failing systemically, the root cause is usually a missing `Write`/`Edit` permission-allow rule for the `/mnt/archive4/PAPERS/Prepared/**` path — add it to the user's global `~/.claude/settings.json` (or the settings of whatever project is currently running `/research`), and fix that, don't work around it.)
 
 ### Concurrency rules (read this before dispatching anything in parallel)
 
@@ -158,7 +158,7 @@ The /research pipeline mixes **GPU-bound local inference** (marker / surya) with
 
 - **Pass 1 (extraction) across any number of papers**. Marker's surya layout + text-recognition models need ~1.5–2 GiB contiguous VRAM and saturate the GPU during inference. Two parallel extractions guarantee CUDA OOM (one or both fall through to the PyMuPDF span-walker, silently degrading body-text quality). The legacy PyMuPDF-only path was parallel-safe, but post-marker that no longer holds — and an OOM-driven fall-through reads as "marker worked, but produced poor output" rather than a clear failure.
 - **Pass 1 → Pass 2 → Pass 3 within the same paper**. Each pass writes the same `<slug>.md`; the next pass reads what the previous wrote. Pipelined, not parallel.
-- **Pass 4 (indexer) across any number of papers**. All append to the same `docs/research/index.md`. Two indexers in parallel race the table edit.
+- **Pass 4 (indexer) across any number of papers**. All append to the same `/mnt/archive4/PAPERS/Prepared/index.md`. Two indexers in parallel race the table edit.
 - **Multiple vision-pass batches against the same paper**. Same `<slug>.md` again.
 
 **Parallel-safe — only when each agent owns a different `<slug>.md`:**
@@ -263,9 +263,9 @@ Every extracted document MUST be renamed (and its asset directory MUST be rename
 
 **Required actions before pass 4:**
 
-1. Pick the canonical slug per the rules above (cross-check `docs/research/index.md` for adjacent precedent if unsure — match the surrounding pattern).
-2. `mv docs/research/<scaffolding>.md docs/research/<canonical>.md`
-3. `mv docs/research/assets/<scaffolding>/ docs/research/assets/<canonical>/`
+1. Pick the canonical slug per the rules above (cross-check `/mnt/archive4/PAPERS/Prepared/index.md` for adjacent precedent if unsure — match the surrounding pattern).
+2. `mv /mnt/archive4/PAPERS/Prepared/<scaffolding>.md /mnt/archive4/PAPERS/Prepared/<canonical>.md`
+3. `mv /mnt/archive4/PAPERS/Prepared/assets/<scaffolding>/ /mnt/archive4/PAPERS/Prepared/assets/<canonical>/`
 4. Update inside the markdown: `slug:` frontmatter field, every `assets/<scaffolding>/` image path.
 5. Pass 4 (index update) uses the canonical slug from this point forward.
 
@@ -273,7 +273,7 @@ If the source genuinely has no clear single author (e.g. an Epic UE documentatio
 
 ## REQUIRED: Source Archive in `/mnt/archive4/PAPERS/`
 
-Every research source — PDF, PPTX, YouTube video, HLS / m3u8 stream, local mp4 — **MUST** be preserved at its canonical name in `/mnt/archive4/PAPERS/`. This is the long-term archive of every primary document the project depends on. The markdown extracts in `docs/research/*.md` are derived artefacts; **PAPERS/ is the source of truth**.
+Every research source — PDF, PPTX, YouTube video, HLS / m3u8 stream, local mp4 — **MUST** be preserved at its canonical name in `/mnt/archive4/PAPERS/`. This is the long-term archive of every primary document the project depends on. The markdown extracts in `/mnt/archive4/PAPERS/Prepared/*.md` are derived artefacts; **PAPERS/ is the source of truth**.
 
 **Layout:**
 
@@ -285,7 +285,7 @@ Every research source — PDF, PPTX, YouTube video, HLS / m3u8 stream, local mp4
 | HLS / m3u8 stream | same folder layout as YouTube |
 | Local mp4/mkv/webm + SRT | same folder layout as YouTube |
 
-The canonical slug is the same one used for `docs/research/<slug>.md` (see "REQUIRED: Citable Canonical Naming" above). The video-folder prefix `<year>-<slug-tail>` is just the canonical slug rotated so the year sorts first — e.g. canonical `feller-2024-volumetric-fog-enshrouded` → folder `2024-feller-volumetric-fog-enshrouded/`.
+The canonical slug is the same one used for `/mnt/archive4/PAPERS/Prepared/<slug>.md` (see "REQUIRED: Citable Canonical Naming" above). The video-folder prefix `<year>-<slug-tail>` is just the canonical slug rotated so the year sorts first — e.g. canonical `feller-2024-volumetric-fog-enshrouded` → folder `2024-feller-volumetric-fog-enshrouded/`.
 
 **Examples:**
 
@@ -563,11 +563,11 @@ After all Pass-2 vision batches complete and **before** dispatching Pass 3, the 
 
 **What it does:**
 
-1. Walks `docs/research/<slug>.md` line-by-line, extracting every LaTeX block (inline `$…$`, display `$$…$$`) and every fenced ```` ```mermaid ```` block. Skips fenced code blocks for non-mermaid languages so dollar signs in shell snippets don't trip the inline-math regex.
+1. Walks `/mnt/archive4/PAPERS/Prepared/<slug>.md` line-by-line, extracting every LaTeX block (inline `$…$`, display `$$…$$`) and every fenced ```` ```mermaid ```` block. Skips fenced code blocks for non-mermaid languages so dollar signs in shell snippets don't trip the inline-math regex.
 2. Sends all blocks as a JSON batch to `tools/validate_md.mjs` (Node helper).
 3. Each LaTeX block runs through `katex.renderToString({throwOnError: true})` — KaTeX is strict about brace balance, undefined macros, missing `\right` partners, misplaced `&`, etc.
 4. Each Mermaid block runs through `mermaid.parse()` (jsdom-backed). When mermaid fails to load in Node, blocks downgrade to *warnings* rather than errors.
-5. Writes a per-doc report to `docs/research/assets/<slug>/findings-pass2.5-validate.md` with file:line references, snippet previews, and KaTeX/Mermaid error messages.
+5. Writes a per-doc report to `/mnt/archive4/PAPERS/Prepared/assets/<slug>/findings-pass2.5-validate.md` with file:line references, snippet previews, and KaTeX/Mermaid error messages.
 6. Exits **1** if any block failed to parse. The orchestrator MUST treat exit 1 as a hard block on Pass 3 dispatch.
 
 **What gets caught:**
@@ -595,7 +595,7 @@ After all Pass-2 vision batches complete and **before** dispatching Pass 3, the 
 
 After Pass 2.5 (validate) completes with errors enumerated to disk, dispatch a single `research-refiner` agent with a brief listing the specific concerns the orchestrator wants fixed:
 
-- **The Pass 2.5 sidecar path** (`docs/research/assets/<slug>/findings-pass2.5-validate.md`) — REQUIRED. The refiner is expected to address every error the validator reported. Brief explicitly: "Read the sidecar first; every entry under `## Errors` must be fixed in your edit pass."
+- **The Pass 2.5 sidecar path** (`/mnt/archive4/PAPERS/Prepared/assets/<slug>/findings-pass2.5-validate.md`) — REQUIRED. The refiner is expected to address every error the validator reported. Brief explicitly: "Read the sidecar first; every entry under `## Errors` must be fixed in your edit pass."
 - Broken-Unicode equations (slide numbers, beyond what Pass 2.5 already caught).
 - Heading fixes (slide numbers + recommended titles, or "infer from slide content").
 - Speaker-notes typo fixes (paths to areas with known auto-caption errors).
@@ -607,12 +607,12 @@ After Pass 3 returns, the orchestrator re-runs `tools/validate_research.py --onl
 
 ### Pass 4: Index Update (dispatched to research-indexer)
 
-`docs/research/index.md` is agent-curated. No tool ever writes to it (`extract_research.py` and `extract_research_phase2.py` were both neutralised on this concern; they emit `index_extracted_pending-<timestamp>-<rand>.md` sidecars for the indexer to drain).
+`/mnt/archive4/PAPERS/Prepared/index.md` is agent-curated. No tool ever writes to it (`extract_research.py` and `extract_research_phase2.py` were both neutralised on this concern; they emit `index_extracted_pending-<timestamp>-<rand>.md` sidecars for the indexer to drain).
 
 Dispatch a single `research-indexer` agent with:
 
 - The canonical slug.
-- The path to the produced `docs/research/<slug>.md`.
+- The path to the produced `/mnt/archive4/PAPERS/Prepared/<slug>.md`.
 - Confirmation the source has been archived to `/mnt/archive4/PAPERS/<slug>.<ext>` (or the video subfolder).
 - Optional: explicit cross-references to memory entries (`project_*`, `feedback_*`) the indexer should mention in the checklist entry. If omitted, the indexer infers from the document's existing top-of-doc Summary section.
 
@@ -624,7 +624,7 @@ Dispatch a single `research-indexer` agent with:
 
 ## Pipeline Scripts
 
-All scripts live in `tools/` and use the venv at `tools/.venv/`. None of them touch `docs/research/index.md`. None of them silently overwrite an existing per-slug `.md` — if a `<slug>.md` already exists, they either skip or write a `<slug>.md.regen` sidecar.
+All scripts live in `tools/` and use the venv at `tools/.venv/`. None of them touch `/mnt/archive4/PAPERS/Prepared/index.md`. None of them silently overwrite an existing per-slug `.md` — if a `<slug>.md` already exists, they either skip or write a `<slug>.md.regen` sidecar.
 
 | Script | Purpose | Destructive? |
 |--------|---------|---------------|
@@ -636,7 +636,7 @@ All scripts live in `tools/` and use the venv at `tools/.venv/`. None of them to
 | `tools/extract_research.py` | PDF/PPTX → text + image extraction. Supports `--only=SLUG` and `--force`. | Refuses to overwrite an existing per-slug `.md` even under `--only` — writes a `<slug>.regen-<YYYYMMDD-HHMMSS>-<6hex>.md` sidecar instead. Pass `--force` to overwrite in place. **Never writes index.md** — writes a suggested-rows file at `index_extracted_pending-<YYYYMMDD-HHMMSS>-<6hex>.md` instead (merge by hand, then delete). All sidecar suffixes are randomised so concurrent agents don't clobber each other. |
 | `tools/extract_research_phase2.py` | Extract videos embedded in PPTX decks and transcribe them with faster-whisper. (Body-text OCR fallback for image-only PDFs / slides moved into phase 1; per-image OCR was removed entirely — the vision pass owns image description.) Supports `--only=SLUG[,SLUG2]`. | Per-slug `.md` only. **Never writes index.md**. |
 | `tools/cleanup_research.py` | Strip watermarks, duplicate headings, garbage OCR. Supports `--only=SLUG`. | Per-slug `.md` only. |
-| `tools/validate_research.py` | Pass 2.5: extract every LaTeX/Mermaid block from `docs/research/<slug>.md`, validate via the Node helper, write `findings-pass2.5-validate.md` sidecar. Supports `--only=SLUG[,SLUG2]`, `--html`. Exits 1 on any parse error. | Read-only on the markdown source; writes only to `assets/<slug>/findings-pass2.5-validate.md` (and `<slug>.preview.html` under `--html`). |
+| `tools/validate_research.py` | Pass 2.5: extract every LaTeX/Mermaid block from `/mnt/archive4/PAPERS/Prepared/<slug>.md`, validate via the Node helper, write `findings-pass2.5-validate.md` sidecar. Supports `--only=SLUG[,SLUG2]`, `--html`. Exits 1 on any parse error. | Read-only on the markdown source; writes only to `assets/<slug>/findings-pass2.5-validate.md` (and `<slug>.preview.html` under `--html`). |
 | `tools/validate_md.mjs` | Node helper invoked by `validate_research.py`. Reads JSON blocks on stdin, validates LaTeX via `katex.renderToString({throwOnError:true})` and Mermaid via `mermaid.parse()` (jsdom-backed). Returns JSON with per-block `ok` + `error`. Not normally called directly. | Pure stdin → stdout, no file writes. |
 | `tools/render_md_html.mjs` | Node helper invoked by `validate_research.py --html`. Compiles a single markdown to a self-contained HTML preview (KaTeX server-side via `@vscode/markdown-it-katex`, mermaid client-side via jsdelivr CDN). Not normally called directly. | Writes to the explicit output path passed on argv. |
 
@@ -653,7 +653,7 @@ All scripts live in `tools/` and use the venv at `tools/.venv/`. None of them to
 ## Output Structure
 
 ```
-docs/research/
+/mnt/archive4/PAPERS/Prepared/
   index.md                          # TOC for all extracted documents
   {slug}.md                         # one markdown per source
   assets/{slug}/                    # images, frames, videos

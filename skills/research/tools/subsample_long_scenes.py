@@ -14,13 +14,12 @@ the same asset directory under names `sub-NNN-MM-SSSS.jpg`.
 Non-destructive: only writes new files; never deletes.
 """
 import argparse
-import os
 import subprocess
 from pathlib import Path
 
-# Resolve from invocation cwd, not script location (skill-shipped scripts).
-PROJECT_ROOT = Path(os.environ.get("RESEARCH_PROJECT_ROOT", os.getcwd())).resolve()
-ASSETS_ROOT = PROJECT_ROOT / "docs" / "research" / "assets"
+# The extracted markdown corpus lives at a single hardcoded global location,
+# independent of cwd / which project invoked /research.
+ASSETS_ROOT = Path("/mnt/archive4/PAPERS/Prepared/assets")
 
 
 def main():

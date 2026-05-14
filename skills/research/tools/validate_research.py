@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Validate LaTeX and Mermaid syntax in research markdown.
 
-Walks `docs/research/<slug>.md` (or all `*.md` if no `--only`), extracts every
+Walks `/mnt/archive4/PAPERS/Prepared/<slug>.md` (or all `*.md` if no `--only`), extracts every
 LaTeX block (inline `$...$`, display `$$...$$`) and every Mermaid fenced code
 block, and dispatches each block to the Node validator (`validate_md.mjs`).
 
@@ -10,7 +10,7 @@ Mermaid is checked via `mermaid.parse()` (jsdom-backed); when the mermaid
 library can't load in Node, blocks are reported as warnings rather than errors.
 
 Per-doc report is written to:
-  docs/research/assets/<slug>/findings-pass2.5-validate.md
+  /mnt/archive4/PAPERS/Prepared/assets/<slug>/findings-pass2.5-validate.md
 
 Optional `--html` also writes a self-contained preview HTML (KaTeX server-side,
 mermaid client-side via CDN) at the same location, named `<slug>.preview.html`.
@@ -336,10 +336,10 @@ def process_one(md_path: Path, research_dir: Path, want_html: bool,
 def main() -> int:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--only", help="Slug to validate (matches docs/research/<slug>.md). "
+    ap.add_argument("--only", help="Slug to validate (matches /mnt/archive4/PAPERS/Prepared/<slug>.md). "
                                    "Repeat with comma for multiple slugs.")
-    ap.add_argument("--research-dir", default="docs/research",
-                    help="Directory containing research markdown (default: docs/research)")
+    ap.add_argument("--research-dir", default="/mnt/archive4/PAPERS/Prepared",
+                    help="Directory containing research markdown (default: /mnt/archive4/PAPERS/Prepared)")
     ap.add_argument("--html", action="store_true",
                     help="Also emit a preview HTML at assets/<slug>/<slug>.preview.html")
     ap.add_argument("--no-sidecar", action="store_true",

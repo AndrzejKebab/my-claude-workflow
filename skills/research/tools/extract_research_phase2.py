@@ -22,9 +22,10 @@ import zipfile
 from lxml import etree
 from pathlib import Path
 
-# Resolve from invocation cwd, not script location (skill-shipped scripts).
-PROJECT_ROOT = Path(os.environ.get("RESEARCH_PROJECT_ROOT", os.getcwd())).resolve()
-OUTPUT_DIR = PROJECT_ROOT / "docs" / "research"
+# The extracted markdown corpus lives at a single hardcoded global location,
+# independent of cwd / which project invoked /research.
+OUTPUT_DIR = Path("/mnt/archive4/PAPERS/Prepared")
+PROJECT_ROOT = OUTPUT_DIR  # display base for relative_to() in log output
 ASSETS_DIR = OUTPUT_DIR / "assets"
 
 # Source files needed for re-rendering pages / extracting videos
@@ -635,7 +636,7 @@ def process_videos(only_slugs: set[str] | None = None):
 def update_index():
     """Print phase-2 marker counts. Does NOT touch index.md.
 
-    Historically this regex-replaced a chunk of `docs/research/index.md`,
+    Historically this regex-replaced a chunk of `/mnt/archive4/PAPERS/Prepared/index.md`,
     which clobbered the agent-curated checklist when the regex didn't match
     or when the section heading shifted (memory: feedback_research_index_clobber.md).
     Now we just print the counts so the agent can update the index by hand.

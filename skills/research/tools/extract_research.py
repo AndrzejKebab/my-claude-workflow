@@ -43,11 +43,12 @@ def _ocr_image_bytes(png_bytes: bytes) -> str:
         except OSError:
             pass
 
-# Resolve output dir from the *invocation cwd*, not the script location.
-# The skill scripts ship at ~/.claude/skills/research/tools/ but write to the
-# project's docs/research/. The agent runs the script from the project root.
-PROJECT_ROOT = Path(os.environ.get("RESEARCH_PROJECT_ROOT", os.getcwd())).resolve()
-OUTPUT_DIR = PROJECT_ROOT / "docs" / "research"
+# The extracted markdown corpus lives at a single hardcoded global location,
+# independent of cwd / which project invoked /research. The skill scripts ship
+# at ~/.claude/skills/research/tools/ but always write the corpus to
+# /mnt/archive4/PAPERS/Prepared/.
+OUTPUT_DIR = Path("/mnt/archive4/PAPERS/Prepared")
+PROJECT_ROOT = OUTPUT_DIR  # display base for relative_to() in log output
 ASSETS_DIR = OUTPUT_DIR / "assets"
 
 SOURCES = [
@@ -1465,7 +1466,7 @@ def write_markdown(doc: Document):
 def write_index(results: list[tuple[dict, int]]):
     """Write a *suggested-rows* side file (NOT index.md) for the agent to merge by hand.
 
-    Historically this rewrote `docs/research/index.md` from scratch, which wiped
+    Historically this rewrote `/mnt/archive4/PAPERS/Prepared/index.md` from scratch, which wiped
     every entry that wasn't part of the current run (memory: feedback_research_index_clobber.md).
     The canonical index is now agent-curated; this function only writes to
     `index_extracted_pending.md` so a human / orchestrator can copy the new rows
@@ -1473,7 +1474,7 @@ def write_index(results: list[tuple[dict, int]]):
     """
     lines = [
         "<!-- Auto-generated suggested rows from tools/extract_research.py.",
-        "     Merge the rows you want into docs/research/index.md by hand,",
+        "     Merge the rows you want into /mnt/archive4/PAPERS/Prepared/index.md by hand,",
         "     then delete this file. NEVER let any tool overwrite index.md. -->",
         "",
         "| Document | Pages | Type | Images |",

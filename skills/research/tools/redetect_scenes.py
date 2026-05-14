@@ -12,25 +12,24 @@ Usage:
         [--threshold 0.18] [--interval 1.0] [--min-gap 1.5] [--width 1280]
 
 Output:
-    docs/research/assets/<slug>/scene-NNN-SSSS.jpg   (one per detected scene)
-    /tmp/scenes_<slug>.tsv                           (TSV of detected scenes)
+    /mnt/archive4/PAPERS/Prepared/assets/<slug>/scene-NNN-SSSS.jpg   (one per detected scene)
+    /tmp/scenes_<slug>.tsv                                          (TSV of detected scenes)
 
 Non-destructive: appends to an existing asset dir; never deletes other files.
 Stale scene-* files from a prior run with different parameters can be cleared
-manually with `find docs/research/assets/<slug> -name 'scene-*.jpg' -delete`
+manually with `find /mnt/archive4/PAPERS/Prepared/assets/<slug> -name 'scene-*.jpg' -delete`
 before invoking this — the script intentionally does NOT do this for you.
 """
 import argparse
-import os
 import subprocess
 import sys
 from pathlib import Path
 
 import cv2
 
-# Resolve from invocation cwd, not script location (skill-shipped scripts).
-PROJECT_ROOT = Path(os.environ.get("RESEARCH_PROJECT_ROOT", os.getcwd())).resolve()
-ASSETS_ROOT = PROJECT_ROOT / "docs" / "research" / "assets"
+# The extracted markdown corpus lives at a single hardcoded global location,
+# independent of cwd / which project invoked /research.
+ASSETS_ROOT = Path("/mnt/archive4/PAPERS/Prepared/assets")
 
 
 def detect_scenes(video: Path, threshold: float, interval: float, min_gap: float):

@@ -237,7 +237,7 @@ def convert_pdf(
     """Run marker on a paper PDF and return per-page markdown.
 
     `cache_dir` is the per-document assets directory (e.g.
-    `docs/research/assets/<slug>/`). The marker output is stored at
+    `/mnt/archive4/PAPERS/Prepared/assets/<slug>/`). The marker output is stored at
     `<cache_dir>/marker.md` + `<cache_dir>/marker-meta.json` and reused on
     subsequent runs unless the PDF's mtime changed, the use_llm flag flipped,
     the LLM provider/model changed, the redo_inline_math flag flipped, or

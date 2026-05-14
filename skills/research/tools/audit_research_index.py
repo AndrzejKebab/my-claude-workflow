@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Audit docs/research/index_missing.md against the actual corpus.
+"""Audit /mnt/archive4/PAPERS/Prepared/index_missing.md against the actual corpus.
 
-Reads every row in the "missing" tables of `docs/research/index_missing.md`,
+Reads every row in the "missing" tables of `/mnt/archive4/PAPERS/Prepared/index_missing.md`,
 extracts the (first-author surname, year) key, and checks whether a corpus
-file in `docs/research/` already starts with `<surname>-<year>-`.
+file in `/mnt/archive4/PAPERS/Prepared/` already starts with `<surname>-<year>-`.
 
 When a match is found, the row is a likely false positive — the paper has
 been ingested but never struck from the missing list. Use this after a
@@ -12,7 +12,7 @@ batch of /research dispatches to find rows you can prune.
 Usage
 -----
     python3 tools/audit_research_index.py
-    python3 tools/audit_research_index.py --research-dir docs/research
+    python3 tools/audit_research_index.py --research-dir /mnt/archive4/PAPERS/Prepared
 
 Same-surname collisions (e.g. Annen 2007 vs Annen 2008) are reported but
 require human triage — only matches where surname AND year both align with
@@ -118,9 +118,9 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument(
         "--research-dir",
-        default="docs/research",
+        default="/mnt/archive4/PAPERS/Prepared",
         type=Path,
-        help="Path to docs/research/ (default: docs/research)",
+        help="Path to the research corpus (default: /mnt/archive4/PAPERS/Prepared)",
     )
     args = ap.parse_args()
     audit(args.research_dir.resolve())

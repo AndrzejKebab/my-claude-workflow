@@ -41,9 +41,10 @@ from pathlib import Path
 
 import fitz
 
-# Resolve from invocation cwd, not script location (skill-shipped scripts).
-PROJECT_ROOT = Path(os.environ.get("RESEARCH_PROJECT_ROOT", os.getcwd())).resolve()
-RESEARCH_DIR = PROJECT_ROOT / "docs" / "research"
+# The extracted markdown corpus lives at a single hardcoded global location,
+# independent of cwd / which project invoked /research.
+RESEARCH_DIR = Path("/mnt/archive4/PAPERS/Prepared")
+PROJECT_ROOT = RESEARCH_DIR  # display base for relative_to() in log output
 ASSETS_DIR = RESEARCH_DIR / "assets"
 
 
@@ -210,7 +211,7 @@ def delete_cutouts(slug: str) -> int:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("slug", help="canonical slug (matches docs/research/<slug>.md)")
+    ap.add_argument("slug", help="canonical slug (matches /mnt/archive4/PAPERS/Prepared/<slug>.md)")
     ap.add_argument(
         "--source",
         required=True,
