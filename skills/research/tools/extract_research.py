@@ -914,6 +914,64 @@ SOURCES = [
         # slide_deck=False confirmed by portrait ACM layout.
         "slide_deck": False,
     },
+    # ============================================================================
+    # Fang et al. 2025 — Aokana: A GPU-Driven Voxel Rendering Framework for Open
+    # World Games (ACM 2025, article 3728299)
+    # Yingrong Fang, Qitong Wang, Wei Wang — Fudan University + Harvard.
+    # GPU-driven voxel rendering for open-world games: octree-based sparse voxel
+    # representation, GPU culling/LOD, indirect draw, deferred shading pipeline.
+    # 17-page text-layer LaTeX paper (ACM acmart template). Not a slide deck.
+    # Math content: voxel LOD selection criteria, frustum/occlusion culling bounds,
+    # indirect dispatch sizing, lighting integrals over voxel volumes.
+    # ============================================================================
+    {
+        "path": "/home/midori/Downloads/3728299.pdf",
+        "slug": "fang-2025-aokana-voxel-rendering",
+        "type": "pdf",
+        "title": "Aokana: A GPU-Driven Voxel Rendering Framework for Open World Games — Fang, Wang, Wang (Fudan University + Harvard, ACM 2025 art.3728299)",
+        # 17-page pdfTeX (ACM acmart template). Text-layer expected; not scanned.
+        # slide_deck=False: portrait ACM two-column layout confirmed.
+        "slide_deck": False,
+    },
+    # ============================================================================
+    # Braley et al. 2010 — GPU Accelerated Voxel Traversal using the Prediction Buffer
+    # Colin Braley, Robert Hagan, Yong Cao, Denis Gracanin — Virginia Tech.
+    # 8-page IEEE-style text-layer LaTeX paper. Introduces the "Prediction Buffer":
+    # a screen-space depth-buffer pre-pass on the CPU voxel tree to skip empty space
+    # in GPU ray traversal, dramatically reducing wasted fragment shader invocations.
+    # Context: GPU-accelerated DDA / Amanatides-Woo traversal in a voxel volume;
+    # companion to amanatides-woo-1987-voxel-traversal in the naadf corpus.
+    # ============================================================================
+    {
+        "path": "/mnt/archive4/PAPERS/braley-2010-prediction-buffer-traversal.pdf",
+        "slug": "braley-2010-prediction-buffer-traversal",
+        "type": "pdf",
+        "title": "GPU Accelerated Voxel Traversal using the Prediction Buffer — Braley, Hagan, Cao, Gracanin (Virginia Tech, 2010)",
+        # 8-page text-layer LaTeX paper (IEEE two-column). Not a slide deck.
+        # Math content: ray-AABB entry/exit computation, DDA step formulas,
+        # prediction-buffer depth test, fragment count reduction analysis.
+        "slide_deck": False,
+    },
+    # ============================================================================
+    # Molenaar & Eisemann 2024 — Editing Compact Voxel Representations on the GPU
+    # Pacific Graphics 2024, Computer Graphics Forum Vol 43 No 7.
+    # Maarten Molenaar & Elmar Eisemann — Delft University of Technology.
+    # Presents GPU-side editing algorithms for Sparse Voxel DAGs (SVDAGs) and
+    # related compact voxel representations without full decompression; includes
+    # CSG boolean operations, voxelisation updates, and topology-preserving edits.
+    # 12-page text-layer LaTeX paper (Wiley/Eurographics two-column ACM-style).
+    # Math content: SVDAG node addressing, DAG traversal/update cost, CSG
+    # set-difference and union on voxel trees, memory-bandwidth analysis.
+    # ============================================================================
+    {
+        "path": "/mnt/archive4/PAPERS/molenaar-eisemann-2024-svdag-editing.pdf",
+        "slug": "molenaar-eisemann-2024-svdag-editing",
+        "type": "pdf",
+        "title": "Editing Compact Voxel Representations on the GPU — Molenaar & Eisemann (Delft University of Technology, Pacific Graphics 2024 / CGF Vol 43 No 7)",
+        # 12-page pdfLaTeX paper. Text-layer expected; not scanned.
+        # slide_deck=False: portrait two-column layout (standard CGF paper format).
+        "slide_deck": False,
+    },
 ]
 
 

@@ -406,6 +406,18 @@ SOURCES_BY_SLUG = {
         "path": "/mnt/archive4/PAPERS/maquignaz-2024-physically-based-sky-modeling.pdf",
         "type": "pdf",
     },
+    "fang-2025-aokana-voxel-rendering": {
+        "path": "/home/midori/Downloads/3728299.pdf",
+        "type": "pdf",
+    },
+    "braley-2010-prediction-buffer-traversal": {
+        "path": "/mnt/archive4/PAPERS/braley-2010-prediction-buffer-traversal.pdf",
+        "type": "pdf",
+    },
+    "molenaar-eisemann-2024-svdag-editing": {
+        "path": "/mnt/archive4/PAPERS/molenaar-eisemann-2024-svdag-editing.pdf",
+        "type": "pdf",
+    },
 }
 
 

@@ -23,7 +23,13 @@ Do not skip the required reading. Do not infer file contents from filenames.
 
 **Persist your design via the Write or Edit tool**, appended under the section heading the brief specifies (typically `## delegate-architect findings (<ISO date>)`). Your final assistant message is for status only — the design itself MUST land on disk before you return. The orchestrator does not extract content from agent return text; only files on disk are load-bearing.
 
-If the brief asks for the design as the file's primary content (a fresh `02-design.md`), Write the whole file. If it asks you to append to an existing file, Edit-to-append.
+Your persisted output MUST contain three sub-sections, not just the design:
+
+1. `## Design` — the implementation plan itself: structure, file/diff plan, code refs.
+2. `## Decisions & rejected alternatives` — every load-bearing choice you made, as a list. Each entry: what you chose, what you rejected, *why*, and what fact would flip the call. This is the part of your reasoning trace the next agent cannot reconstruct from the polished design — an implementer who only sees the design re-derives (often differently) every decision you left implicit.
+3. `## Assumptions made` — everything you had to assume because the brief or context under-specified it. Silent conflicting decisions hide here; surfacing them lets the orchestrator catch them at the synthesis pause.
+
+If the brief asks for the design as the file's primary content (a fresh `02-design.md`), Write the whole file with all three sub-sections. If it asks you to append to an existing file, Edit-to-append all three.
 
 ## Design discipline
 
@@ -38,4 +44,5 @@ If the brief asks for the design as the file's primary content (a fresh `02-desi
 - Do not skip the required reading.
 - Do not invent files, symbols, or line numbers — verify with Read/Grep.
 - Do not return your design only as the agent's final message — Write it to the group file first.
+- Do not persist only the polished design — the `## Decisions & rejected alternatives` and `## Assumptions made` sub-sections are mandatory, not optional.
 - Do not modify files outside `docs/orchestrate/<topic>/` unless the brief explicitly authorizes it.
