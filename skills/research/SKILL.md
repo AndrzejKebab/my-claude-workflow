@@ -12,8 +12,10 @@ The Python pipeline ships with the skill, including its own venv. Everything is 
 ```
 ~/.claude/skills/research/
 ├── SKILL.md              ← this file
-├── pyproject.toml        ← uv-managed dependency spec
-├── .venv/                ← skill-local venv (created by `uv sync`, gitignored)
+├── pyproject.toml        ← uv-managed Python dep spec
+├── package.json          ← npm-managed Node dep spec (Pass 2.5 validators)
+├── .venv/                ← skill-local Python venv (created by `uv sync`, gitignored)
+├── node_modules/         ← skill-local Node modules (created by `npm install`, gitignored)
 └── tools/
     ├── README.md
     ├── extract_research.py
@@ -26,7 +28,10 @@ The Python pipeline ships with the skill, including its own venv. Everything is 
     ├── subsample_long_scenes.py
     ├── srt_to_windows.py
     ├── audit_research_index.py
-    └── prune_research_index.py
+    ├── prune_research_index.py
+    ├── validate_research.py    ← Pass 2.5: extract LaTeX/Mermaid blocks → Node validator
+    ├── validate_md.mjs         ← Pass 2.5: KaTeX + mermaid.parse() syntax checker
+    └── render_md_html.mjs      ← Pass 2.5: optional self-contained HTML preview
 ```
 
 **Why a skill-local venv** (not the project's `tools/.venv/`): projects vary wildly in their Python requirements — some have no venv at all, some have one with conflicting versions (numpy pinned for ML, opencv with GUI flavour, …). The research pipeline needs specific versions of PyMuPDF, opencv-python-headless, faster-whisper, etc. Pinning those at the skill level decouples the toolchain from whatever the project happens to have lying around.
@@ -37,8 +42,11 @@ The Python pipeline ships with the skill, including its own venv. Everything is 
 
 ```bash
 cd ~/.claude/skills/research
-uv sync                       # creates .venv, installs dependencies (~30 s cold)
+uv sync                       # Python: creates .venv, installs deps (~30 s cold)
+npm install --no-audit --no-fund   # Node: installs Pass 2.5 validators (~10 s cold)
 ```
+
+The Node install pulls KaTeX (LaTeX validator + renderer), mermaid + jsdom (Mermaid parser), markdown-it + @vscode/markdown-it-katex (HTML preview). Required by `tools/validate_research.py` (Pass 2.5). Total disk footprint ~30 MB. Skip only if you intend to never run Pass 2.5 — the rest of the pipeline does not depend on it.
 
 Plus system dependencies (tracked in `tools/README.md`):
 
@@ -88,12 +96,90 @@ You are the orchestrator for the /research skill. You do **not** read 268-slide 
 |---|---|---|
 | 1 — extraction | `research-extractor` | Add the source to `tools/extract_research.py` SOURCES, run scripts, archive source to `/mnt/archive4/PAPERS/`, report slug + asset counts |
 | 2 — vision | `research-vision` | Read slide / figure images and write `**Diagram (LLM vision pass):**` blocks via Edit. Batches well — dispatch one agent per ~30 slides to keep individual context lean |
-| 3 — refine | `research-refiner` | Heading fixes, broken-Unicode equation re-transcription, speaker-notes typo cleanup, optional top-of-doc summary |
+| 2.5 — validate | _(orchestrator runs inline)_ | Run `tools/validate_research.py --only=<slug>`: every LaTeX block (`$…$`, `$$…$$`) is parsed by KaTeX and every Mermaid fenced block by `mermaid.parse()`. Errors are written to `findings-pass2.5-validate.md` for the refiner to fix, and to stderr for the orchestrator. Optional `--html` produces a browser-openable preview. |
+| 3 — refine | `research-refiner` | Heading fixes, broken-Unicode equation re-transcription, speaker-notes typo cleanup, optional top-of-doc summary. Brief MUST cite the Pass-2.5 sidecar so the refiner has a concrete error list to address |
+| 3.5 — re-validate | _(orchestrator runs inline, optional)_ | Re-run `tools/validate_research.py --only=<slug>` as a clean-room check after refine. If anything regressed (new errors introduced, old errors not fixed), block Pass 4 and re-dispatch the refiner |
 | 4 — index | `research-indexer` | Add table row + checklist entry to `docs/research/index.md`, drain the extractor's pending sidecar |
 
-You may also dispatch additional vision-pass batches **between** Pass 2 and 3 (e.g. "vision-pass slides 100-130 of the same doc, focusing on plot panels") if the first pass missed coverage.
+You may also dispatch additional vision-pass batches **between** Pass 2 and 3 (e.g. "vision-pass slides 100-130 of the same doc, focusing on plot panels") if the first pass missed coverage. Multiple batches against the **same** paper must run sequentially — they all Edit the same `<slug>.md` and concurrent edits collide.
 
-**Sub-agent model pin**: all four agents (`research-extractor`, `research-vision`, `research-refiner`, `research-indexer`) are pinned to `claude-sonnet-4-6` in their frontmatter. Vision Pass 2 is the cost-dominant workload — hundreds of slide images per deck dispatched in batches of ~30 — and Sonnet 4.6 vision quality is strong at meaningfully lower cost per token than Opus. Pass 3 refinement is mostly mechanical heading / LaTeX / typo cleanup, which Sonnet handles comfortably. The orchestrator (this skill) inherits whatever model the parent session is running on; only the dispatched sub-agents are pinned.
+**Sub-agent model pins — the orchestrator MUST pass `model` explicitly on every Agent dispatch.**
+
+The `model:` field in each agent's frontmatter is **advisory only and is NOT reliably applied** — in practice a dispatched sub-agent inherits the parent session's model (typically Opus) unless the orchestrator passes the `model` parameter explicitly on the Agent tool call. Relying on the frontmatter silently runs the cheap mechanical passes (extract / vision / index) on Opus, which is a large, avoidable cost. **Every `/research` dispatch must set `model` explicitly:**
+
+| Agent | **Pass `model:` =** | Rationale |
+|---|---|---|
+| `research-extractor` | **`"sonnet"`** | Pass 1 is mostly script orchestration (edit SOURCES, run scripts, archive) — Sonnet handles it cheaply. |
+| `research-vision` | **`"sonnet"`** | Cost-dominant workload — hundreds of images per deck in ~30-image batches. Sonnet 4.6 vision quality is strong at meaningfully lower per-token cost than Opus. |
+| `research-refiner` | **`"opus"`** | **Quality-control gate.** Refiner is where math correctness is verified, OCR-corrupted equations are reconstructed, and scientifically-load-bearing formulas (HG, Rayleigh, Mie, transport equations) get their final form before the document becomes citable. A wrong-but-plausible LaTeX equation that ships through is harder to detect than a missing one — for example, marker once produced `(1 + cos a)` for the Rayleigh phase function where the canonical form is `(1 + cos²a)`; a Sonnet refiner missed the dropped exponent because the broken form is syntactically valid LaTeX, but the surrounding paragraph ("forward = backward scatter") only makes sense for the squared form. Opus's stronger cross-source reasoning catches that class of error. The refiner is the ONLY pass that runs on Opus — and it must be the 1M-context Opus build (`claude-opus-4-7[1m]`); the Agent tool's `model` enum is coarse, so pass `model: "opus"` and state the 1M-context requirement in the brief. |
+| `research-indexer` | **`"sonnet"`** | Mechanical (one Edit, one rm, one table-row append) — Sonnet handles it. |
+
+Concretely: extractor / vision / indexer dispatches pass `model: "sonnet"`; refiner dispatches pass `model: "opus"`. The orchestrator itself inherits whatever model the parent session runs on — that is fine and unavoidable; only the dispatched sub-agents need the explicit override. If you find yourself dispatching a `/research` sub-agent without a `model` argument, that is a bug — add it.
+
+**Math-heavy papers — recommend a manual orchestrator vision-pass audit after the refiner**: when the source paper carries scientifically load-bearing equations (radiative-transfer integrals, BRDF formulas, phase functions, error metrics, transport equations) AND the source is photoscanned with Acrobat OCR, the orchestrator (running on the parent-session model, typically Opus 4.x) should do a quick equation-by-equation cross-reference against the page renders before dispatching Pass 4. The refiner agent does this against text-layer artefacts, but a second pass by the orchestrator with direct visual access to the page renders is the right belt-and-braces approach for canonical primary sources. Add a one-line note to the index checklist entry recording the audit.
+
+### Findings sidecars — cross-pass communication channel (REQUIRED)
+
+Every pass writes a findings sidecar to disk. The next pass reads it as required input. This makes pass-to-pass hand-offs robust to **orchestrator context-window loss**, which is the dominant failure mode in unsupervised batch runs (orchestrator dispatching dozens of papers in a phased flow can't carry every concern through every brief — there's too much detail and the briefs are written ahead of time, not in response to actual run findings). The sidecars are the durable hand-off: agent N writes flags to disk → agent N+1 reads from disk → agent N+1 writes resolution to disk. Orchestrator context window is bypassed for the load-bearing detail.
+
+| Pass | Sidecar path | Purpose |
+|---|---|---|
+| 1 — extractor | `assets/<slug>/findings-pass1-extractor.md` | Marker run status, OCR-quality concerns, equation-reconstruction outcomes, symbol-substitution risk register |
+| 2 — vision | `assets/<slug>/findings-pass2-vision.md` | Per-page uncertainty flags, body-text-vs-vision-block divergences, suspect body-text claims |
+| 3 — refiner | `assets/<slug>/findings-pass3-refiner.md` | Resolution log: every Pass-1 and Pass-2 finding gets a status (RESOLVED / ESCALATED / DISMISSED / OUT-OF-SCOPE); refiner-discovered issues; unresolved items needing orchestrator audit; recommended index-entry health flags |
+
+**Required template structure** is in each agent's frontmatter spec (`agents/research-{extractor,vision,refiner,indexer}.md`). The agents enforce the template shape so the next pass can rely on a consistent grammar.
+
+**Multi-batch vision-pass appending**: when Pass 2 is dispatched as multiple batches against a single deck, each batch APPENDS to `findings-pass2-vision.md` under its own `## Batch <N>` heading. The refiner reads the union of all batches.
+
+**Indexer health flags**: Pass 4 reads `findings-pass3-refiner.md` and surfaces any escalated concerns in the index checklist entry as `[!audit-recommended]` / `[!OCR-degraded]` / `[!math-heavy]` prefixes. This makes the index a one-glance health view of the corpus.
+
+**Orchestrator briefs MUST cite the sidecar paths** when dispatching:
+
+- Pass 1 brief: state that `findings-pass1-extractor.md` is required output.
+- Pass 2 brief: state that `findings-pass2-vision.md` is required output (and is appended to on multi-batch dispatch).
+- Pass 3 brief: state that BOTH `findings-pass1-extractor.md` AND `findings-pass2-vision.md` are required INPUT (the agent will refuse to proceed without them) AND that `findings-pass3-refiner.md` is required output.
+- Pass 4 brief: state that `findings-pass3-refiner.md` is required input.
+
+**Why we don't trust agent return-message text alone**: agent return text is bounded (~500 tokens of summary in practice), the orchestrator's context window is the dominant scaling constraint when batching many papers, and there's no recovery path if the orchestrator misremembers or paraphrases a flag. Files on disk solve all three problems and double as a permanent audit trail for any future re-extraction. Do not skip the sidecars — they are the load-bearing protocol element, not a nice-to-have.
+
+**Sidecar-write-failure protocol — the orchestrator NEVER writes a sub-agent's sidecar.** Every findings sidecar is written by the agent that produced its content. If a dispatched agent reports it could not write its sidecar (permission denied, harness block, tool error), the orchestrator's ONLY correct response is to **re-dispatch** — either the same agent type again, or, if the write keeps failing, a dedicated writer agent whose entire brief is "here is the content, write it to `<path>`". The orchestrator MUST NOT:
+
+- write the sidecar itself from the agent's return text, or
+- instruct agents (in their briefs) to "return the full content verbatim if the write fails."
+
+Both of those force the orchestrator to read the agent's entire output AND then write a document — the content passes through the orchestrator's context twice, which is the precise token-budget anti-pattern the agent boundary exists to eliminate. An agent that cannot write its sidecar must emit a one-line `SIDECAR WRITE FAILED: <path> — <reason>` and stop; the orchestrator treats that as a re-dispatch signal, not a cue to do the work itself. (If sub-agent writes are failing systemically, the root cause is usually a missing `Write`/`Edit` permission-allow rule for the `docs/research/**` path in the project's `.claude/settings.local.json` — fix that, don't work around it.)
+
+### Concurrency rules (read this before dispatching anything in parallel)
+
+The /research pipeline mixes **GPU-bound local inference** (marker / surya) with **API-only LLM dispatch** (Sonnet vision / Gemini structural cleanup), and the per-paper `.md` files are written-through by every pass. The right concurrency strategy depends on which pass and whether you're processing one paper or a batch.
+
+**Hard sequential — never run two of these at once on the same machine:**
+
+- **Pass 1 (extraction) across any number of papers**. Marker's surya layout + text-recognition models need ~1.5–2 GiB contiguous VRAM and saturate the GPU during inference. Two parallel extractions guarantee CUDA OOM (one or both fall through to the PyMuPDF span-walker, silently degrading body-text quality). The legacy PyMuPDF-only path was parallel-safe, but post-marker that no longer holds — and an OOM-driven fall-through reads as "marker worked, but produced poor output" rather than a clear failure.
+- **Pass 1 → Pass 2 → Pass 3 within the same paper**. Each pass writes the same `<slug>.md`; the next pass reads what the previous wrote. Pipelined, not parallel.
+- **Pass 4 (indexer) across any number of papers**. All append to the same `docs/research/index.md`. Two indexers in parallel race the table edit.
+- **Multiple vision-pass batches against the same paper**. Same `<slug>.md` again.
+
+**Parallel-safe — only when each agent owns a different `<slug>.md`:**
+
+- **Pass 2 (vision) across different papers**. Each agent edits its own per-paper markdown; vision calls go to the Sonnet API, not the local GPU. Several can run concurrently without contention.
+- **Pass 3 (refine) across different papers**. Same reasoning.
+
+**Recommended dispatch flow for a single paper** (the typical /research invocation):
+
+> Pass 1 → Pass 2 (one or more sequential batches if the deck is large) → Pass 3 → Pass 4. Fully sequential. This is what the four-agent dance assumes by default.
+
+**Recommended dispatch flow for a batch of N papers** (when the user passes a list of sources):
+
+> 1. **Phase A — sequential extract.** Run Pass 1 once per paper, **one at a time** (GPU is shared). Wait for each extractor to finish before dispatching the next. Per-paper marker output is cached at `assets/<slug>/marker.md` so this phase is the GPU-bound bottleneck and worth getting right on the first try (avoid `--force` retries unless you observe a marker failure in the agent's report).
+> 2. **Phase B — parallel vision.** Once Phase A is done, dispatch N `research-vision` agents in parallel — one per paper. Each owns its own `<slug>.md` so there's no edit collision; vision is API-bound (Sonnet) so there's no local-GPU contention.
+> 3. **Phase C — parallel refine.** Same pattern: N `research-refiner` agents, one per paper, dispatched in parallel.
+> 4. **Phase D — sequential index.** Pass 4 must serialise (single `index.md`). Run the indexer once per paper, in sequence. The indexer is fast — it's just one Edit + one rm — so the serial cost is small.
+
+The phased flow turns what would be N × (Pass 1 + Pass 2 + Pass 3 + Pass 4) sequential dispatches into approximately (N × Pass 1) + max(Pass 2) + max(Pass 3) + (N × Pass 4) wall time, which on a typical 5-paper batch is roughly 2–3× faster.
+
+**Pre-marker history**: the old skill text said research extraction was exempt from the project's "no parallel sub-agents" rule because PyMuPDF + OpenOCR were CPU-bound and embarrassingly parallel. That exemption no longer applies — the marker prepass moved Pass 1 onto the GPU and Pass 1 is now hard-serialised across papers. Pass 2 and Pass 3 remain parallel-safe across different papers because they don't touch the local GPU.
 
 ### Running inside a /delegate orchestrator
 
@@ -244,7 +330,7 @@ The argument is a URL or file path:
 
 - YouTube URL → download video, detect slides, OCR + transcribe, output markdown
 - HLS stream (m3u8 URL) → download via ffmpeg, transcribe with faster-whisper, then video pipeline
-- `.pdf` path → extract text via marker (paper-PDFs with text-layer) or PyMuPDF (slide-deck PDFs and scanned PDFs) + full-page rendering (every page for slide decks, figure-bearing pages only for papers). Marker uses Gemini `gemini-2.0-flash` for structural cleanup (headings, tables, equations); requires `GOOGLE_API_KEY` (or `GEMINI_API_KEY`) in env. Cached per-document at `assets/<slug>/marker.md` so re-runs are free.
+- `.pdf` path → extract text via marker (paper-PDFs with text-layer) or PyMuPDF (slide-deck PDFs and scanned PDFs) + full-page rendering (every page for both slide decks and papers; paper-mode pure-prose pages render as `pNNN-text.png` and are out of vision-pass scope — see render-policy table below). Marker uses Anthropic Claude `claude-sonnet-4-6` for structural cleanup (headings, tables, equations) with `redo_inline_math` enabled; requires `CLAUDE_API_KEY` (or `ANTHROPIC_API_KEY`) in env. Cached per-document at `assets/<slug>/marker.md` so re-runs are free; cache invalidates on PDF mtime change OR provider/model change OR `redo_inline_math` flag flip.
 - `.pptx` path → render every slide via LibreOffice → PDF → PNG, plus python-pptx text + speaker notes
 - `.mp4`/`.mkv`/`.webm` local path → video pipeline with `--title` and `--slug` flags
 
@@ -260,14 +346,17 @@ The argument is a URL or file path:
 |---|---|---|---|
 | **PPTX** (always slide deck) | every slide | `assets/<slug>/sNNN-slide.png` | one render per slide |
 | **Slide-deck PDF** (PowerPoint / Keynote / Google Slides / Beamer / Impress export, or any landscape PDF with 4:3 / 16:10 / 16:9 aspect ratio across all pages) | every page | `assets/<slug>/sNNN-slide.png` | one render per slide |
-| **Paper PDF** (academic paper, technical report, thesis, portrait-orientation PDF without slide-export metadata) | figure-bearing pages only (per `_page_has_figure`) | `assets/<slug>/pNNN-page.png` | one render per figure-bearing page; pure-body-text pages skipped |
+| **Paper PDF** — figure-bearing page (per `_page_has_figure`) | rendered, **vision-pass scope** | `assets/<slug>/pNNN-page.png` | one render per figure-bearing page |
+| **Paper PDF** — pure-prose page | rendered, **reference-only embed (vision skips)** | `assets/<slug>/pNNN-text.png` | one render per text-only page; embedded for visual reference (math equations, citation context, marker-fidelity spot-check) but the vision agent does not write a description block |
 
-**Triage (paper PDFs only)**: paper-mode does NOT render every page. A 200-page thesis with figures on 60% of pages produces ~120 page renders, not 200. The extractor's `_page_has_figure(page)` heuristic accepts a page if **either**:
+**Paper-mode rendering policy:** the extractor renders **every** paper-PDF page. The figure-bearing/text split is a **vision-pass scope** decision (encoded in the filename suffix), not a "render or skip" decision. The split is computed by `_page_has_figure(page)`, which returns True if **either**:
 
 - It has any embedded raster image (`page.get_images(full=True)` non-empty), OR
-- It has at least 12 vector drawing operations (`len(page.get_drawings()) >= 12`) — this catches vector flowcharts, cone diagrams, cache-architecture schematics, octree pyramids, and the like.
+- It has at least 12 vector drawing operations (`len(page.get_drawings()) >= 12`) — catches vector flowcharts, cone diagrams, cache-architecture schematics, octree pyramids.
 
-Pages of pure body text (running prose, equation list, references) are NOT rendered. Their text-layer extraction is already canonical, and a vision pass on running prose burns tokens to no benefit.
+A True result writes the page as `pNNN-page.png` and the vision agent processes it. A False result writes the page as `pNNN-text.png` and the markdown emitter prepends `<!-- vision-skip: text-only page (embedded for reference / math equation visual) -->` immediately above the image reference — the vision agent's hard-input contract treats both signals (filename suffix and HTML comment) as out-of-scope. The reference embed is what lets a human (or a future re-extraction audit) visually verify marker's text-layer extraction of math-bearing prose pages, which is otherwise unverifiable from the markdown alone — marker's LLM cleanup pass occasionally produces KaTeX-incompatible LaTeX (misplaced `&`, undefined macros), and Pass 2.5 catches the syntax error but the visual reference is what catches the *semantic* corruption (dropped exponent, swapped operator, etc.).
+
+**Why we render text-only pages too** (vs the pre-2026-05 policy that skipped them entirely): math-bearing prose pages were unverifiable when the page render was missing — a refiner could only see marker's text-layer output, with no way to audit it against the source PDF page. Embedding the page render at `pNNN-text.png` is cheap (a few hundred KB per page) and turns "trust marker's LaTeX" into "spot-check marker's LaTeX against the rendered page". Cost: marginal disk; benefit: catches the class of corruption Pass 2.5 cannot (semantically-wrong-but-syntactically-valid LaTeX).
 
 **Slide-deck classification** (`is_slide_deck_pdf`):
 
@@ -282,15 +371,20 @@ Pages of pure body text (running prose, equation list, references) are NOT rende
 - For PDFs that are NOT slide-decks, sample first 10 pages and count those with ≥ 50 chars of text-layer content.
 - Majority text-rich → `text-paper` → marker prepass via `marker_extract.convert_pdf` (real markdown structure, LaTeX equations, table reconstruction). Per-page markdown becomes `PageData.text`; `marker_extract.first_heading()` populates `PageData.heading` (replaces font-size > 14 heuristic).
 - Otherwise → `scanned` → existing OpenOCR fallback path on PyMuPDF page renders. Marker is NOT used (its quality on scan-only PDFs without a usable text layer is poor; OpenOCR's CPU pipeline is the canonical fallback here).
-- Override: `--no-marker` reverts text-paper PDFs to the legacy PyMuPDF span-walker. `--no-llm` runs marker locally (surya OCR + layout) without Gemini API calls — viable when offline, but loses table-merge / equation / form / section-header repair.
+- Override: `--no-marker` reverts text-paper PDFs to the legacy PyMuPDF span-walker. `--no-llm` runs marker locally (surya OCR + layout) without LLM API calls — viable when offline, but loses table-merge / equation / form / section-header repair.
 
 **Marker prepass output** (text-paper route only):
 
 - Input: paper-PDF path + per-source `assets/<slug>/` cache dir.
-- Cache: `assets/<slug>/marker.md` (paginated markdown) + `assets/<slug>/marker-meta.json` (PDF mtime + use_llm flag + LLM token totals). Cache invalidates on PDF mtime change or use_llm flag flip; bypass with `--force`.
-- Processor list = marker's defaults MINUS `LLMImageDescriptionProcessor` — that processor auto-describes every figure with Gemini, which would duplicate the /research vision pass with a less-strict prompt and inflate the LLM bill ~10×. Image FILES are also not extracted (we use PyMuPDF page renders for the vision pass).
-- API key: `GoogleGeminiService` reads `GOOGLE_API_KEY` then `GEMINI_API_KEY` via the google-genai SDK env-var fallback. `convert_pdf` raises a clear error if neither is set when `use_llm=True`.
-- Cost envelope on a typical mid-length paper: 1–10 LLM calls / 2–20 K tokens / ≪ $0.01. Re-runs are free thanks to the cache.
+- Cache: `assets/<slug>/marker.md` (paginated markdown) + `assets/<slug>/marker-meta.json` (PDF mtime + use_llm + provider + model + redo_inline_math flag + LLM token totals). Cache invalidates on PDF mtime change OR use_llm flip OR provider/model change OR redo_inline_math flip; bypass with `--force`.
+- Processor list = marker's defaults MINUS `LLMImageDescriptionProcessor` — that processor auto-describes every figure with the configured LLM, which would duplicate the /research vision pass with a less-strict prompt and inflate the LLM bill ~10×. Image FILES are also not extracted (we use PyMuPDF page renders for the vision pass).
+- **LLM backend (default)**: Anthropic Claude `claude-sonnet-4-6` via `marker.services.claude.ClaudeService`, with `redo_inline_math: True`. API key resolved as: `CLAUDE_API_KEY` (project `.envrc` convention, preferred) → `ANTHROPIC_API_KEY` (Anthropic SDK fallback). `convert_pdf` raises a clear error if neither is set when `use_llm=True`. Override: pass `claude_model_name="claude-opus-4-7"` for the most math-dense primary sources where the cost premium is justified.
+- **LLM backend (legacy)**: pass `llm_provider="gemini"` to fall back to `GoogleGeminiService` (model `gemini-2.0-flash`, key `GOOGLE_API_KEY`/`GEMINI_API_KEY`). **Not recommended** — Flash is the documented source of broken-LaTeX output the Pass 2.5 validator was built to catch (misplaced `&` inside `\begin{split}`, undefined macros like `\ddy`, dropped exponents on phase-function formulas). Use only for compatibility with older cached outputs that you don't want to re-extract.
+- **Why Sonnet 4.6 over Opus 4.7**: marker invokes the LLM many times per document (one call per equation / table merge / complex region / page correction; with `redo_inline_math` also one per inline-math block). Cost-per-call dominates the bill on multi-page papers. Sonnet 4.6 matches Opus 4.7 on focused VQA + structured-JSON math/table cleanup at ~5× lower per-token cost; reserve Opus for thesis-scale math-dense sources where a wrong-formula citation would be especially expensive.
+- **Why redo_inline_math is on by default**: inline math is exactly the surface where Flash failed (misplaced `&`, undefined macros), so the extra LLM call per inline-math block is a worthwhile baseline. Marker's own docs: *"If you want the absolute highest quality inline math conversion, use this along with `--use_llm`."*
+- Cost envelope on a typical mid-length paper (Sonnet 4.6 + redo_inline_math): 5–30 LLM calls / 10–80 K tokens / a few cents. Re-runs are free thanks to the cache.
+- **GPU memory pressure auto-handling**: `marker_extract._maybe_force_cpu_inference` runs before torch imports and sets `CUDA_VISIBLE_DEVICES=""` when free VRAM is below 2 GiB. Surya layout + recognition models need ~1.5 GiB contiguous; on dev workstations running Unity editor / Steam fossilize_replay / ML loads in parallel, free VRAM spikes unpredictably and a snapshot check a second before allocation is not enough. Forcing CPU when low is preferable to torch OOM-then-fall-through-to-PyMuPDF (which silently degrades quality). CPU inference is ~5–10× slower but acceptable for a typical 8-page paper (under a minute). Override: pre-set `CUDA_VISIBLE_DEVICES` (any value, including empty) to bypass the check.
+- **Fall-through to PyMuPDF** still triggers if marker fails for any other reason (model download interrupted, paginated-output regex change upstream, etc.). The legacy span-walker output is structurally inferior but functionally usable for Pass 2 + Pass 3. When fall-through fires, `extract_research.py` prints `marker FAILED (...); falling back to PyMuPDF span-walker` — surface this in the extractor agent's report so the orchestrator can decide whether to re-run.
 
 **Render scale**: slide decks render at 2.0× (a slide is already large with low information density per pixel), papers render at 2.5× (paper figures pack smaller-detail axis labels, sub-panel letters, equation glyphs that need extra resolution to be vision-readable).
 
@@ -443,7 +537,7 @@ The agent is responsible for the format — `**Diagram (LLM vision pass):**` / `
 
 #### Inputs the orchestrator prepares
 
-- **Image targets**: PPTX and slide-deck PDFs → `sNNN-slide.png` (one per slide); paper PDFs → `pNNN-page.png` (one per figure-bearing page); videos → `frame-XXXX-NNNN.jpg` scene captures. Per-figure cutouts (`pNNN-figXX.png`) are no longer produced — see "Vision pass MUST run on full-page renders" earlier in this skill.
+- **Image targets**: PPTX and slide-deck PDFs → `sNNN-slide.png` (one per slide); paper PDFs → `pNNN-page.png` (one per figure-bearing page) **AND** `pNNN-text.png` (one per pure-prose page, **out of vision-pass scope** — reference embed only, see "Vision pass MUST run on full-page renders" earlier in this skill); videos → `frame-XXXX-NNNN.jpg` scene captures. Per-figure cutouts (`pNNN-figXX.png`) are no longer produced.
 - **No OCR scaffolding adjacent to images**: previous versions of this skill dropped per-image OCR blocks under each figure reference. That has been removed — OCR labels without visual context only narrow what the vision agent looks at and prime it with mistakes. The vision agent reads each image directly with full visual context and writes its description from scratch.
 - **Transcript** (YouTube / HLS / PPTX speaker notes / PDF Notes-Pages text-layer split): the orchestrator runs the transcript loader and verifies blockquotes are populated **before** dispatching the vision agent. The vision agent does not touch transcript content.
 
@@ -454,19 +548,62 @@ Same as the agent-level skip list (see "Skip rules" earlier in this skill):
 - Title pages, agenda slides, section dividers, "Thanks!" slides, "References" pages — never dispatched.
 - Pure-text bullet slides with no diagrams / images / plots / tables / code.
 - Slides that already have a `**X (LLM vision pass):**` block from an earlier batch — re-tagging would duplicate.
+- Paper-PDF pages whose render is `pNNN-text.png` (pure-prose, see render-policy table above). The vision agent treats both the `-text` filename suffix and the `<!-- vision-skip: ... -->` HTML comment as out-of-scope — the orchestrator should not include these page numbers in the dispatch list.
 
 The vision agent enforces the same list as a second pass.
 
+### Pass 2.5: Validate (orchestrator runs inline)
+
+After all Pass-2 vision batches complete and **before** dispatching Pass 3, the orchestrator runs the syntax validator. This catches LaTeX and Mermaid syntax errors that vision-pass output, marker prepass, or refiner edits may have left behind, and gives the refiner a concrete error list to fix instead of relying on a second model pass to catch every parse error visually.
+
+```bash
+~/.claude/skills/research/.venv/bin/python ~/.claude/skills/research/tools/validate_research.py --only=<slug>
+# add --html for a browser-openable preview at assets/<slug>/<slug>.preview.html
+```
+
+**What it does:**
+
+1. Walks `docs/research/<slug>.md` line-by-line, extracting every LaTeX block (inline `$…$`, display `$$…$$`) and every fenced ```` ```mermaid ```` block. Skips fenced code blocks for non-mermaid languages so dollar signs in shell snippets don't trip the inline-math regex.
+2. Sends all blocks as a JSON batch to `tools/validate_md.mjs` (Node helper).
+3. Each LaTeX block runs through `katex.renderToString({throwOnError: true})` — KaTeX is strict about brace balance, undefined macros, missing `\right` partners, misplaced `&`, etc.
+4. Each Mermaid block runs through `mermaid.parse()` (jsdom-backed). When mermaid fails to load in Node, blocks downgrade to *warnings* rather than errors.
+5. Writes a per-doc report to `docs/research/assets/<slug>/findings-pass2.5-validate.md` with file:line references, snippet previews, and KaTeX/Mermaid error messages.
+6. Exits **1** if any block failed to parse. The orchestrator MUST treat exit 1 as a hard block on Pass 3 dispatch.
+
+**What gets caught:**
+
+- Stray `&` in `\begin{split}` (e.g. `\Phi[q] \in & \left\{ … \\ & \quad …`) — `Expected '\right', got '&' at position N`.
+- Unclosed braces (`\frac{1}{2`, `x_{`).
+- Undefined macros the refiner didn't normalise (e.g. `\ddy`, `\ddx` instead of `\partial y / \partial x` or plain `ddy/ddx`).
+- Math-mode commands in text mode and vice versa.
+- Mermaid diagrams with malformed arrows / unknown diagram types / unbalanced parens.
+
+**Refiner brief MUST cite the report.** When dispatching Pass 3, the orchestrator brief states the path to `findings-pass2.5-validate.md` and lists the specific errors the refiner is expected to address. Skipping this step puts the refiner back into "find the bug visually" mode — which is the failure mode that motivated this pass.
+
+**Pass 3.5 — re-validate after refine** (recommended): re-run the same command after Pass 3 completes. If the report shows zero errors, proceed to Pass 4. If errors regressed (refiner introduced new ones, missed some, or the LaTeX they wrote doesn't compile), re-dispatch the refiner with the new error list. This is a fast loop — the validator runs in seconds even on 5K-line documents.
+
+**HTML preview** (`--html`): writes `assets/<slug>/<slug>.preview.html` — a self-contained page with KaTeX-rendered math (server-side, so KaTeX errors paint inline in red) and mermaid client-side render (loads `mermaid` from jsdelivr CDN). Open in a browser to visually verify the document end-to-end. The preview is gitignored implicitly (under `assets/<slug>/`); if you want it committed, set `--html-out=<path>` to direct it elsewhere.
+
+**Exit-status contract:**
+- `0` — all blocks clean. Proceed to Pass 3 (or, on the post-refine re-validate, to Pass 4).
+- `1` — at least one parse error. Block downstream dispatch until resolved.
+- `2` — tool error (Node missing, `node_modules/` missing, malformed CLI args). Fix the toolchain before retrying — do NOT skip Pass 2.5 because the validator failed to set up.
+
+**Inline math false-positive guard:** the extractor is conservative about `$…$` matches — it requires at least one LaTeX-ish character (`\^_{}=<>+-*/`) and skips matches that look like currency (`$5.00`, `$200/month`). It will not flag prose containing dollar signs. If the validator reports an "inline" block that's actually prose, file it as an extractor false-positive and refine the heuristic in `tools/validate_research.py` rather than wrapping the prose in a math escape.
+
 ### Pass 3: Refine (dispatched to research-refiner)
 
-After all Pass-2 batches complete, dispatch a single `research-refiner` agent with a brief listing the specific concerns the orchestrator wants fixed:
+After Pass 2.5 (validate) completes with errors enumerated to disk, dispatch a single `research-refiner` agent with a brief listing the specific concerns the orchestrator wants fixed:
 
-- Broken-Unicode equations (slide numbers).
+- **The Pass 2.5 sidecar path** (`docs/research/assets/<slug>/findings-pass2.5-validate.md`) — REQUIRED. The refiner is expected to address every error the validator reported. Brief explicitly: "Read the sidecar first; every entry under `## Errors` must be fixed in your edit pass."
+- Broken-Unicode equations (slide numbers, beyond what Pass 2.5 already caught).
 - Heading fixes (slide numbers + recommended titles, or "infer from slide content").
 - Speaker-notes typo fixes (paths to areas with known auto-caption errors).
 - Whether to write a top-of-document summary, and which sections / cross-references it should cover.
 
 The refiner reads the document end-to-end in its own context window — never run this inline either, because the document is typically 3-5 K lines long after Pass 2.
+
+After Pass 3 returns, the orchestrator re-runs `tools/validate_research.py --only=<slug>` (Pass 3.5) as the clean-room check before Pass 4 dispatch — see Pass 2.5 above.
 
 ### Pass 4: Index Update (dispatched to research-indexer)
 
@@ -499,6 +636,9 @@ All scripts live in `tools/` and use the venv at `tools/.venv/`. None of them to
 | `tools/extract_research.py` | PDF/PPTX → text + image extraction. Supports `--only=SLUG` and `--force`. | Refuses to overwrite an existing per-slug `.md` even under `--only` — writes a `<slug>.regen-<YYYYMMDD-HHMMSS>-<6hex>.md` sidecar instead. Pass `--force` to overwrite in place. **Never writes index.md** — writes a suggested-rows file at `index_extracted_pending-<YYYYMMDD-HHMMSS>-<6hex>.md` instead (merge by hand, then delete). All sidecar suffixes are randomised so concurrent agents don't clobber each other. |
 | `tools/extract_research_phase2.py` | Extract videos embedded in PPTX decks and transcribe them with faster-whisper. (Body-text OCR fallback for image-only PDFs / slides moved into phase 1; per-image OCR was removed entirely — the vision pass owns image description.) Supports `--only=SLUG[,SLUG2]`. | Per-slug `.md` only. **Never writes index.md**. |
 | `tools/cleanup_research.py` | Strip watermarks, duplicate headings, garbage OCR. Supports `--only=SLUG`. | Per-slug `.md` only. |
+| `tools/validate_research.py` | Pass 2.5: extract every LaTeX/Mermaid block from `docs/research/<slug>.md`, validate via the Node helper, write `findings-pass2.5-validate.md` sidecar. Supports `--only=SLUG[,SLUG2]`, `--html`. Exits 1 on any parse error. | Read-only on the markdown source; writes only to `assets/<slug>/findings-pass2.5-validate.md` (and `<slug>.preview.html` under `--html`). |
+| `tools/validate_md.mjs` | Node helper invoked by `validate_research.py`. Reads JSON blocks on stdin, validates LaTeX via `katex.renderToString({throwOnError:true})` and Mermaid via `mermaid.parse()` (jsdom-backed). Returns JSON with per-block `ok` + `error`. Not normally called directly. | Pure stdin → stdout, no file writes. |
+| `tools/render_md_html.mjs` | Node helper invoked by `validate_research.py --html`. Compiles a single markdown to a self-contained HTML preview (KaTeX server-side via `@vscode/markdown-it-katex`, mermaid client-side via jsdelivr CDN). Not normally called directly. | Writes to the explicit output path passed on argv. |
 
 **If you need a one-off media-processing helper that doesn't fit the above:** edit / add a tracked file under `tools/` and commit it. **Do not** write throwaway helpers to `/tmp` — every future /research run will re-derive the same script from scratch otherwise.
 
@@ -523,8 +663,10 @@ In addition, the **source master** lives in `/mnt/archive4/PAPERS/` (see "REQUIR
 
 ## Dependencies
 
-Venv at `tools/.venv/`: `pymupdf`, `python-pptx`, `opencv-python-headless`, `openocr-python`, `faster-whisper`
+Python venv at `~/.claude/skills/research/.venv/` (managed by `uv sync` from `pyproject.toml`): `pymupdf`, `python-pptx`, `opencv-python-headless`, `openocr-python`, `faster-whisper`, `marker-pdf`.
 
-System: `yt-dlp`, `ffmpeg`, `libreoffice` (PPTX rendering)
+Node modules at `~/.claude/skills/research/node_modules/` (managed by `npm install` from `package.json`): `katex`, `mermaid`, `jsdom`, `markdown-it`, `@vscode/markdown-it-katex`. Required by Pass 2.5 validators (`validate_research.py`, `validate_md.mjs`, `render_md_html.mjs`).
+
+System: `node` (>=20), `yt-dlp`, `ffmpeg`, `libreoffice` (PPTX rendering)
 
 OCR engine: [OpenOCR](https://github.com/Topdu/OpenOCR) (mobile/ONNX backend, auto-downloads models to `~/.cache/openocr/` on first run). Wrapped behind `tools/openocr_engine.py` as a singleton — model load happens once per process and is shared between phase 1 (body-text fallback for image-only sources) and the video pipeline (`research_video.py` per-frame OCR). Override behaviour via env vars: `OPENOCR_MODE=server` (higher accuracy, requires `pip install torch torchvision`), `OPENOCR_BACKEND=torch`, `OPENOCR_DROP_SCORE=0.5`.

@@ -54,6 +54,61 @@ If `~/.claude/skills/research/.venv/` does not exist (fresh install), bootstrap 
 3. For local video: same as the HLS step 2 onwards.
 4. Archive the mp4 + srt to `/mnt/archive4/PAPERS/<year>-<slug-tail>/<slug>.{mp4,en.srt}`.
 
+## Findings sidecar — REQUIRED
+
+**Before returning**, write a findings sidecar at:
+
+```
+docs/research/assets/<slug>/findings-pass1-extractor.md
+```
+
+This file is the **durable input to Pass 3 (refiner)**. The orchestrator's natural-language brief cannot carry every concern through the chain — especially in unsupervised batch runs where the orchestrator dispatches many papers and loses detail between passes. The sidecar bypasses orchestrator context-window loss: you write to disk, the refiner reads from disk.
+
+**Required template** (write all sections; if a section has nothing to flag, write `- none observed` rather than omitting the section):
+
+```markdown
+# Pass 1 Findings — <slug>
+
+## Marker run status
+- Marker fired: <yes / no — fell back to PyMuPDF / no — slide-deck or scanned route>
+- LLM requests: N
+- LLM tokens: M
+- Cache hit: <yes / no>
+- Per-page renders produced: N
+- Notes: <free-form one-liner if anything unusual happened>
+
+## OCR-quality concerns (text-layer corruption)
+List any pages where the existing PDF text-layer is visibly corrupted (e.g. Acrobat OCR artefacts on photoscanned papers — "Laborat6ry", "see~s", τ rendered as "~" or "7"). For each, list the page and the artefact pattern.
+- <pNNN: pattern>
+- ...
+
+## Equation-reconstruction outcomes
+For each equation marker's LLM equation processor rewrote, note whether the LaTeX looks correct end-to-end. **High-risk patterns to flag** (these are the recurring marker-LLM hallucinations):
+- Symbol substitutions (e.g. `\rho` for `p` particle radius, `\gamma` for `\tau`, etc.)
+- Dropped exponents (e.g. `\cos a` instead of `\cos^2 a`, `g` instead of `g^2`)
+- Missing subscripts (e.g. `\mu 0` instead of `\mu_0`)
+- Suspicious factor differences (e.g. missing factor of 2 in shadowing-overlap exponents)
+- Equations that came out syntactically valid but contradict surrounding prose
+
+For each suspect equation, include the page number, the equation as it appears in marker output, and what the page render appears to show. Refiner will resolve.
+
+## Symbol-substitution risk register (this paper's surface)
+List the symbols this paper uses that are at high substitution risk for marker:
+- particle radius (`p` vs `\rho`?)
+- optical depth (`\tau` vs `~` / `7`?)
+- albedo (`\omega` vs `w`?)
+- emission cosine (`\mu` vs `u`?)
+- ...
+
+## Other concerns
+- under-detected scenes, missing speaker notes, broken Unicode, regen sidecars produced, pending sidecars, anything else.
+
+## Pending sidecars produced
+- `docs/research/index_extracted_pending-<timestamp>-<rand>.md` (drain in Pass 4)
+```
+
+Save the file then list its full path in your final return message so the orchestrator can verify and pass the path to the refiner brief.
+
 ## Report back
 
 In your final message:
@@ -63,7 +118,8 @@ In your final message:
 - For slide-deck sources: page count + asset filename pattern (`pNNN-slide.png` for slide-deck PDFs, `sNNN-slide.png` for PPTX).
 - For papers: page count + per-page figure count.
 - For videos: scene count, duration.
-- Any extraction warnings worth surfacing (under-detected scenes, missing speaker notes, broken Unicode in equations) — the orchestrator may dispatch Pass 1.5 helpers in response.
+- Path of the findings sidecar you wrote (`assets/<slug>/findings-pass1-extractor.md`).
+- Any extraction warnings worth surfacing (under-detected scenes, missing speaker notes, broken Unicode in equations) — the orchestrator may dispatch Pass 1.5 helpers in response. These should also appear in the sidecar.
 - Confirmation that the source was archived to `/mnt/archive4/PAPERS/`.
 
 ## Hard rules

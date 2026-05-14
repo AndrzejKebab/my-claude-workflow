@@ -18,6 +18,9 @@ Canonical Python scripts for the `/research` skill. Self-contained: ships its ow
 | `upgrade_to_slide_renders.py` | Migrate an already-extracted slide-deck research entry from per-figure cutouts to per-page rendered slide images. |
 | `audit_research_index.py` | Audit `docs/research/index_missing.md` against the corpus to find rows already covered. |
 | `prune_research_index.py` | Remove specific lines from `docs/research/index_missing.md`. |
+| `validate_research.py` | **Pass 2.5 validator.** Extracts every LaTeX (`$…$`, `$$…$$`) and Mermaid block from `docs/research/<slug>.md` and dispatches them to `validate_md.mjs`. Writes `assets/<slug>/findings-pass2.5-validate.md`; exits 1 on any parse error. `--html` adds a self-contained preview. See SKILL.md "Pass 2.5: Validate" for the full contract. |
+| `validate_md.mjs` | Node helper for `validate_research.py`. Validates LaTeX via `katex.renderToString({throwOnError:true})` and Mermaid via `mermaid.parse()` (jsdom-backed). |
+| `render_md_html.mjs` | Node helper for `validate_research.py --html`. markdown-it + KaTeX server-side + mermaid client-side via CDN → self-contained HTML preview. |
 
 ## Per-doc helpers
 
@@ -29,7 +32,8 @@ The skill is a uv project. The venv lives at `~/.claude/skills/research/.venv/`.
 
 ```bash
 cd ~/.claude/skills/research
-uv sync                       # creates .venv, installs dependencies (~30 s cold)
+uv sync                              # Python: creates .venv (~30 s cold)
+npm install --no-audit --no-fund     # Node: installs Pass 2.5 validators (~10 s cold)
 ```
 
 Plus system dependencies:

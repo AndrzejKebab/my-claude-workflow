@@ -15,12 +15,32 @@ pipeline because the /research vision pass already produces vision blocks with
 project-specific taxonomy (`**Diagram (LLM vision pass):**`, …). Image FILES
 are also not extracted to disk — the vision pass reads PyMuPDF page renders.
 
-Caching: marker calls cost real Gemini money. The result is cached at
-`<cache_dir>/marker.md` keyed by PDF mtime + use_llm flag (in cache header).
-`force=True` bypasses.
+LLM backend: `marker.services.claude.ClaudeService` with model
+`claude-sonnet-4-6`. We migrated off `gemini-2.0-flash` after observing
+recurring KaTeX-incompatible LaTeX output from Flash (misplaced `&` inside
+`\\begin{split}`, undefined macros like `\\ddy`, dropped exponents on
+`(1 + cos²a)`). Sonnet 4.6 is strong on structured visual reasoning and math
+transcription at meaningfully higher accuracy than Flash, while running
+~5× cheaper per token than Opus 4.7. Marker invokes the LLM many times per
+document (one per equation / table merge / complex region / page correction),
+so cost-per-call matters; Sonnet 4.6 is the cost-quality sweet spot. Override
+with `claude_model_name=` if you need Opus on a math-heavy primary source.
 
-API key: `GoogleGeminiService` reads `GOOGLE_API_KEY` (or `GEMINI_API_KEY`) via
-the google-genai SDK env-var fallback.
+`redo_inline_math` is enabled by default. Marker's docs:
+"If you want the absolute highest quality inline math conversion, use this
+along with --use_llm." Inline math is exactly the surface where Flash failed
+(misplaced `&`, undefined macros), so this is the correct default for our
+workload — the cost is one extra LLM call per inline-math block, which on a
+typical paper is small and the quality improvement is large.
+
+API key: prefers `CLAUDE_API_KEY` (project convention, in `.envrc`), falls
+back to `ANTHROPIC_API_KEY` (Anthropic SDK default). Errors clearly if neither
+is set.
+
+Caching: marker calls cost real Anthropic money. The result is cached at
+`<cache_dir>/marker.md` keyed by PDF mtime + use_llm + provider + model + the
+redo_inline_math flag (all in `marker-meta.json`). Any change invalidates the
+cache. `force=True` bypasses.
 """
 
 from __future__ import annotations
@@ -70,6 +90,11 @@ _DEFAULT_PROCESSORS = (
 _PAGE_BOUNDARY_RE = re.compile(r"^\{(\d+)\}-{40,}\s*$", re.MULTILINE)
 
 
+DEFAULT_CLAUDE_MODEL = "claude-sonnet-4-6"
+DEFAULT_LLM_PROVIDER = "claude"  # "claude" | "gemini"
+DEFAULT_REDO_INLINE_MATH = True
+
+
 @dataclass
 class MarkerResult:
     pages: dict[int, str]  # 0-indexed page number -> markdown body
@@ -77,6 +102,14 @@ class MarkerResult:
     llm_token_count: int
     used_llm: bool
     used_cache: bool
+    llm_provider: str | None = None
+    llm_model: str | None = None
+    redo_inline_math: bool = False
+
+
+def _resolve_claude_api_key() -> str | None:
+    """Read CLAUDE_API_KEY first (project convention), then ANTHROPIC_API_KEY."""
+    return os.environ.get("CLAUDE_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")
 
 
 def _split_paginated_markdown(text: str) -> dict[int, str]:
@@ -119,7 +152,14 @@ def _cache_paths(cache_dir: Path) -> tuple[Path, Path]:
     return (cache_dir / "marker.md", cache_dir / "marker-meta.json")
 
 
-def _read_cache(cache_dir: Path, pdf_path: Path, use_llm: bool) -> MarkerResult | None:
+def _read_cache(
+    cache_dir: Path,
+    pdf_path: Path,
+    use_llm: bool,
+    llm_provider: str | None,
+    llm_model: str | None,
+    redo_inline_math: bool,
+) -> MarkerResult | None:
     md_path, meta_path = _cache_paths(cache_dir)
     if not md_path.exists() or not meta_path.exists():
         return None
@@ -131,6 +171,16 @@ def _read_cache(cache_dir: Path, pdf_path: Path, use_llm: bool) -> MarkerResult 
         return None
     if meta.get("use_llm") != use_llm:
         return None
+    # When the LLM was used, the provider, model and redo_inline_math flag
+    # all change the output. Any drift invalidates the cache so we don't
+    # silently serve Flash-corrupted output after migrating to Claude.
+    if use_llm:
+        if meta.get("llm_provider") != llm_provider:
+            return None
+        if meta.get("llm_model") != llm_model:
+            return None
+        if bool(meta.get("redo_inline_math", False)) != redo_inline_math:
+            return None
     text = md_path.read_text()
     return MarkerResult(
         pages=_split_paginated_markdown(text),
@@ -138,6 +188,9 @@ def _read_cache(cache_dir: Path, pdf_path: Path, use_llm: bool) -> MarkerResult 
         llm_token_count=int(meta.get("llm_token_count", 0)),
         used_llm=use_llm,
         used_cache=True,
+        llm_provider=meta.get("llm_provider"),
+        llm_model=meta.get("llm_model"),
+        redo_inline_math=bool(meta.get("redo_inline_math", False)),
     )
 
 
@@ -148,6 +201,9 @@ def _write_cache(
     markdown: str,
     llm_requests: int,
     llm_tokens: int,
+    llm_provider: str | None,
+    llm_model: str | None,
+    redo_inline_math: bool,
 ) -> None:
     cache_dir.mkdir(parents=True, exist_ok=True)
     md_path, meta_path = _cache_paths(cache_dir)
@@ -157,6 +213,9 @@ def _write_cache(
             {
                 "pdf_mtime_ns": pdf_path.stat().st_mtime_ns,
                 "use_llm": use_llm,
+                "llm_provider": llm_provider if use_llm else None,
+                "llm_model": llm_model if use_llm else None,
+                "redo_inline_math": redo_inline_math if use_llm else False,
                 "llm_request_count": llm_requests,
                 "llm_token_count": llm_tokens,
             },
@@ -171,34 +230,125 @@ def convert_pdf(
     cache_dir: str | os.PathLike,
     use_llm: bool = True,
     force: bool = False,
+    llm_provider: str = DEFAULT_LLM_PROVIDER,
+    claude_model_name: str = DEFAULT_CLAUDE_MODEL,
+    redo_inline_math: bool = DEFAULT_REDO_INLINE_MATH,
 ) -> MarkerResult:
     """Run marker on a paper PDF and return per-page markdown.
 
     `cache_dir` is the per-document assets directory (e.g.
     `docs/research/assets/<slug>/`). The marker output is stored at
-    `<cache_dir>/marker.md` + `<cache_dir>/marker-meta.json` and reused
-    on subsequent runs unless the PDF's mtime changed or the use_llm
-    flag flipped or `force=True`.
+    `<cache_dir>/marker.md` + `<cache_dir>/marker-meta.json` and reused on
+    subsequent runs unless the PDF's mtime changed, the use_llm flag flipped,
+    the LLM provider/model changed, the redo_inline_math flag flipped, or
+    `force=True`.
 
-    `use_llm=True` requires a Gemini API key in the environment as
-    `GOOGLE_API_KEY` (or `GEMINI_API_KEY`); the call will raise if neither
-    is set. `use_llm=False` runs marker locally (surya OCR + layout) with
-    no network calls — quality is still better than PyMuPDF span-walking
-    on most modern PDFs.
+    `use_llm=True` defaults to Anthropic Claude (`claude-sonnet-4-6`). The API
+    key is read from `CLAUDE_API_KEY` (project convention) or
+    `ANTHROPIC_API_KEY` (Anthropic SDK default). `use_llm=False` runs marker
+    locally (surya OCR + layout) with no network calls — quality is still
+    better than PyMuPDF span-walking on most modern PDFs but loses table
+    merge / equation / form / section-header repair.
+
+    `llm_provider="gemini"` falls back to the legacy `GoogleGeminiService`
+    backend (model controlled by marker's own `gemini_model_name` field, key
+    from `GOOGLE_API_KEY`/`GEMINI_API_KEY`). Use this only for compatibility
+    with older cached outputs — Flash is a known source of broken LaTeX
+    (misplaced `&`, undefined macros) and should not be the default for new
+    extractions.
+
+    `redo_inline_math=True` (the default) enables marker's
+    `LLMEquationProcessor` / `LLMMathBlockProcessor` for inline math, which
+    is the surface that previously produced KaTeX-incompatible output.
     """
     pdf_path = Path(pdf_path)
     cache_dir = Path(cache_dir)
 
+    llm_provider = (llm_provider or DEFAULT_LLM_PROVIDER).lower()
+    if llm_provider not in ("claude", "gemini"):
+        raise ValueError(
+            f"Unknown llm_provider {llm_provider!r}; expected 'claude' or 'gemini'."
+        )
+
+    # Per-provider model name (only one is meaningful at a time; keep the
+    # cache key precise so swapping providers invalidates correctly).
+    llm_model: str | None = None
+    if use_llm:
+        if llm_provider == "claude":
+            llm_model = claude_model_name
+        else:
+            # marker.services.gemini.GoogleGeminiService default model
+            llm_model = "gemini-2.0-flash"
+
     if not force:
-        cached = _read_cache(cache_dir, pdf_path, use_llm)
+        cached = _read_cache(
+            cache_dir, pdf_path, use_llm,
+            llm_provider=llm_provider if use_llm else None,
+            llm_model=llm_model,
+            redo_inline_math=redo_inline_math if use_llm else False,
+        )
         if cached is not None:
             return cached
 
-    if use_llm and not (os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")):
-        raise RuntimeError(
-            "marker --use_llm requires GOOGLE_API_KEY (or GEMINI_API_KEY) in the "
-            "environment. Set it in the project .envrc or pass use_llm=False."
+    # API key resolution per provider — fail clearly before any expensive work.
+    claude_api_key: str | None = None
+    if use_llm:
+        if llm_provider == "claude":
+            claude_api_key = _resolve_claude_api_key()
+            if not claude_api_key:
+                raise RuntimeError(
+                    "marker --use_llm with provider=claude requires CLAUDE_API_KEY "
+                    "(preferred, project .envrc convention) or ANTHROPIC_API_KEY "
+                    "(Anthropic SDK fallback) in the environment. "
+                    "Set one or pass use_llm=False."
+                )
+        else:
+            if not (os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")):
+                raise RuntimeError(
+                    "marker --use_llm with provider=gemini requires GOOGLE_API_KEY "
+                    "(or GEMINI_API_KEY) in the environment. Set it in the project "
+                    ".envrc or pass use_llm=False."
+                )
+
+    # The Anthropic SDK reads ANTHROPIC_BASE_URL and ANTHROPIC_AUTH_TOKEN from
+    # the environment. On this workstation those env vars point to DeepSeek's
+    # API (for Claude Code's model routing), which would cause every marker LLM
+    # call to route to DeepSeek with an Anthropic-format key → 401. Save and
+    # clear them so the SDK defaults to api.anthropic.com, then restore after.
+    _saved_base_url = os.environ.pop("ANTHROPIC_BASE_URL", None)
+    _saved_auth_token = os.environ.pop("ANTHROPIC_AUTH_TOKEN", None)
+    try:
+        result = _convert_pdf_impl(
+            pdf_path, cache_dir, use_llm, force,
+            llm_provider, llm_model, redo_inline_math,
+            claude_api_key,
         )
+    finally:
+        if _saved_base_url is not None:
+            os.environ["ANTHROPIC_BASE_URL"] = _saved_base_url
+        if _saved_auth_token is not None:
+            os.environ["ANTHROPIC_AUTH_TOKEN"] = _saved_auth_token
+    return result
+
+
+def _convert_pdf_impl(
+    pdf_path: Path,
+    cache_dir: Path,
+    use_llm: bool,
+    force: bool,
+    llm_provider: str,
+    llm_model: str | None,
+    redo_inline_math: bool,
+    claude_api_key: str | None,
+) -> MarkerResult:
+    # Force CPU inference when the GPU is too contested for marker's layout
+    # models (surya). The check must happen BEFORE torch is imported, since
+    # CUDA_VISIBLE_DEVICES is read once at torch module init. Without this,
+    # marker OOMs on dev workstations running Unity / Steam shader compilation
+    # / other GPU loads even when nvidia-smi snapshot a moment ago showed
+    # plenty of free memory — VRAM pressure from those processes spikes
+    # unpredictably.
+    _maybe_force_cpu_inference()
 
     # Imports deferred — marker pulls torch + surya weights on import, which is
     # a multi-second cost we should not pay when the cache hits.
@@ -214,7 +364,19 @@ def convert_pdf(
     }
     if use_llm:
         config["use_llm"] = True
-        config["llm_service"] = "marker.services.gemini.GoogleGeminiService"
+        config["redo_inline_math"] = redo_inline_math
+        if llm_provider == "claude":
+            config["llm_service"] = "marker.services.claude.ClaudeService"
+            config["claude_model_name"] = llm_model
+            config["claude_api_key"] = claude_api_key
+            # Bump the per-call ceiling. Marker's default 8192 is plenty for
+            # an equation/table cleanup, but a `redo_inline_math` pass on a
+            # math-dense paragraph can push close to it. 16384 buys headroom
+            # without changing per-call cost meaningfully (usage, not ceiling,
+            # is billed).
+            config["max_claude_tokens"] = 16384
+        else:
+            config["llm_service"] = "marker.services.gemini.GoogleGeminiService"
 
     parser = ConfigParser(config)
     converter_kwargs: dict = {
@@ -231,7 +393,12 @@ def convert_pdf(
     text, _, _ = text_from_rendered(rendered)
     requests, tokens = _llm_stats(rendered.metadata)
 
-    _write_cache(cache_dir, pdf_path, use_llm, text, requests, tokens)
+    _write_cache(
+        cache_dir, pdf_path, use_llm, text, requests, tokens,
+        llm_provider=llm_provider if use_llm else None,
+        llm_model=llm_model,
+        redo_inline_math=redo_inline_math if use_llm else False,
+    )
 
     return MarkerResult(
         pages=_split_paginated_markdown(text),
@@ -239,7 +406,52 @@ def convert_pdf(
         llm_token_count=tokens,
         used_llm=use_llm,
         used_cache=False,
+        llm_provider=llm_provider if use_llm else None,
+        llm_model=llm_model,
+        redo_inline_math=redo_inline_math if use_llm else False,
     )
+
+
+def _maybe_force_cpu_inference(min_free_mib: int = 2048) -> None:
+    """Set CUDA_VISIBLE_DEVICES='' before torch import when the GPU is too full.
+
+    Marker's surya layout + text-recognition models need ~1-2 GiB of contiguous
+    VRAM. On dev workstations running other GPU loads (Unity editor, Steam
+    fossilize_replay shader compilation, ML training), free VRAM fluctuates
+    rapidly and an OOM at marker import / first-batch-allocation is the typical
+    failure mode.
+
+    Honour an explicit `CUDA_VISIBLE_DEVICES` set by the caller — they may
+    deliberately have selected a GPU or disabled it.
+
+    `min_free_mib` is the threshold below which CPU is forced. 2 GiB is a
+    conservative choice: it covers the layout model (~600 MB), the recognition
+    model (~600 MB), and a margin for activations / batched inference.
+    """
+    if "CUDA_VISIBLE_DEVICES" in os.environ:
+        return
+    try:
+        import subprocess
+        out = subprocess.run(
+            ["nvidia-smi", "--query-gpu=memory.free", "--format=csv,nounits,noheader"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return  # no GPU / nvidia-smi missing — let torch decide
+    if out.returncode != 0:
+        return
+    try:
+        free_mib = min(int(line) for line in out.stdout.strip().splitlines() if line.strip())
+    except ValueError:
+        return
+    if free_mib < min_free_mib:
+        os.environ["CUDA_VISIBLE_DEVICES"] = ""
+        print(
+            f"  marker: GPU has only {free_mib} MiB free (< {min_free_mib} MiB threshold); "
+            f"forcing CPU inference"
+        )
 
 
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*#*\s*$", re.MULTILINE)

@@ -3,3 +3,4 @@
 -dpR:^(.*/)?__pycache__$
 -nG:*.pyc
 -dnG:.uv-cache
+-dpR:^(.*/)?node_modules$

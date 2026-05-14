@@ -1,0 +1,14 @@
+{
+  "name": "claude-research-skill-validators",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Node-side validators for the /research skill — KaTeX and Mermaid syntax checking + markdown-to-HTML compilation.",
+  "dependencies": {
+    "@vscode/markdown-it-katex": "^1.1.1",
+    "jsdom": "^25.0.1",
+    "katex": "^0.16.11",
+    "markdown-it": "^14.1.0",
+    "mermaid": "^11.4.0"
+  }
+}

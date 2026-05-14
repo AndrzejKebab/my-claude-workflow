@@ -15,9 +15,12 @@ Read these in order:
 
 1. The brief — it names exactly one canonical slug.
 2. `docs/research/<slug>.md` (in particular: title, page count, file_size, frontmatter `slide_deck` flag, the auto-generated `> Source:` line, and any top-of-doc Summary block written by the refiner).
-3. `docs/research/index.md` — read enough to identify the table-end line and the trailing position in the checklist where new entries land.
-4. Any `docs/research/index_extracted_pending-*.md` sidecar files. The extractor's script emits these; **only drain the one matching this slug**. Do not delete a peer agent's pending sidecar (check timestamps if multiple are present).
-5. The skill spec at `~/.claude/skills/research/SKILL.md` (section "Pass 4: Index Update").
+3. **`docs/research/assets/<slug>/findings-pass3-refiner.md`** — the refiner's resolution log. The "Recommended index entry flags" section at the bottom tells you whether the index entry should carry an `audit-recommended` / `OCR-degraded` / `math-heavy + suspect equations remain` flag. The "Unresolved" section lists items that escalated to orchestrator audit — surface those in the checklist entry so future readers know there's pending work.
+4. `docs/research/index.md` — read enough to identify the table-end line and the trailing position in the checklist where new entries land.
+5. Any `docs/research/index_extracted_pending-*.md` sidecar files. The extractor's script emits these; **only drain the one matching this slug**. Do not delete a peer agent's pending sidecar (check timestamps if multiple are present).
+6. The skill spec at `~/.claude/skills/research/SKILL.md` (section "Pass 4: Index Update", "Findings sidecars").
+
+If `findings-pass3-refiner.md` is missing, STOP and report — the refiner did not complete its required hand-off. (Indexing without the refiner's resolution log loses the pipeline's audit-flag signal.)
 
 ## What to do
 
@@ -36,11 +39,13 @@ Insert one row into the table at the top of `index.md`:
 
 Append one `- [x] <slug> — ...` entry at the end of the file. The entry is **one logical paragraph** (no internal newlines, despite being long). Cover:
 
+- **Pipeline-health prefix flags** (read from `findings-pass3-refiner.md` "Recommended index entry flags" section): if the refiner flagged `audit-recommended`, `OCR-degraded`, or `math-heavy + suspect equations remain`, lead the entry with the appropriate marker(s) in `[!]` brackets, e.g. `[!audit-recommended] [!OCR-degraded]`. These are one-glance health indicators future readers and orchestrators use to triage the corpus. Skip the brackets entirely when the document is clean.
 - **What was extracted**: tool path used (extractor script + scaffolding), broken-Unicode handling, heading-fix count, vision-pass scope. Be honest about coverage — "vision-pass on slides A-B for the X section, all other slides text-layer only".
 - **One-sentence author + venue**: bold names, year, venue (e.g. "**Kentaro Suzuki & Kenichiro Yasutomi — Polyphony Digital, GDC 2023.**").
 - **Load-bearing contributions**: 2-5 numbered items the talk delivers that this corpus cares about. Quote the talk's own terminology.
 - **References cited in the talk** that already exist in this corpus, with backlinks to their `<slug>.md`.
 - **Direct relevance to the project**: 1-3 cross-references to memory entries (`project_*`, `feedback_*`) or sister corpus files. Only mention linkages that actually exist — never invent file paths.
+- **Unresolved items from refiner** (if any in `findings-pass3-refiner.md` "Unresolved" section): one closing sentence listing them, e.g. "Unresolved: page 8 I_old factor-of-2 in shadowing exponent — orchestrator audit recommended against `assets/<slug>/p008-page.png`". This makes the audit queue visible in the index itself.
 
 The checklist entries are how downstream readers (humans, sub-agents, orchestrators) decide whether to open this research file. Make them dense, factual, and citation-ready.
 

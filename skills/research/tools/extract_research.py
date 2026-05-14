@@ -26,6 +26,7 @@ import marker_extract
 # unchanged.
 _MARKER_ENABLED = True  # --no-marker turns this off
 _MARKER_USE_LLM = True  # --no-llm runs marker locally without Gemini
+_MARKER_FORCE = False  # set when --force is passed; busts marker cache
 
 
 def _ocr_image_bytes(png_bytes: bytes) -> str:
@@ -50,6 +51,12 @@ OUTPUT_DIR = PROJECT_ROOT / "docs" / "research"
 ASSETS_DIR = OUTPUT_DIR / "assets"
 
 SOURCES = [
+    {
+        "path": "/mnt/archive4/PAPERS/preetham-1999-analytic-daylight.pdf",
+        "slug": "preetham-1999-analytic-daylight",
+        "type": "pdf",
+        "title": "A Practical Analytic Model for Daylight — Preetham, Shirley, Smits 1999 (SIGGRAPH 1999)",
+    },
     {
         "path": "/home/midori/Downloads/3484514.pdf",
         "slug": "muller-rideau-2022-double-word-arithmetic",
@@ -561,6 +568,351 @@ SOURCES = [
         "title": "Advanced Virtual Texture Topics (Martin Mittring — Crytek GmbH; Chapter 2 of \"Advances in Real-Time Rendering in 3D Graphics and Games Course\", N. Tatarchuk ed., SIGGRAPH 2008)",
         "slide_deck": False,
     },
+    {
+        "path": "/mnt/archive4/PAPERS/blinn-1982-light-reflection-clouds-dusty-surfaces.pdf",
+        "slug": "blinn-1982-light-reflection-clouds-dusty-surfaces",
+        "type": "pdf",
+        "title": "Light Reflection Functions for Simulation of Clouds and Dusty Surfaces (James F. Blinn, JPL/Caltech — Computer Graphics 16:3, July 1982 / SIGGRAPH 1982)",
+    },
+    {
+        "path": "/mnt/archive4/PAPERS/gobbetti-marton-iglesias-guitian-2008-single-pass-gpu-raycasting.pdf",
+        "slug": "gobbetti-marton-iglesias-guitian-2008-single-pass-gpu-raycasting",
+        "type": "pdf",
+        "title": "A single-pass GPU ray casting framework for interactive out-of-core rendering of massive volumetric datasets (Gobbetti, Marton, Iglesias-Guitián — Visual Computer 2008)",
+        "slide_deck": False,
+    },
+    {
+        "path": "/mnt/archive4/PAPERS/schwarz-seidel-2010-fast-parallel-voxelization.pdf",
+        "slug": "schwarz-seidel-2010-fast-parallel-voxelization",
+        "type": "pdf",
+        "title": "Fast Parallel Surface and Solid Voxelization on GPUs (Michael Schwarz, Hans-Peter Seidel — SIGGRAPH Asia 2010)",
+        "slide_deck": False,
+    },
+    {
+        "path": "/mnt/archive4/PAPERS/eisemann-decoret-2008-single-pass-gpu-solid-voxelization.pdf",
+        "slug": "eisemann-decoret-2008-single-pass-gpu-solid-voxelization",
+        "type": "pdf",
+        "title": "Single-Pass GPU Solid Voxelization for Real-Time Applications (Elmar Eisemann, Xavier Décoret — Graphics Interface 2008)",
+        "slide_deck": False,
+    },
+    {
+        "path": "/mnt/archive4/PAPERS/frisken-perry-2002-quadtree-octree-traversal.pdf",
+        "slug": "frisken-perry-2002-quadtree-octree-traversal",
+        "type": "pdf",
+        "title": "Simple and Efficient Traversal Methods for Quadtrees and Octrees (Sarah F. Frisken, Ronald N. Perry — Journal of Graphics Tools, 2002)",
+        "slide_deck": False,
+    },
+    {
+        "path": "/mnt/archive4/PAPERS/lefebvre-hoppe-2006-perfect-spatial-hashing.pdf",
+        "slug": "lefebvre-hoppe-2006-perfect-spatial-hashing",
+        "type": "pdf",
+        "title": "Perfect Spatial Hashing (Sylvain Lefebvre, Hugues Hoppe — SIGGRAPH 2006)",
+        "slide_deck": False,
+    },
+    {
+        "path": "/mnt/archive4/PAPERS/knoll-2008-octree-volume-rendering-survey.pdf",
+        "slug": "knoll-2008-octree-volume-rendering-survey",
+        "type": "pdf",
+        "title": "A Survey of Octree Volume Rendering Methods (Aaron Knoll — IRTG 1131 / VG 2008 / SCI Institute, 2008)",
+        "slide_deck": False,
+    },
+    {
+        "path": "/mnt/archive4/PAPERS/lefebvre-dachsbacher-2007-tiletrees.pdf",
+        "slug": "lefebvre-dachsbacher-2007-tiletrees",
+        "type": "pdf",
+        "title": "TileTrees (Sylvain Lefebvre, Carsten Dachsbacher — I3D 2007)",
+        "slide_deck": False,
+    },
+    {
+        "path": "/mnt/archive4/PAPERS/lefohn-2006-glift-gpu-data-structures.pdf",
+        "slug": "lefohn-2006-glift-gpu-data-structures",
+        "type": "pdf",
+        "title": "Glift: Generic, Efficient, Random-Access GPU Data Structures (Aaron E. Lefohn, Shubhabrata Sengupta, Joe Kniss, Richard Strzodka, John D. Owens — ACM TOG 25:1, January 2006)",
+        "slide_deck": False,
+    },
+    {
+        "path": "/mnt/archive4/PAPERS/kraus-ertl-2002-adaptive-texture-maps.pdf",
+        "slug": "kraus-ertl-2002-adaptive-texture-maps",
+        "type": "pdf",
+        "title": "Adaptive Texture Maps (Martin Kraus, Thomas Ertl — Graphics Hardware 2002)",
+        "slide_deck": False,
+    },
+    {
+        "path": "/mnt/archive4/PAPERS/bouthors-2008-interactive-anisotropic-scattering-clouds.pdf",
+        "slug": "bouthors-2008-interactive-anisotropic-scattering-clouds",
+        "type": "pdf",
+        "title": "Interactive Multiple Anisotropic Scattering in Clouds (Bouthors, Neyret, Holzschuch, Pacanowski, Cani, Lefebvre — I3D 2008)",
+        "slide_deck": False,
+    },
+    {
+        "path": "/mnt/archive4/PAPERS/bouthors-neyret-lefebvre-2006-stratiform-clouds.pdf",
+        "slug": "bouthors-neyret-lefebvre-2006-stratiform-clouds",
+        "type": "pdf",
+        "title": "Real-Time Realistic Illumination and Shading of Stratiform Clouds (Bouthors, Neyret, Lefebvre — Eurographics 2006)",
+        "slide_deck": False,
+    },
+    {
+        "path": "/mnt/archive4/PAPERS/max-1995-optical-models-direct-volume-rendering.pdf",
+        "slug": "max-1995-optical-models-direct-volume-rendering",
+        "type": "pdf",
+        "title": "Optical Models for Direct Volume Rendering (Nelson Max — IEEE Transactions on Visualization and Computer Graphics 1:2, June 1995)",
+        "slide_deck": False,
+    },
+    {
+        "path": "/mnt/archive4/PAPERS/kajiya-vonherzen-1984-ray-tracing-volume-densities.pdf",
+        "slug": "kajiya-vonherzen-1984-ray-tracing-volume-densities",
+        "type": "pdf",
+        "title": "Ray Tracing Volume Densities (James T. Kajiya, Brian P. Von Herzen — Computer Graphics 18:3, July 1984 / SIGGRAPH 1984)",
+        "slide_deck": False,
+    },
+    {
+        "path": "/mnt/archive4/PAPERS/tatarchuk-2013-destiny-rendering.pdf",
+        "slug": "tatarchuk-2013-destiny-rendering",
+        "type": "pdf",
+        "title": "Destiny: From Mythic Science Fiction to Rendering in Real Time (Natalya Tatarchuk — Bungie, SIGGRAPH 2013 Advances in Real-Time Rendering)",
+        # Creator = "Microsoft® PowerPoint® 2010" → is_slide_deck_pdf auto-fires on "powerpoint"
+        # No override needed; left here as documentation of the auto-detect outcome.
+    },
+    {
+        "path": "/mnt/archive4/PAPERS/tatarchuk-2015-applied-graphics-research.pdf",
+        "slug": "tatarchuk-2015-applied-graphics-research",
+        "type": "pdf",
+        "title": "Applied Graphics Research for Video Games (Natalya Tatarchuk — AMD, GDC 2015)",
+        # Likely a PowerPoint export; is_slide_deck_pdf will auto-detect via "powerpoint" in Creator.
+        # No override needed.
+    },
+    {
+        "path": "/mnt/archive4/PAPERS/yusov-2013-epipolar-sampling-min-max-trees.pdf",
+        "slug": "yusov-2013-epipolar-sampling-min-max-trees",
+        "type": "pdf",
+        "title": "Outdoor Light Scattering Sample (Egor Yusov — Intel, 2013 / Intel Developer Zone); epipolar sampling with 1D min-max mip-tree acceleration for real-time atmospheric scattering",
+        # Text-layer PDF; let is_slide_deck_pdf auto-detect. Expected: paper route via marker.
+    },
+    {
+        "path": "/mnt/archive4/PAPERS/jarosz-2008-monte-carlo-light-transport-scattering-media.pdf",
+        "slug": "jarosz-2008-monte-carlo-light-transport-scattering-media",
+        "type": "pdf",
+        "title": "Efficient Monte Carlo Methods for Light Transport in Scattering Media (Wojciech Jarosz — PhD thesis, UCSD, 2008)",
+        # Text-layer PhD thesis (~83 MB, 200+ pages). Let is_slide_deck_pdf auto-detect.
+        # Expected: paper route via marker with redo_inline_math=True (math-dense: RTE, HG phase
+        # function, beam radiance estimate, photon density estimate, Rayleigh/Mie phase functions).
+    },
+    {
+        "path": "/mnt/archive4/PAPERS/toth-umenhoffer-2009-volumetric-lighting-participating-media.pdf",
+        "slug": "toth-umenhoffer-2009-volumetric-lighting-participating-media",
+        "type": "pdf",
+        "title": "Real-Time Volumetric Lighting in Participating Media (Toth & Umenhoffer — Eurographics 2009 Short Papers)",
+        # Small text-layer paper (~780 KB). Let is_slide_deck_pdf auto-detect (expected: False).
+        # Math content: HG phase function, single-scattering integral along view ray,
+        # ray-marching with shadow-map sampling. redo_inline_math=True is the default.
+    },
+    {
+        "path": "/mnt/archive4/PAPERS/bruneton-neyret-2008-precomputed-atmospheric-scattering.pdf",
+        "slug": "bruneton-neyret-2008-precomputed-atmospheric-scattering",
+        "type": "pdf",
+        "title": "Precomputed Atmospheric Scattering (Bruneton & Neyret — EGSR 2008 / JCGT 2008)",
+        # Text-layer paper (~2.3 MB, 8 pages). Let is_slide_deck_pdf auto-detect (expected: False).
+        # Math content: radiative transfer equation, Rayleigh/Mie phase functions,
+        # precomputed 4D scattering tables, single vs multiple scattering.
+        # redo_inline_math=True is the default.
+    },
+    {
+        "path": "/mnt/archive4/PAPERS/keinert-2014-enhanced-sphere-tracing.pdf",
+        "slug": "keinert-2014-enhanced-sphere-tracing",
+        "type": "pdf",
+        "title": "Enhanced Sphere Tracing (Keinert et al. — STAG 2014)",
+        # Text-layer paper. Let is_slide_deck_pdf auto-detect (expected: False).
+        # Math content: sphere tracing acceleration, SDF evaluation, step-size bounds.
+        # redo_inline_math=True is the default.
+        "slide_deck": False,
+    },
+    {
+        "path": "/mnt/archive4/PAPERS/hart-1995-sphere-tracing.pdf",
+        "slug": "hart-1995-sphere-tracing",
+        "type": "pdf",
+        "title": "Sphere Tracing: A Geometric Method for the Antialiased Ray Tracing of Implicit Surfaces (John C. Hart — The Visual Computer 12, 1996 / earlier 1995 technical report)",
+        # Text-layer paper. Let is_slide_deck_pdf auto-detect (expected: False).
+        # Math content: implicit surface rendering, Lipschitz bounds, sphere tracing algorithm,
+        # antialiasing via unbounding volumes. redo_inline_math=True is the default.
+        "slide_deck": False,
+    },
+    {
+        "path": "/mnt/archive4/PAPERS/crassin-2011-voxel-cone-tracing.pdf",
+        "slug": "crassin-2011-voxel-cone-tracing",
+        "type": "pdf",
+        "title": "Interactive Indirect Illumination Using Voxel Cone Tracing (Cyril Crassin, Fabrice Neyret, Miguel Sainz, Simon Green, Elmar Eisemann — SIGGRAPH 2011 / GPU Pro 2)",
+        # Text-layer paper (ACM / NVIDIA). Let is_slide_deck_pdf auto-detect (expected: False).
+        # Foundational paper for voxel-based global illumination via cone tracing in a sparse
+        # voxel octree. Math content: cone-casting integral, mipmapped voxel cone filter,
+        # anisotropic GGX, ambient occlusion via cone tracing, diffuse/specular indirect
+        # illumination. redo_inline_math=True is the default.
+    },
+    # ============================================================================
+    # Williams 1983 — Pyramidal Parametrics (foundational mipmap / image pyramid)
+    # ============================================================================
+    {
+        "path": "/mnt/archive4/PAPERS/williams-1983-pyramidal-parametrics.pdf",
+        "slug": "williams-1983-pyramidal-parametrics",
+        "type": "pdf",
+        "title": "Pyramidal Parametrics (Lance Williams — Computer Graphics 17:3, July 1983 / SIGGRAPH 1983)",
+    },
+    {
+        "path": "/home/midori/Downloads/SIGGRAPH2022-Advances-NubisEvolved-NoVideos.pdf",
+        "slug": "schneider-2022-nubis-evolved",
+        "type": "pdf",
+        "slide_deck": True,
+        "title": "Nubis, Evolved: Real-time Volumetric Clouds for Skies, Environments, and VFX — Andrew Schneider (SIGGRAPH 2022 Advances in Real-Time Rendering in Games)",
+    },
+    {
+        "path": "/mnt/archive4/PAPERS/krause-2025-enshrouded-volumetric-fog.pdf",
+        "slug": "krause-2025-enshrouded-volumetric-fog",
+        "type": "pdf",
+        "slide_deck": True,
+        "title": "The Fog is Lifting: Volumetric Rendering Enshrouded — Philip Krause (GDC 2025)",
+    },
+    # ============================================================================
+    # Ulschmid et al. 2026 — NAADF: Globally Illuminated Voxel Worlds Accelerated
+    # with Nested Axis-Aligned Distance Fields (EUROGRAPHICS 2026 / CGF 70413)
+    # ============================================================================
+    {
+        "path": "/mnt/archive4/PAPERS/ulschmid-2026-naadf-voxel-gi.pdf",
+        "slug": "ulschmid-2026-naadf-voxel-gi",
+        "type": "pdf",
+        "title": "NAADF: Globally Illuminated Voxel Worlds Accelerated with Nested Axis-Aligned Distance Fields (Ulschmid, Ott, Macho, Wimmer, Ohrhallinger — TU Wien / EUROGRAPHICS 2026 / CGF 10.1111/cgf.70413)",
+        # Text-layer CGF paper. Let is_slide_deck_pdf auto-detect (expected: False).
+        # Math content: nested axis-aligned distance fields, voxel cone stepping,
+        # global illumination integral, ADF hierarchy construction, ray-AABB tests.
+        # redo_inline_math=True is the default.
+        "slide_deck": False,
+    },
+    # ============================================================================
+    # Kider et al. 2014 — A Framework for the Experimental Comparison of Solar
+    # and Skydome Illumination (SIGGRAPH Asia 2014, ACM TOG 33:6 art.180)
+    # Cornell Program of Computer Graphics.
+    # Measurement-methodology anchor for offline-baked-sky-LUT-authoring research.
+    # Dataset used by Bruneton's clear-sky-models harness and GT7 Skysim validation.
+    # ============================================================================
+    {
+        "path": "/mnt/archive4/PAPERS/kider-2014-experimental-comparison-skydome-illumination.pdf",
+        "slug": "kider-2014-experimental-comparison-skydome-illumination",
+        "type": "pdf",
+        "title": "A Framework for the Experimental Comparison of Solar and Skydome Illumination — Kider, Knowlton, Newlin, Li, Greenberg (SIGGRAPH Asia 2014 / ACM TOG 33:6 art.180, Cornell Program of Computer Graphics)",
+        # ~12-page paper PDF. Text-layer expected (not scanned). slide_deck=False.
+        # Math-heavy: spectral radiometry, camera/spectroradiometer calibration,
+        # hemispherical fisheye + spot measurement equations.
+        "slide_deck": False,
+    },
+    # ============================================================================
+    # Wilkie et al. 2021 — A Fitted Radiance and Attenuation Model for Realistic
+    # Atmospheres (SIGGRAPH 2021, ACM TOG 40:4 art.138)
+    # Charles University CGG group. Successor to Hosek-Wilkie 2012 and
+    # Wilkie-Hosek 2013. Fitted analytic sky model with aerial perspective
+    # attenuation trained against path-traced ground truth. Multi-spectral output.
+    # CGG publication page: "Unless compatibility with old codebases is essential,
+    # the new model should be used whenever possible."
+    # ============================================================================
+    {
+        "path": "/mnt/archive4/PAPERS/wilkie-2021-fitted-radiance-atmosphere.pdf",
+        "slug": "wilkie-2021-fitted-radiance-atmosphere",
+        "type": "pdf",
+        "title": "A Fitted Radiance and Attenuation Model for Realistic Atmospheres — Wilkie, Vévoda, Bashford-Rogers, Hošek, Iser, Kolářová, Rittig, Křivánek (SIGGRAPH 2021 / ACM TOG 40:4 art.138, Charles University CGG)",
+        # ~26 MB paper PDF (large due to high-fidelity full-sky comparison renders).
+        # Text-layer expected (not scanned). slide_deck=False.
+        # Math-heavy: fitted coefficient parameterisation, radiance + attenuation
+        # formulas, solar disc, multi-spectral output, aerial perspective LUT.
+        # High equation-substitution risk: rho (particle radius), tau (optical depth),
+        # omega (single-scattering albedo), mu (emission cosine), gamma (scattering angle).
+        "slide_deck": False,
+    },
+    # ============================================================================
+    # Hošek & Wilkie 2012 — An Analytic Model for Full Spectral Sky-Dome Radiance
+    # (SIGGRAPH 2012 / ACM TOG 31:4 art.95, Charles University in Prague)
+    # The canonical analytic sky model that succeeded Preetham 1999. Fitted from
+    # a path-traced ground-truth dataset; supports 11 wavelengths (spectral), RGB,
+    # and CIE XYZ output. 9 coefficients per (turbidity, albedo, sun-elevation)
+    # combination. Predecessor of Wilkie 2021 and widely used as a bake source for
+    # offline sky LUTs (GT7 Suzuki-Yasutomi 2023, Bruneton clear-sky-models harness).
+    # ============================================================================
+    {
+        "path": "/mnt/archive4/PAPERS/hosek-wilkie-2012-analytic-skydome.pdf",
+        "slug": "hosek-wilkie-2012-analytic-skydome",
+        "type": "pdf",
+        "title": "An Analytic Model for Full Spectral Sky-Dome Radiance — Hošek & Wilkie (SIGGRAPH 2012 / ACM TOG 31:4 art.95, Charles University in Prague)",
+        # Text-layer SIGGRAPH paper (~1.3 MB). Let is_slide_deck_pdf auto-detect (expected: False).
+        # Math-heavy: 9-coefficient fitted analytic formula, Preetham comparison plots,
+        # polar-plot panels per wavelength band, turbidity/albedo parameterisation.
+        # High equation-substitution risk: gamma (scattering angle vs transmittance exponent),
+        # theta (zenith angle), chi (chi-function in the HW radiance formula),
+        # rho (particle radius), tau (optical depth).
+        "slide_deck": False,
+    },
+    # ============================================================================
+    # Nishita et al. 1993 — Display of the Earth Taking into Account Atmospheric Scattering
+    # SIGGRAPH 1993, Tomoyuki Nishita, Takao Sirai, Katsumi Tadamura, Eihachiro Nakamae.
+    # THE foundational atmospheric scattering paper: single-scattering for a planet from
+    # space, wavelength-dependent extinction, precomputed scattering tables extended by
+    # Bruneton 2008. Cited by Hosek-Wilkie, Bruneton, Hillaire, GT7. Small (~380 KB),
+    # Ghostscript-produced — likely re-scan or old TeX vintage like Preetham 1999.
+    # Expect old-TeX-vintage math corruption (decimal-points-as-colons, dropped Greek,
+    # shattered equations). High equation-substitution risk: sigma (extinction coefficient),
+    # lambda (wavelength), theta (scattering angle), tau (optical depth), rho (density).
+    # ============================================================================
+    {
+        "path": "/mnt/archive4/PAPERS/nishita-1993-display-of-earth-atmospheric.pdf",
+        "slug": "nishita-1993-display-of-earth-atmospheric",
+        "type": "pdf",
+        "title": "Display of the Earth Taking into Account Atmospheric Scattering — Nishita, Sirai, Tadamura, Nakamae (SIGGRAPH 1993)",
+        "slide_deck": False,
+    },
+    # ============================================================================
+    # Wilkie & Hošek 2013 — Predicting Sky Dome Appearance on Earth-like Extrasolar Worlds
+    # SCCG 2013, Alexander Wilkie & Lukáš Hošek (Charles University in Prague).
+    # Companion to Hosek-Wilkie 2012 / Wilkie 2021: extends the analytic sky model to
+    # alien-sun scenarios (star colour temperatures 3000K–10000K, binary stars).
+    # Derives coefficient-scaling rules for re-fitting when illumination spectrum changes
+    # substantially. Primary source for offline-baked-sky-LUT authoring under non-solar
+    # illumination. 8-page pdfTeX paper; text-layer intact (no OCR issues expected).
+    # Math-heavy: spectral scaling rules, coefficient parameterisation, blackbody emission
+    # across star temperatures, binary-star superposition. High equation-substitution risk:
+    # lambda (wavelength), theta (zenith angle), gamma (scattering angle), tau (optical
+    # depth), chi (chi-function in HW radiance formula).
+    # ============================================================================
+    {
+        "path": "/mnt/archive4/PAPERS/wilkie-hosek-2013-extrasolar-sky-dome.pdf",
+        "slug": "wilkie-hosek-2013-extrasolar-sky-dome",
+        "type": "pdf",
+        "title": "Predicting Sky Dome Appearance on Earth-like Extrasolar Worlds — Wilkie & Hošek (SCCG 2013, Charles University in Prague)",
+        # 8-page pdfTeX paper (PDF 1.4, pdfTeX-1.40.9). Text-layer expected; not scanned.
+        # slide_deck=False confirmed by metadata (creator=LaTeX with hyperref, portrait pages).
+        "slide_deck": False,
+    },
+    {
+        "path": "/mnt/archive4/PAPERS/kol-2012-analytical-sky-simulation.pdf",
+        "slug": "kol-2012-analytical-sky-simulation",
+        "type": "pdf",
+        "title": "Analytical Sky Simulation — An Implementation and Analysis of Daytime Skylight Models (Timothy R. Kol, Utrecht University MSc Thesis, 2012)",
+        # 41-page master's thesis (PDF 1.4, PDFill PDF Editor 14.0, portrait 612x792 pt).
+        # Likely a re-print of a TeX original. Text-layer should be present.
+        # slide_deck=False confirmed by portrait geometry and page count.
+        "slide_deck": False,
+    },
+    # ============================================================================
+    # Maquignaz 2024 — Towards Physically-Based Sky-Modeling (arXiv 2412.11883v1)
+    # Ian J. Maquignaz, Université Laval, 16 December 2024.
+    # 12-page figure-dense ACM acmart pdfTeX paper (~33 MB).
+    # Introduces "AllSky" DNN/sky-modeling approach for EDR (14 EV) environment maps
+    # inclusive of the sun. Argues conventional HDRI is insufficient for outdoor scene
+    # relighting. Newest work in offline sky-LUT authoring as of Dec 2024.
+    # ============================================================================
+    {
+        "path": "/mnt/archive4/PAPERS/maquignaz-2024-physically-based-sky-modeling.pdf",
+        "slug": "maquignaz-2024-physically-based-sky-modeling",
+        "type": "pdf",
+        "title": "Towards Physically-Based Sky-Modeling — Ian J. Maquignaz (Université Laval, arXiv 2412.11883v1, December 2024)",
+        # 12-page pdfTeX (ACM acmart template). Text-layer expected; not scanned.
+        # slide_deck=False confirmed by portrait ACM layout.
+        "slide_deck": False,
+    },
 ]
 
 
@@ -577,6 +929,11 @@ class PageData:
     text: str = ""
     images: list[ImageData] = field(default_factory=list)
     slide_image: ImageData | None = None  # full-page render for slide-deck PDFs / PPTX
+    is_figure_bearing: bool = True  # paper-mode only: False for pure-prose pages.
+    # When False, the page is still rendered + embedded for reference (math
+    # equations, citation context, etc.) but is OUT OF SCOPE for the vision
+    # pass. Filename suffix becomes `-text` instead of `-page`, which is the
+    # signal the vision agent uses to skip.
     notes: str | None = None
     video_markers: list[str] = field(default_factory=list)
 
@@ -742,15 +1099,23 @@ def extract_pdf(source: dict, scale: float = 2.0, paper_scale: float = 2.5) -> D
                 path,
                 cache_dir=cache_dir,
                 use_llm=_MARKER_USE_LLM,
+                force=_MARKER_FORCE,
             )
             marker_pages = result.pages
             cache_note = " [cached]" if result.used_cache else ""
+            model_note = (
+                f" [{result.llm_provider}/{result.llm_model}"
+                + (" +redo_inline_math" if result.redo_inline_math else "")
+                + "]"
+                if result.used_llm and not result.used_cache
+                else ""
+            )
             llm_note = (
                 f" [llm: {result.llm_request_count} req / {result.llm_token_count} tok]"
                 if result.used_llm and not result.used_cache
                 else ""
             )
-            print(f"  marker: {len(marker_pages)} pages{cache_note}{llm_note}")
+            print(f"  marker: {len(marker_pages)} pages{cache_note}{model_note}{llm_note}")
         except Exception as exc:
             print(f"  marker FAILED ({exc!r}); falling back to PyMuPDF span-walker")
             use_marker = False
@@ -809,22 +1174,29 @@ def extract_pdf(source: dict, scale: float = 2.0, paper_scale: float = 2.5) -> D
             pix = page.get_pixmap(matrix=fitz.Matrix(scale, scale))
             page_data.slide_image = ImageData(data=pix.tobytes("png"), ext="png")
         else:
-            # Paper mode: render the whole page IF it carries a figure.
-            # Pure-body-text pages are skipped — the text layer is already the
-            # canonical representation and a vision pass on running prose adds
-            # no value (and would burn tokens to no end).
-            if _page_has_figure(page):
-                pix = page.get_pixmap(matrix=fitz.Matrix(paper_scale, paper_scale))
-                png_bytes = pix.tobytes("png")
-                page_rot = page.rotation  # 0 / 90 / 180 / 270
-                if page_rot:
-                    # PIL.rotate is counter-clockwise; PDF rotation is clockwise.
-                    img = Image.open(io.BytesIO(png_bytes))
-                    img = img.rotate(-page_rot, expand=True)
-                    buf = io.BytesIO()
-                    img.save(buf, format="PNG")
-                    png_bytes = buf.getvalue()
-                page_data.slide_image = ImageData(data=png_bytes, ext="png")
+            # Paper mode: render EVERY page so the markdown carries a visual
+            # reference for every body-text page (math-dense prose, citation
+            # context, etc.). The figure-bearing/text split is preserved as a
+            # `is_figure_bearing` flag — the markdown emitter chooses the file
+            # suffix from it (`-page` for figure-bearing, `-text` for prose),
+            # and the vision agent uses the suffix to scope its work to real
+            # diagrams. Skipping the render entirely for prose pages was the
+            # old behaviour — it left math-bearing prose pages unverifiable
+            # against marker's LLM cleanup output (which routinely produces
+            # KaTeX-incompatible LaTeX). Visual reference is cheap; missing it
+            # costs the ability to spot-check marker fidelity.
+            page_data.is_figure_bearing = _page_has_figure(page)
+            pix = page.get_pixmap(matrix=fitz.Matrix(paper_scale, paper_scale))
+            png_bytes = pix.tobytes("png")
+            page_rot = page.rotation  # 0 / 90 / 180 / 270
+            if page_rot:
+                # PIL.rotate is counter-clockwise; PDF rotation is clockwise.
+                img = Image.open(io.BytesIO(png_bytes))
+                img = img.rotate(-page_rot, expand=True)
+                buf = io.BytesIO()
+                img.save(buf, format="PNG")
+                png_bytes = buf.getvalue()
+            page_data.slide_image = ImageData(data=png_bytes, ext="png")
 
         # Body-text OCR fallback: when the page has no native text layer
         # (typical of scanned PDFs and image-only slides exported as
@@ -1029,17 +1401,30 @@ def write_markdown(doc: Document):
             lines.append(page.text.strip())
             lines.append("")
 
-        # Render the full page (slide-deck: every page; paper-mode: figure-bearing
-        # pages only — see _page_has_figure). Per-figure-cutout extraction was
-        # removed because PDF figures are vector composites that PyMuPDF
-        # over-segments into meaningless fragments — see the SKILL.md "Vision pass
-        # MUST run on full-page renders" section for the reasoning.
+        # Render the full page (slide-deck: every page; paper-mode: every page
+        # too, but with a filename suffix that signals vision-pass scope). The
+        # vision agent treats `-page` as in scope and `-text` as out of scope
+        # (pure-prose pages, embedded only as a visual reference for math /
+        # citation context). Per-figure-cutout extraction was removed because
+        # PDF figures are vector composites that PyMuPDF over-segments into
+        # meaningless fragments — see SKILL.md "Vision pass MUST run on
+        # full-page renders" for the reasoning.
         if page.slide_image is not None:
-            asset_name = f"{prefix}{page.number:03d}-{render_suffix}.{page.slide_image.ext}"
+            if doc.is_slide_deck:
+                page_suffix = render_suffix  # always "slide"
+            else:
+                page_suffix = "page" if page.is_figure_bearing else "text"
+            asset_name = f"{prefix}{page.number:03d}-{page_suffix}.{page.slide_image.ext}"
             asset_path = slug_assets / asset_name
             asset_path.write_bytes(page.slide_image.data)
             total_images += 1
             rel_path = f"assets/{doc.slug}/{asset_name}"
+            if not doc.is_slide_deck and not page.is_figure_bearing:
+                # Reference-only embed: tell the vision agent (and any future
+                # pass) explicitly that this page is out of scope for visual
+                # description. Cheaper signal than scanning the filename later.
+                lines.append("<!-- vision-skip: text-only page (embedded for "
+                             "reference / math equation visual) -->")
             lines.append(f"![{asset_name}]({rel_path})")
             lines.append("")
 
@@ -1133,11 +1518,13 @@ def main():
     # at module top). `--no-marker` reverts text-paper PDFs to the legacy
     # PyMuPDF span-walker; `--no-llm` runs marker locally without Gemini
     # (no API key needed, lower quality on tables / equations / form fields).
-    global _MARKER_ENABLED, _MARKER_USE_LLM
+    global _MARKER_ENABLED, _MARKER_USE_LLM, _MARKER_FORCE
     if "--no-marker" in sys.argv:
         _MARKER_ENABLED = False
     if "--no-llm" in sys.argv:
         _MARKER_USE_LLM = False
+    if "--force" in sys.argv:
+        _MARKER_FORCE = True
 
     results = []
     for source in SOURCES:

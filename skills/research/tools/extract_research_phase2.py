@@ -29,6 +29,10 @@ ASSETS_DIR = OUTPUT_DIR / "assets"
 
 # Source files needed for re-rendering pages / extracting videos
 SOURCES_BY_SLUG = {
+    "preetham-1999-analytic-daylight": {
+        "path": "/mnt/archive4/PAPERS/preetham-1999-analytic-daylight.pdf",
+        "type": "pdf",
+    },
     "muller-rideau-2022-double-word-arithmetic": {
         "path": "/home/midori/Downloads/3484514.pdf",
         "type": "pdf",
@@ -283,6 +287,122 @@ SOURCES_BY_SLUG = {
     },
     "gobbetti-marton-2005-far-voxels": {
         "path": "/mnt/archive4/PAPERS/gobbetti-marton-2005-far-voxels.pdf",
+        "type": "pdf",
+    },
+    "blinn-1982-light-reflection-clouds-dusty-surfaces": {
+        "path": "/mnt/archive4/PAPERS/blinn-1982-light-reflection-clouds-dusty-surfaces.pdf",
+        "type": "pdf",
+    },
+    "gobbetti-marton-iglesias-guitian-2008-single-pass-gpu-raycasting": {
+        "path": "/mnt/archive4/PAPERS/gobbetti-marton-iglesias-guitian-2008-single-pass-gpu-raycasting.pdf",
+        "type": "pdf",
+    },
+    "schwarz-seidel-2010-fast-parallel-voxelization": {
+        "path": "/mnt/archive4/PAPERS/schwarz-seidel-2010-fast-parallel-voxelization.pdf",
+        "type": "pdf",
+    },
+    "eisemann-decoret-2008-single-pass-gpu-solid-voxelization": {
+        "path": "/mnt/archive4/PAPERS/eisemann-decoret-2008-single-pass-gpu-solid-voxelization.pdf",
+        "type": "pdf",
+    },
+    "frisken-perry-2002-quadtree-octree-traversal": {
+        "path": "/mnt/archive4/PAPERS/frisken-perry-2002-quadtree-octree-traversal.pdf",
+        "type": "pdf",
+    },
+    "lefebvre-hoppe-2006-perfect-spatial-hashing": {
+        "path": "/mnt/archive4/PAPERS/lefebvre-hoppe-2006-perfect-spatial-hashing.pdf",
+        "type": "pdf",
+    },
+    "knoll-2008-octree-volume-rendering-survey": {
+        "path": "/mnt/archive4/PAPERS/knoll-2008-octree-volume-rendering-survey.pdf",
+        "type": "pdf",
+    },
+    "lefebvre-dachsbacher-2007-tiletrees": {
+        "path": "/mnt/archive4/PAPERS/lefebvre-dachsbacher-2007-tiletrees.pdf",
+        "type": "pdf",
+    },
+    "lefohn-2006-glift-gpu-data-structures": {
+        "path": "/mnt/archive4/PAPERS/lefohn-2006-glift-gpu-data-structures.pdf",
+        "type": "pdf",
+    },
+    "max-1995-optical-models-direct-volume-rendering": {
+        "path": "/mnt/archive4/PAPERS/max-1995-optical-models-direct-volume-rendering.pdf",
+        "type": "pdf",
+    },
+    "kajiya-vonherzen-1984-ray-tracing-volume-densities": {
+        "path": "/mnt/archive4/PAPERS/kajiya-vonherzen-1984-ray-tracing-volume-densities.pdf",
+        "type": "pdf",
+    },
+    "tatarchuk-2013-destiny-rendering": {
+        "path": "/mnt/archive4/PAPERS/tatarchuk-2013-destiny-rendering.pdf",
+        "type": "pdf",
+    },
+    "tatarchuk-2015-applied-graphics-research": {
+        "path": "/mnt/archive4/PAPERS/tatarchuk-2015-applied-graphics-research.pdf",
+        "type": "pdf",
+    },
+    "yusov-2013-epipolar-sampling-min-max-trees": {
+        "path": "/mnt/archive4/PAPERS/yusov-2013-epipolar-sampling-min-max-trees.pdf",
+        "type": "pdf",
+    },
+    "jarosz-2008-monte-carlo-light-transport-scattering-media": {
+        "path": "/mnt/archive4/PAPERS/jarosz-2008-monte-carlo-light-transport-scattering-media.pdf",
+        "type": "pdf",
+    },
+    "toth-umenhoffer-2009-volumetric-lighting-participating-media": {
+        "path": "/mnt/archive4/PAPERS/toth-umenhoffer-2009-volumetric-lighting-participating-media.pdf",
+        "type": "pdf",
+    },
+    "bruneton-neyret-2008-precomputed-atmospheric-scattering": {
+        "path": "/mnt/archive4/PAPERS/bruneton-neyret-2008-precomputed-atmospheric-scattering.pdf",
+        "type": "pdf",
+    },
+    "keinert-2014-enhanced-sphere-tracing": {
+        "path": "/mnt/archive4/PAPERS/keinert-2014-enhanced-sphere-tracing.pdf",
+        "type": "pdf",
+    },
+    "hart-1995-sphere-tracing": {
+        "path": "/mnt/archive4/PAPERS/hart-1995-sphere-tracing.pdf",
+        "type": "pdf",
+    },
+    "crassin-2011-voxel-cone-tracing": {
+        "path": "/mnt/archive4/PAPERS/crassin-2011-voxel-cone-tracing.pdf",
+        "type": "pdf",
+    },
+    "williams-1983-pyramidal-parametrics": {
+        "path": "/mnt/archive4/PAPERS/williams-1983-pyramidal-parametrics.pdf",
+        "type": "pdf",
+    },
+    "ulschmid-2026-naadf-voxel-gi": {
+        "path": "/mnt/archive4/PAPERS/ulschmid-2026-naadf-voxel-gi.pdf",
+        "type": "pdf",
+    },
+    "kider-2014-experimental-comparison-skydome-illumination": {
+        "path": "/mnt/archive4/PAPERS/kider-2014-experimental-comparison-skydome-illumination.pdf",
+        "type": "pdf",
+    },
+    "wilkie-2021-fitted-radiance-atmosphere": {
+        "path": "/mnt/archive4/PAPERS/wilkie-2021-fitted-radiance-atmosphere.pdf",
+        "type": "pdf",
+    },
+    "hosek-wilkie-2012-analytic-skydome": {
+        "path": "/mnt/archive4/PAPERS/hosek-wilkie-2012-analytic-skydome.pdf",
+        "type": "pdf",
+    },
+    "nishita-1993-display-of-earth-atmospheric": {
+        "path": "/mnt/archive4/PAPERS/nishita-1993-display-of-earth-atmospheric.pdf",
+        "type": "pdf",
+    },
+    "wilkie-hosek-2013-extrasolar-sky-dome": {
+        "path": "/mnt/archive4/PAPERS/wilkie-hosek-2013-extrasolar-sky-dome.pdf",
+        "type": "pdf",
+    },
+    "kol-2012-analytical-sky-simulation": {
+        "path": "/mnt/archive4/PAPERS/kol-2012-analytical-sky-simulation.pdf",
+        "type": "pdf",
+    },
+    "maquignaz-2024-physically-based-sky-modeling": {
+        "path": "/mnt/archive4/PAPERS/maquignaz-2024-physically-based-sky-modeling.pdf",
         "type": "pdf",
     },
 }

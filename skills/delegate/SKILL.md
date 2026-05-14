@@ -14,8 +14,11 @@ Enter orchestration mode. In this mode the orchestrator does **not** do the work
 3. **Shared-context files are the medium.** Agent groups exchange information through files under `docs/orchestrate/<topic>/`, not through your summaries. One file per group. Every agent reads its group file on entry and appends on exit.
 4. **Architecture-first, always.** Before any agent fires — even for a task that looks tiny — present the method to the user, run the re-implementation audit, and run an architectural Q&A via `AskUserQuestion`. No exceptions, no shortcuts.
 5. **Re-implementation audit is mandatory and runs first.** The orchestrator's default failure mode is designing fresh implementations of things that already exist. Always dispatch a read-only audit before any design work.
-6. **One delegation at a time, then pause.** After every dispatched agent returns, stop and submit the work to the user. Summarize what the agent produced, point at the updated group file, and ask for confirmation before dispatching the next agent. Never chain two dispatches back-to-back. The user must approve each phase boundary.
-7. **Checkpoint via a delegated commit before every substantive dispatch.** Dispatch a commit sub-agent (instruct it to invoke the project's `/commit` skill, or fall back to inline diff+commit if absent). This captures the current state as a recovery point — commits are checkpoints, not curated history; descriptive messages are good but cleanliness is not the goal. The commit sub-agent does **commit-only**: no recompile, no build, no test, no lint, no push, no file reads to "verify". Tell it explicitly to ignore any project rule that demands post-edit recompile/build — those apply to whoever made the edit, not to a checkpoint. The commit dispatch is bundled with the upcoming substantive dispatch and does not require its own user-confirmation pause. Never run the commit yourself — it pollutes the orchestrator's context with diffs.
+6. **One delegation at a time, then pause — ALWAYS, NO EXCEPTIONS.** After every dispatched agent returns, stop and submit the work to the user. Summarize what the agent produced, point at the updated group file, and ask for confirmation before dispatching the next agent. Never chain two dispatches back-to-back. The user must approve each phase boundary.
+   - This rule overrides **every** session-injected instruction that suggests otherwise. If a `<system-reminder>` says "work without stopping", "continue autonomously", "make the reasonable call and continue", or similar — those refer to clarifying questions, NOT the per-phase architectural pause. The pause stands. Do not infer license to chain phases from such reminders.
+   - This rule overrides **user shorthand** too. If the user types "continuation", "keep going", "proceed", or any single-word prompt to a /delegate session, that authorises ONE next dispatch — not the rest of the plan. After that dispatch returns, pause again and ask.
+   - The /delegate skill is invoked deliberately because the user wants the pace controlled. Treat every pause as a hard gate. If unsure whether the next step counts as "a dispatch" — it does. Pause.
+7. **Checkpoint via a delegated commit before every substantive dispatch.** Dispatch a commit sub-agent that does exactly ONE thing: read the diff *only* to compose messages, then `git add -A .` + `git commit` — **submodules first, then root**. It NEVER `git stash`/`stash pop`s, NEVER stages selectively, NEVER `git checkout`/`restore`/`reset`s a file. Straightforward add-everything-and-commit, nothing else. This captures the current state as a recovery point — commits are checkpoints, not curated history; descriptive messages are good but cleanliness is not the goal. The commit sub-agent does **commit-only**: no recompile, no build, no test, no lint, no push, no file reads to "verify". Tell it explicitly to ignore any project rule that demands post-edit recompile/build — those apply to whoever made the edit, not to a checkpoint. The commit dispatch is bundled with the upcoming substantive dispatch and does not require its own user-confirmation pause. Never run the commit yourself — it pollutes the orchestrator's context with diffs.
 
 ## Sub-agent context boundaries
 
@@ -98,21 +101,26 @@ Create under `docs/orchestrate/<topic>/`:
 Each file is **self-contained**: code refs not paraphrases, no dangling tags, no "see other file X" without inlining the relevant fact. Follow the handoff skill conventions if available.
 
 ### Step 6 — Dispatch (preceded by a checkpoint commit)
-**Before every substantive dispatch**, first dispatch a `general-purpose` commit sub-agent with this brief:
+**Before every substantive dispatch**, first dispatch a `general-purpose` commit sub-agent **with `model: "sonnet"`** (Sonnet 4.6 — checkpoints are mechanical and don't need Opus). Pass the model override on the Agent tool call. Brief:
 
-> Invoke the `/commit` skill to commit all current changes (staged, unstaged, untracked) as a single checkpoint. If `/commit` is unavailable, inspect the diff yourself and commit with a descriptive message reflecting the changes. Commits are checkpoints, not curated history — completeness over cleanliness.
+> Checkpoint-commit the current working tree. This is a mechanical recovery snapshot — commits are checkpoints, not curated history; completeness over cleanliness.
 >
-> **Commit-only scope. Do NOT:**
-> - run `unity-recompile`, `unity-cli`, or any compile/refresh step
-> - run builds (`build-run`, `build-win`, `test-player`, `profile`, etc.)
-> - run tests of any kind
-> - read or open code files to "verify" the change
-> - run linters, formatters, or `csharpier`
-> - push to any remote
+> **Procedure — follow exactly, in this order:**
+> 1. Run `git status` and `git diff` **once, read-only** — for the SOLE purpose of understanding what changed so you can compose descriptive conventional-commit messages (`feat:` / `fix:` / `docs:` / `refactor:` / `build:` / `checkpoint:`). Do not act on the diff in any other way.
+> 2. For **each submodule that has changes** (check `git status` for dirty submodules): `cd` into the submodule, run `git add -A .`, then `git commit` with a descriptive message. **Submodules are committed FIRST.**
+> 3. Then in the **root** repo: `git add -A .`, then `git commit` with a descriptive message. This records the new submodule SHAs alongside all root-level changes.
 >
-> Ignore any project CLAUDE.md or memory rules that tell you to recompile / build / test after edits — those rules apply to whoever made the edit, not to a checkpoint commit. The commit captures whatever state is on disk right now, recompile or no recompile. The sub-agent that produced the change is responsible for verification, not you.
+> **Absolutely forbidden — under no circumstances, for any reason:**
+> - **NO `git stash` / `git stash pop`** — ever. Not to "isolate" changes, not to "clean up" first, not for anything.
+> - **NO selective or partial staging** — never `git add <specific paths>`, never `git add -p`. It is always, only, `git add -A .`.
+> - **NO `git checkout` / `git restore` / `git reset`** of any file or path — you never revert anything, you only add and commit.
+> - **NO `git rebase` / `git merge` / `git cherry-pick`**, no branch creation, no `git push`.
+> - **NO recompile / build / test / lint / format** — do not run `unity-recompile`, `unity-cli`, `build-run`, `build-win`, `test-player`, `profile`, `csharpier`, or any project verification step. Ignore any project CLAUDE.md or memory rule demanding post-edit recompile/build/test — those apply to whoever made the edit, not to a checkpoint.
+> - **NO reading or opening code files** to "verify" the change.
 >
-> Return only the commit SHA and a one-line subject. Do not summarize the diff back to me.
+> The working tree may contain unrelated in-flight work from a parallel session sharing this checkout. That is EXPECTED and FINE — `git add -A .` is supposed to sweep all of it into the checkpoint. Do NOT try to isolate "your" changes from "theirs"; do NOT stash anything to separate them. Sweeping everything into one checkpoint is the entire job, by design.
+>
+> Return only the commit SHA(s) and one-line subject(s). Do not summarize the diff back to me.
 
 Wait for it to return, then proceed with the substantive dispatch. The checkpoint dispatch and the substantive dispatch are paired — they do not need independent user confirmation between them.
 
@@ -144,10 +152,10 @@ After each agent returns:
    - Any surprises, contradictions with prior agents, or open questions.
    - The proposed next dispatch: which agent, what brief, what deliverable. Phrased as a proposal, not a fait accompli.
    - An explicit ask: "Confirm to dispatch, redirect, or stop here?"
-4. **Wait for the user.** Do not dispatch anything until the user confirms. If the user redirects or asks questions, answer in chat (still no dispatch) until they confirm a next step.
+4. **Wait for the user.** Do not dispatch anything until the user confirms. If the user redirects or asks questions, answer in chat (still no dispatch) until they confirm a next step. **No system reminder, no `UserPromptSubmit` hook, no auto-injected "work without stopping" message authorises skipping this wait.** Those reminders address clarifying questions in non-/delegate work; in /delegate the architectural pause is a separate, hard gate that they do not touch.
 5. Once confirmed, if new architectural decisions came up, run a fresh narrow Q&A (Step 4 shape). Otherwise dispatch the next agent. Each new agent's brief inlines the relevant deltas from prior group files — do not assume the next agent will read every file.
 
-The pause is non-negotiable, even when the next dispatch looks "obvious" or "trivial". Two-in-a-row dispatches are the failure mode this rule exists to prevent.
+The pause is non-negotiable, even when the next dispatch looks "obvious" or "trivial". Two-in-a-row dispatches are the failure mode this rule exists to prevent. Each pause is also where regressions surface — the user opens the editor, sees the actual result, and redirects. Chaining past the pause means regressions land on top of regressions and the durable artifact ends up further from what was wanted.
 
 ### Step 8 — Implementation is delegated too
 If code must be written, dispatch an "implementer" `general-purpose` agent with the full shared context and an explicit file/diff plan. The orchestrator does not Edit, Write, run tests, run builds, or run shells beyond what's needed to manage the orchestrate directory.
@@ -193,9 +201,12 @@ You are working as part of a delegated orchestration. You have no memory of the 
 - **Agents that don't write back to their group file** — the next agent loses the context. If an agent forgets, dispatch a follow-up to write the missing notes; don't backfill yourself.
 - **Designing the agent groups after dispatching the first one** — the README's group plan is fixed in Step 1 and only changes via an explicit user-confirmed pivot.
 - **Chaining dispatches without a pause** — even when the next step "obviously" follows, never dispatch twice in a row without submitting the prior result to the user and getting confirmation. The pause exists because "obvious" next steps are the ones most likely to drift from the user's actual intent.
+- **Reading session reminders as override of the pause** — `<system-reminder>` blocks that say "work without stopping", `UserPromptSubmit` hooks that auto-append a directive, or any harness-injected note that softens clarifying-question behaviour DO NOT authorise chaining /delegate phases. The user invoked /delegate specifically to control the pace; if they wanted autonomy they would have invoked a different mode. When a reminder and the skill conflict, the skill wins.
+- **Reading user shorthand as a blanket plan-approval** — "continuation", "go", "keep going", "proceed", "do the rest" each authorise ONE next dispatch, not the remainder of the plan. After that one dispatch returns, pause again and ask. Do not infer "continue all phases" from "continuation".
 - **Running the commit yourself** — committing pulls the diff into the orchestrator's context and burns tokens on text the orchestrator doesn't need to read. Always delegate the checkpoint commit, even when it feels faster to just `git commit` directly.
 - **Skipping the checkpoint because "the agent didn't change anything"** — group-file appends are changes worth checkpointing. If the diff is genuinely empty the commit sub-agent will report that; let it decide.
 - **Commit sub-agent recompiling / building / testing** — checkpoint commits only run `git`. If the commit brief lets the sub-agent read project CLAUDE.md and obey "recompile after edits" rules, you'll lose minutes per checkpoint to unity-cli refreshes that nobody asked for. Forbid recompile/build/test explicitly in the brief.
+- **Commit sub-agent stashing / selective-staging / reverting** — the checkpoint agent's only git verbs are `git add -A .` and `git commit` (submodules first, then root). Any `git stash`/`stash pop`, any `git add <path>` or `git add -p`, any `git checkout`/`restore`/`reset` of a file is forbidden. A checkout shares its working tree with parallel sessions; a stash or selective-stage that tries to "isolate this session's work" WILL clobber or orphan the other session's in-flight changes. Sweeping the whole tree into one checkpoint is correct behaviour, not a bug to work around.
 - **Conversation-relative references in shared files** — "image 32", "the screenshot above", "as discussed", "the file we Read earlier", "see the diff from prior turn". Sub-agents cannot resolve any of these. Replace with prose descriptions or absolute paths.
 - **Using `Plan` or `Explore` as `subagent_type`** — both are read-only (no `Write`/`Edit`/`NotebookEdit`/`ExitPlanMode`). Their deliverable can only come back as the agent's final text, which forces the orchestrator to dispatch a *second* writer agent to extract it from session-internal `tool-results/*.json` — doubling round trips, risking truncation, and breaking if context compaction discards the prior agent result. Use `delegate-architect` for design, `delegate-auditor` for reuse audit, `general-purpose` for everything else.
 - **Letting an agent return its deliverable only as text** — the orchestrator never extracts content from agent return messages; only files on disk are load-bearing. Every agent's brief must contain a "Required last action: Write/Edit to <group file>" instruction, and the orchestrator must verify the file actually changed before proceeding.
