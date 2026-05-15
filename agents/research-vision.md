@@ -76,54 +76,27 @@ A typical block is **3-8 lines**, longer (up to a paragraph) if the slide is den
 - **Skip rule** (only valid reasons): genuine decorative slide (title / agenda / divider / "Thanks!" / "References"), pure-text bullets with no visual, or already-tagged block on this slide. See Skip section above.
 - **Batch through Edit calls** — one Edit per section. If your batch is 30 slides, that's 30 Edits. Do them sequentially; do not cluster many sections into one large multi-string Edit (the diff becomes unreviewable).
 
-## Findings sidecar — REQUIRED
+## Inline `FIXME(vision)` marks — REQUIRED
 
-**Before returning**, write a findings sidecar at:
+You do not write a findings-sidecar file. When you spot something you cannot fix yourself, mark it inline in `<slug>.md` with a greppable HTML comment at the problem site — the Pass-3 refiner reads these:
 
 ```
-docs/research/assets/<slug>/findings-pass2-vision.md
+<!-- FIXME(vision): <one-line description> -->
 ```
 
-This file is the **durable input to Pass 3 (refiner)**. The orchestrator's natural-language brief cannot carry every uncertainty flag and every body-text-vs-vision-block divergence through the chain — especially in unsupervised batch runs. The sidecar bypasses orchestrator context-window loss: you write to disk, the refiner reads from disk and treats every entry as a fix-or-justify item.
+Place it on its own line immediately above the line it refers to. Mark:
 
-If a previous vision-pass batch already wrote this sidecar (multi-batch deck), **append** to the existing file under a new `## Batch <N>` heading rather than overwriting. The refiner reads the union of all batches.
+- **Uncertainty flags.** A label, axis value, or number you could not read cleanly from the page render and had to describe with "approximately" / "roughly". The refiner cannot independently verify these — flag so a human can spot-check on canonical primary sources.
+  ```
+  <!-- FIXME(vision): p042 — y-axis units unclear in render, wrote "≈ µm³/µm²" with low confidence -->
+  ```
+- **Body-text vs render divergences.** Where the body text (marker / PyMuPDF extraction) and the page render visibly DISAGREE — these are the recurring marker-LLM hallucination patterns. State what the body says, what the render shows, and what your vision block has:
+  ```
+  <!-- FIXME(vision): p005 — body has (1-g)/(1+g-2g·cos a), render shows (1-g²)/(1+g²-2g·cos a)^(3/2); vision block uses the canonical (1-g²) form -->
+  ```
+- **Suspect body-text claims** you noticed contradicting the render but which sit in surrounding prose, not the equations you directly handled.
 
-**Required template** (write all sections; if a section has nothing to flag, write `- none observed` rather than omitting the section):
-
-```markdown
-# Pass 2 Findings — <slug>
-
-## Batch <N>: pages <range>
-
-### Pages processed (with block type assigned)
-- pNNN: Diagram / Plot / Table / Image / Code / Equation
-- ...
-
-### Pages skipped (with reason)
-- pNNN: title / agenda / divider / pure-text / already-tagged / references
-- ...
-
-### Uncertainty flags — quantitative reads
-Items where you couldn't read a label / value / number cleanly from the page render and used "approximately" or "roughly" in the description. The refiner cannot independently verify these against body text — flag for orchestrator audit on canonical primary sources.
-- pNNN: <what was unclear, what value you wrote down, your confidence level>
-- ...
-
-### Body-text vs vision-block DIVERGENCES — high-priority for refiner
-**This is the most important section.** Items where the body text (extracted by marker / PyMuPDF) and the page render visibly DISAGREE. These are the recurring marker-LLM hallucination patterns — refiner should resolve in favour of whichever source the page render supports.
-
-For each divergence:
-- pNNN: body says `<X>`, page render shows `<Y>`, vision block has `<Z>`
-- e.g. "p005: body has `(1-g)/(1+g-2g·cos(a))`, page render shows `(1-g²)/(1+g²-2g·cos(a))^(3/2)`, vision block has the canonical `(1-g²)` form"
-
-### Suspect body-text claims (flag-only — vision agent does not have authority to fix)
-Items where you noticed body text contradicting the page render but the issue is in surrounding prose, not the equations the vision pass directly handles. Refiner has authority to fix these.
-- pNNN: <what's wrong + what the page render shows>
-
-### Other concerns
-- ...
-```
-
-Save the file then list its full path in your final return message.
+If you spotted nothing, mark nothing — that is a valid result. Marking is not fixing: never rewrite body text or equations, only insert the `**X (LLM vision pass):**` blocks and the `FIXME(vision)` flags. Multi-batch decks need no special handling — each batch simply adds its own blocks and `FIXME(vision)` marks to the same document.
 
 ## Required last action
 
@@ -132,12 +105,11 @@ After processing every slide in the batch, run a single grep to confirm your `**
 - Number of slides processed.
 - Number of slides skipped (with one-word reason: title / agenda / divider / pure-text / already-tagged).
 - Path of the markdown file you Edited.
-- Path of the findings sidecar you wrote / appended to (`assets/<slug>/findings-pass2-vision.md`).
-- Any slides where you flagged uncertainty in the description (so the human can spot-check). These should ALSO be in the sidecar — the return-message is a quick summary; the sidecar is the durable hand-off.
+- Count of `FIXME(vision)` marks you left, and a one-line list of which slides — so the orchestrator and refiner know where the uncertainty is.
 
-**Your return message is SHORT STATUS ONLY** — counts, file paths, one-line flags. NEVER paste the contents of the markdown blocks or the findings sidecar into your return message. The deliverables are the files on disk; the orchestrator does not extract content from agent return text, and the refiner reads only files on disk.
+**Your return message is SHORT STATUS ONLY** — counts, file paths, one-line flags. NEVER paste the contents of the markdown blocks into your return message. The deliverable is the edited file on disk; the orchestrator does not extract content from agent return text, and the refiner reads only the document on disk.
 
-**If a tool call to write the findings sidecar fails** (permission denied, harness block, tool error): report it in ONE line — `SIDECAR WRITE FAILED: <path> — <reason>` — and STOP. Do **NOT** work around it by pasting the sidecar content into your return message. That forces the orchestrator to read your entire output and write the file itself — which doubles the token cost the agent boundary exists to prevent, and is the exact anti-pattern this skill is structured to avoid. A failed write is a re-dispatch signal for the orchestrator, never a fall-back-to-prose signal for you.
+**If your Edit calls to `<slug>.md` fail** (permission denied, harness block, tool error): report it in ONE line — `EDIT FAILED: <slug>.md — <reason>` — and STOP. Do **NOT** work around it by pasting the block content into your return message. That forces the orchestrator to read your entire output and write the file itself — which doubles the token cost the agent boundary exists to prevent. A failed Edit is a re-dispatch signal for the orchestrator, never a fall-back-to-prose signal for you.
 
 ## When the parent is /delegate
 

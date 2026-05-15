@@ -120,7 +120,8 @@ def cleanup_file(path: Path) -> tuple[str, int]:
 def main():
     total_changes = 0
     for md_file in sorted(OUTPUT_DIR.glob("*.md")):
-        if md_file.name == "index.md":
+        # Skip non-slug bookkeeping files (index*.md) — not per-slug extractions.
+        if md_file.name.startswith("index"):
             continue
         slug, changes = cleanup_file(md_file)
         if changes:

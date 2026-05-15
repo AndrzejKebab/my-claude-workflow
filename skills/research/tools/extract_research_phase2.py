@@ -418,6 +418,10 @@ SOURCES_BY_SLUG = {
         "path": "/mnt/archive4/PAPERS/molenaar-eisemann-2024-svdag-editing.pdf",
         "type": "pdf",
     },
+    "wang-2026-llm-long-context-degradation": {
+        "path": "/tmp/research-arxiv-2601-15300/2601.15300v1.pdf",
+        "type": "pdf",
+    },
 }
 
 
@@ -540,9 +544,6 @@ def process_videos(only_slugs: set[str] | None = None):
     transcript_count = 0
 
     for md_file in sorted(OUTPUT_DIR.glob("*.md")):
-        if md_file.name == "index.md":
-            continue
-
         slug = md_file.stem
         if only_slugs and slug not in only_slugs:
             continue
@@ -645,33 +646,20 @@ def process_videos(only_slugs: set[str] | None = None):
     return video_count, transcript_count
 
 
-def update_index():
-    """Print phase-2 marker counts. Does NOT touch index.md.
-
-    Historically this regex-replaced a chunk of `/mnt/archive4/PAPERS/Prepared/index.md`,
-    which clobbered the agent-curated checklist when the regex didn't match
-    or when the section heading shifted (memory: feedback_research_index_clobber.md).
-    Now we just print the counts so the agent can update the index by hand.
-    """
+def report_pending_markers():
+    """Print the count of unresolved phase-2 markers across all per-slug docs."""
     video_remaining = 0
     for md_file in OUTPUT_DIR.glob("*.md"):
-        # Skip the curated index, any pending-sidecar from extract_research.py
-        # (`index_extracted_pending-<stamp>-<hex>.md`), and any per-slug regen
-        # sidecar (`<slug>.regen-<stamp>-<hex>.md`) — none of those are
-        # canonical extractions and counting their markers double-counts.
-        if md_file.name == "index.md":
-            continue
-        if md_file.name.startswith("index_extracted_pending"):
+        # Skip non-slug bookkeeping files and per-slug regen sidecars — neither
+        # is a canonical extraction, and counting their markers double-counts.
+        if md_file.name.startswith("index"):
             continue
         if ".regen-" in md_file.name:
             continue
         text = md_file.read_text(encoding="utf-8")
         video_remaining += text.count("TRANSCRIPTION-PENDING")
 
-    print(
-        f"  Phase 2 marker counts (write into index.md yourself if needed): "
-        f"TRANSCRIPTION-PENDING={video_remaining}"
-    )
+    print(f"  Phase 2 marker counts: TRANSCRIPTION-PENDING={video_remaining}")
 
 
 def main():
@@ -682,7 +670,7 @@ def main():
             only_slugs = slugs if slugs else None
 
     process_videos(only_slugs)
-    update_index()
+    report_pending_markers()
     print("\nPhase 2 complete.")
 
 

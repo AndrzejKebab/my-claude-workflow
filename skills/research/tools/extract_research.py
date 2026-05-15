@@ -972,6 +972,16 @@ SOURCES = [
         # slide_deck=False: portrait two-column layout (standard CGF paper format).
         "slide_deck": False,
     },
+    # ============================================================================
+    {
+        "path": "/tmp/research-arxiv-2601-15300/2601.15300v1.pdf",
+        "slug": "wang-2026-llm-long-context-degradation",
+        "type": "pdf",
+        "title": "Intelligence Degradation in Long-Context LLMs: Critical Threshold Determination via Natural Length Distribution Analysis — Wang, Min & Zou (arXiv 2601.15300, Jan 2026)",
+        # 16-page arXiv paper with text layer. Portrait single-column layout.
+        # Not a slide deck; standard LaTeX paper format.
+        "slide_deck": False,
+    },
 ]
 
 
@@ -1521,49 +1531,6 @@ def write_markdown(doc: Document):
     return total_images
 
 
-def write_index(results: list[tuple[dict, int]]):
-    """Write a *suggested-rows* side file (NOT index.md) for the agent to merge by hand.
-
-    Historically this rewrote `/mnt/archive4/PAPERS/Prepared/index.md` from scratch, which wiped
-    every entry that wasn't part of the current run (memory: feedback_research_index_clobber.md).
-    The canonical index is now agent-curated; this function only writes to
-    `index_extracted_pending.md` so a human / orchestrator can copy the new rows
-    into the real index and delete the stub.
-    """
-    lines = [
-        "<!-- Auto-generated suggested rows from tools/extract_research.py.",
-        "     Merge the rows you want into /mnt/archive4/PAPERS/Prepared/index.md by hand,",
-        "     then delete this file. NEVER let any tool overwrite index.md. -->",
-        "",
-        "| Document | Pages | Type | Images |",
-        "|----------|-------|------|--------|",
-    ]
-
-    for source, img_count in results:
-        slug = source["slug"]
-        title = source["title"]
-        doc_type = source["type"].upper()
-        # Re-count from source for page count
-        if source["type"] == "pdf":
-            doc = fitz.open(source["path"])
-            pages = len(doc)
-            doc.close()
-        else:
-            prs = Presentation(source["path"])
-            pages = len(prs.slides)
-
-        lines.append(f"| [{title}]({slug}.md) | {pages} | {doc_type} | {img_count} |")
-
-    # Randomised suffix so concurrent agents (or re-runs against the same slug)
-    # don't clobber each other's pending sidecar. Each pending file represents
-    # one extraction run and is meant to be merged into index.md then deleted.
-    stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    suffix = secrets.token_hex(3)
-    pending_path = OUTPUT_DIR / f"index_extracted_pending-{stamp}-{suffix}.md"
-    pending_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    print(f"  -> {pending_path.relative_to(PROJECT_ROOT)}  (merge into index.md by hand, then delete)")
-
-
 def main():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -1585,7 +1552,6 @@ def main():
     if "--force" in sys.argv:
         _MARKER_FORCE = True
 
-    results = []
     for source in SOURCES:
         path = source["path"]
         if not os.path.exists(path):
@@ -1603,9 +1569,6 @@ def main():
         # there's no point regenerating identical scaffolding 100× per run.
         if md_path.exists() and not force and not only_slugs:
             print(f"SKIP (exists, pass --only=SLUG --force to refresh): {source['slug']}")
-            assets_dir = ASSETS_DIR / source["slug"]
-            img_count = len(list(assets_dir.glob("*"))) if assets_dir.exists() else 0
-            results.append((source, img_count))
             continue
 
         print(f"Extracting: {source['title']}...")
@@ -1614,11 +1577,8 @@ def main():
         else:
             doc = extract_pptx(source)
 
-        img_count = write_markdown(doc)
-        results.append((source, img_count))
+        write_markdown(doc)
 
-    print("\nWriting index...")
-    write_index(results)
     print("Done.")
 
 

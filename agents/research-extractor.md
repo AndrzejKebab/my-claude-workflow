@@ -1,6 +1,6 @@
 ---
 name: research-extractor
-description: Pass-1 extractor for the /research skill. Adds a source to `~/.claude/skills/research/tools/extract_research.py` SOURCES, runs the extraction pipeline against the skill-local venv, archives the source to `/mnt/archive4/PAPERS/`, and reports back the slug + asset counts. Operates in its own context window so the orchestrator stays clean.
+description: Pass-1 extractor for the /research skill. Adds a source to `~/.claude/skills/research/tools/extract_research.py` SOURCES, runs the extraction pipeline against the skill-local venv, archives the source to `/mnt/archive4/PAPERS/`, then reads the produced markdown and marks problematic areas inline with `<!-- FIXME(extract): … -->` comments. Operates in its own context window so the orchestrator stays clean.
 tools: ["*"]
 model: claude-sonnet-4-6
 ---
@@ -54,79 +54,51 @@ If `~/.claude/skills/research/.venv/` does not exist (fresh install), bootstrap 
 3. For local video: same as the HLS step 2 onwards.
 4. Archive the mp4 + srt to `/mnt/archive4/PAPERS/<year>-<slug-tail>/<slug>.{mp4,en.srt}`.
 
-## Findings sidecar — REQUIRED
+## Read & mark problematic areas — REQUIRED
 
-**Before returning**, write a findings sidecar at:
+After the extraction scripts finish, **read the produced `<slug>.md` end-to-end** and mark every problem you spot inline, at the problem site, with a greppable HTML comment. This is the channel the Pass-3 refiner reads — there is no separate findings file.
+
+Use exactly this comment form so the refiner can `grep` for it:
 
 ```
-docs/research/assets/<slug>/findings-pass1-extractor.md
+<!-- FIXME(extract): <one-line description of the problem> -->
 ```
 
-This file is the **durable input to Pass 3 (refiner)**. The orchestrator's natural-language brief cannot carry every concern through the chain — especially in unsupervised batch runs where the orchestrator dispatches many papers and loses detail between passes. The sidecar bypasses orchestrator context-window loss: you write to disk, the refiner reads from disk.
+Place the comment on its own line **immediately above** the line it refers to (the equation, the heading, the image reference, the suspect paragraph).
 
-**Required template** (write all sections; if a section has nothing to flag, write `- none observed` rather than omitting the section):
+**What to mark:**
 
-```markdown
-# Pass 1 Findings — <slug>
+- **Pages that need a vision pass.** Every page carrying a figure, plot, diagram, schematic, photo, image-only table, or code listing needs a `**X (LLM vision pass):**` description that this pass does not write. Mark each one immediately above its `![pNNN-page.png](...)` / `![sNNN-slide.png](...)` reference:
+  ```
+  <!-- FIXME(extract): p014 needs vision — cone-tracing geometry sketch with aperture angle labels -->
+  ```
+  Use the literal substring `needs vision` — the orchestrator counts these with `grep -c 'FIXME(extract):.*needs vision'` to decide whether to dispatch the vision agent (>5 pages) or fold the descriptions into the refiner (≤5 pages). Do NOT mark `pNNN-text.png` pure-prose reference embeds — they are out of vision-pass scope.
+- **Garbled / suspect equations.** Marker's LLM equation processor occasionally drops an exponent, substitutes a symbol (`\rho` for `p`, `\gamma` for `\tau`), misses a subscript (`\mu 0` for `\mu_0`), or emits syntactically-valid-but-wrong LaTeX. Where the rendered page and the text-layer disagree, or the LaTeX looks off, mark it and say what the page render appears to show.
+- **OCR / text-layer corruption.** Acrobat-OCR artefacts (`Laborat6ry`, `see~s`, τ rendered as `~` or `7`), broken CID-mapped Unicode in equations, run-together author lines, de-hyphenation failures.
+- **Anything else the refiner should know**: under-detected scenes, missing speaker notes, regen sidecars the scripts produced.
 
-## Marker run status
-- Marker fired: <yes / no — fell back to PyMuPDF / no — slide-deck or scanned route>
-- LLM requests: N
-- LLM tokens: M
-- Cache hit: <yes / no>
-- Per-page renders produced: N
-- Notes: <free-form one-liner if anything unusual happened>
+If the document is clean, mark nothing — an absence of `FIXME(extract)` comments is a valid, meaningful result.
 
-## OCR-quality concerns (text-layer corruption)
-List any pages where the existing PDF text-layer is visibly corrupted (e.g. Acrobat OCR artefacts on photoscanned papers — "Laborat6ry", "see~s", τ rendered as "~" or "7"). For each, list the page and the artefact pattern.
-- <pNNN: pattern>
-- ...
-
-## Equation-reconstruction outcomes
-For each equation marker's LLM equation processor rewrote, note whether the LaTeX looks correct end-to-end. **High-risk patterns to flag** (these are the recurring marker-LLM hallucinations):
-- Symbol substitutions (e.g. `\rho` for `p` particle radius, `\gamma` for `\tau`, etc.)
-- Dropped exponents (e.g. `\cos a` instead of `\cos^2 a`, `g` instead of `g^2`)
-- Missing subscripts (e.g. `\mu 0` instead of `\mu_0`)
-- Suspicious factor differences (e.g. missing factor of 2 in shadowing-overlap exponents)
-- Equations that came out syntactically valid but contradict surrounding prose
-
-For each suspect equation, include the page number, the equation as it appears in marker output, and what the page render appears to show. Refiner will resolve.
-
-## Symbol-substitution risk register (this paper's surface)
-List the symbols this paper uses that are at high substitution risk for marker:
-- particle radius (`p` vs `\rho`?)
-- optical depth (`\tau` vs `~` / `7`?)
-- albedo (`\omega` vs `w`?)
-- emission cosine (`\mu` vs `u`?)
-- ...
-
-## Other concerns
-- under-detected scenes, missing speaker notes, broken Unicode, regen sidecars produced, pending sidecars, anything else.
-
-## Pending sidecars produced
-- `docs/research/index_extracted_pending-<timestamp>-<rand>.md` (drain in Pass 4)
-```
-
-Save the file then list its full path in your final return message so the orchestrator can verify and pass the path to the refiner brief.
+**Marking is not fixing.** Do not attempt to repair equations or rewrite prose — that is the refiner's pass. Your job is to flag, in place, accurately.
 
 ## Report back
 
 In your final message:
 
 - Canonical slug.
-- Path of the produced `docs/research/<slug>.md` and asset directory.
+- Path of the produced `<slug>.md` and asset directory.
 - For slide-deck sources: page count + asset filename pattern (`pNNN-slide.png` for slide-deck PDFs, `sNNN-slide.png` for PPTX).
-- For papers: page count + per-page figure count.
+- For papers: page count + figure-bearing vs text-only page split.
 - For videos: scene count, duration.
-- Path of the findings sidecar you wrote (`assets/<slug>/findings-pass1-extractor.md`).
-- Any extraction warnings worth surfacing (under-detected scenes, missing speaker notes, broken Unicode in equations) — the orchestrator may dispatch Pass 1.5 helpers in response. These should also appear in the sidecar.
+- **The count of `FIXME(extract): … needs vision` marks you left** — the orchestrator uses this to decide whether Pass 2 (vision) is dispatched (>5) or folded into the refiner (≤5).
+- Any extraction warnings worth surfacing (marker fall-through to PyMuPDF, under-detected scenes, missing speaker notes, broken Unicode in equations). These should also be marked inline in the document.
 - Confirmation that the source was archived to `/mnt/archive4/PAPERS/`.
 
 ## Hard rules
 
-- **Never modify `docs/research/index.md`** — that file is agent-curated by the indexer agent at Pass 4. The extraction scripts already write a `index_extracted_pending-<timestamp>-<rand>.md` sidecar; let the indexer drain it.
 - **Never overwrite an existing `<slug>.md`** without `--force`. The scripts default to writing `<slug>.regen-<timestamp>-<rand>.md` sidecars; if a regen sidecar appears, surface it in your report so the orchestrator can decide whether to merge or discard.
 - **Slug pattern is non-negotiable** — refuse to extract under a non-canonical slug.
+- **Marking is not fixing** — leave `FIXME(extract)` comments in place; never repair equations or rewrite prose yourself.
 
 ## When the parent is /delegate
 

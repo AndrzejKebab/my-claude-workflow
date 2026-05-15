@@ -1,6 +1,6 @@
 ---
 name: research
-description: Extract research content from YouTube presentations, PDFs, or PPTX files into structured markdown. Dispatches each pass to a dedicated sub-agent (research-extractor / research-vision / research-refiner / research-indexer) so per-deck vision passes scale to hundreds of slides without bloating the parent context.
+description: Extract research content from YouTube presentations, PDFs, or PPTX files into structured markdown. Dispatches each pass to a dedicated sub-agent (research-extractor / research-vision / research-refiner) so per-deck vision passes scale to hundreds of slides without bloating the parent context.
 ---
 
 Extract research material into `/mnt/archive4/PAPERS/Prepared/` as annotated markdown with images, transcripts, and OCR. The orchestrator (you) is a thin coordinator: every load-bearing pass runs in a dedicated sub-agent's context window so the parent session stays small.
@@ -27,8 +27,6 @@ The Python pipeline ships with the skill, including its own venv. Everything is 
     ├── redetect_scenes.py
     ├── subsample_long_scenes.py
     ├── srt_to_windows.py
-    ├── audit_research_index.py
-    ├── prune_research_index.py
     ├── validate_research.py    ← Pass 2.5: extract LaTeX/Mermaid blocks → Node validator
     ├── validate_md.mjs         ← Pass 2.5: KaTeX + mermaid.parse() syntax checker
     └── render_md_html.mjs      ← Pass 2.5: optional self-contained HTML preview
@@ -94,61 +92,39 @@ You are the orchestrator for the /research skill. You do **not** read 268-slide 
 
 | Pass | Agent | Purpose |
 |---|---|---|
-| 1 — extraction | `research-extractor` | Add the source to `tools/extract_research.py` SOURCES, run scripts, archive source to `/mnt/archive4/PAPERS/`, report slug + asset counts |
-| 2 — vision | `research-vision` | Read slide / figure images and write `**Diagram (LLM vision pass):**` blocks via Edit. Batches well — dispatch one agent per ~30 slides to keep individual context lean |
+| 1 — extract & mark | `research-extractor` | Add the source to `tools/extract_research.py` SOURCES, run scripts, archive source to `/mnt/archive4/PAPERS/`. **Then read the produced markdown and mark every problematic area inline with a `<!-- FIXME(extract): … -->` comment** — garbled equations, suspect OCR, and (critically) each page that needs a vision-pass description. Report the slug, asset counts, and the count of pages flagged for vision. |
+| 2 — vision _(conditional)_ | `research-vision` | Read slide / figure images and write `**Diagram (LLM vision pass):**` blocks via Edit. **Dispatched ONLY when more than 5 pages need a vision pass** (per the extractor's `FIXME(extract): … needs vision` marks). When 5 or fewer pages need vision, skip this pass entirely — Pass 3 folds the handful of descriptions in. Batches well — dispatch one agent per ~30 slides to keep individual context lean. |
 | 2.5 — validate | _(orchestrator runs inline)_ | Run `tools/validate_research.py --only=<slug>`: every LaTeX block (`$…$`, `$$…$$`) is parsed by KaTeX and every Mermaid fenced block by `mermaid.parse()`. Errors are written to `findings-pass2.5-validate.md` for the refiner to fix, and to stderr for the orchestrator. Optional `--html` produces a browser-openable preview. |
-| 3 — refine | `research-refiner` | Heading fixes, broken-Unicode equation re-transcription, speaker-notes typo cleanup, optional top-of-doc summary. Brief MUST cite the Pass-2.5 sidecar so the refiner has a concrete error list to address |
-| 3.5 — re-validate | _(orchestrator runs inline, optional)_ | Re-run `tools/validate_research.py --only=<slug>` as a clean-room check after refine. If anything regressed (new errors introduced, old errors not fixed), block Pass 4 and re-dispatch the refiner |
-| 4 — index | `research-indexer` | Add table row + checklist entry to `/mnt/archive4/PAPERS/Prepared/index.md`, drain the extractor's pending sidecar |
+| 3 — refine _(+ inline vision)_ | `research-refiner` | Heading fixes, broken-Unicode equation re-transcription, speaker-notes typo cleanup, optional top-of-doc summary. **Resolves every `FIXME(extract)` and `FIXME(vision)` mark left in the document and deletes the comment once handled.** When Pass 2 was skipped (≤5 vision pages), the refiner also writes the `**X (LLM vision pass):**` blocks for those pages itself. Brief MUST cite the Pass-2.5 sidecar so the refiner has a concrete error list to address. |
+| 3.5 — re-validate | _(orchestrator runs inline, optional)_ | Re-run `tools/validate_research.py --only=<slug>` as a clean-room check after refine. If anything regressed (new errors introduced, old errors not fixed), re-dispatch the refiner. |
 
 You may also dispatch additional vision-pass batches **between** Pass 2 and 3 (e.g. "vision-pass slides 100-130 of the same doc, focusing on plot panels") if the first pass missed coverage. Multiple batches against the **same** paper must run sequentially — they all Edit the same `<slug>.md` and concurrent edits collide.
 
 **Sub-agent model pins — the orchestrator MUST pass `model` explicitly on every Agent dispatch.**
 
-The `model:` field in each agent's frontmatter is **advisory only and is NOT reliably applied** — in practice a dispatched sub-agent inherits the parent session's model (typically Opus) unless the orchestrator passes the `model` parameter explicitly on the Agent tool call. Relying on the frontmatter silently runs the cheap mechanical passes (extract / vision / index) on Opus, which is a large, avoidable cost. **Every `/research` dispatch must set `model` explicitly:**
+The `model:` field in each agent's frontmatter is **advisory only and is NOT reliably applied** — in practice a dispatched sub-agent inherits the parent session's model (typically Opus) unless the orchestrator passes the `model` parameter explicitly on the Agent tool call. Relying on the frontmatter silently runs the cheap mechanical passes (extract / vision) on Opus, which is a large, avoidable cost. **Every `/research` dispatch must set `model` explicitly:**
 
 | Agent | **Pass `model:` =** | Rationale |
 |---|---|---|
 | `research-extractor` | **`"sonnet"`** | Pass 1 is mostly script orchestration (edit SOURCES, run scripts, archive) — Sonnet handles it cheaply. |
 | `research-vision` | **`"sonnet"`** | Cost-dominant workload — hundreds of images per deck in ~30-image batches. Sonnet 4.6 vision quality is strong at meaningfully lower per-token cost than Opus. |
-| `research-refiner` | **`"opus"`** | **Quality-control gate.** Refiner is where math correctness is verified, OCR-corrupted equations are reconstructed, and scientifically-load-bearing formulas (HG, Rayleigh, Mie, transport equations) get their final form before the document becomes citable. A wrong-but-plausible LaTeX equation that ships through is harder to detect than a missing one — for example, marker once produced `(1 + cos a)` for the Rayleigh phase function where the canonical form is `(1 + cos²a)`; a Sonnet refiner missed the dropped exponent because the broken form is syntactically valid LaTeX, but the surrounding paragraph ("forward = backward scatter") only makes sense for the squared form. Opus's stronger cross-source reasoning catches that class of error. The refiner is the ONLY pass that runs on Opus — and it must be the 1M-context Opus build (`claude-opus-4-7[1m]`); the Agent tool's `model` enum is coarse, so pass `model: "opus"` and state the 1M-context requirement in the brief. |
-| `research-indexer` | **`"sonnet"`** | Mechanical (one Edit, one rm, one table-row append) — Sonnet handles it. |
+| `research-refiner` | **`"opus"`** | **Quality-control gate, and — when Pass 2 is skipped — the inline vision pass.** Refiner is where math correctness is verified, OCR-corrupted equations are reconstructed, and scientifically-load-bearing formulas (HG, Rayleigh, Mie, transport equations) get their final form before the document becomes citable. A wrong-but-plausible LaTeX equation that ships through is harder to detect than a missing one — for example, marker once produced `(1 + cos a)` for the Rayleigh phase function where the canonical form is `(1 + cos²a)`; a Sonnet refiner missed the dropped exponent because the broken form is syntactically valid LaTeX, but the surrounding paragraph ("forward = backward scatter") only makes sense for the squared form. Opus's stronger cross-source reasoning catches that class of error. The refiner is the ONLY pass that runs on Opus — and it must be the 1M-context Opus build (`claude-opus-4-7[1m]`); the Agent tool's `model` enum is coarse, so pass `model: "opus"` and state the 1M-context requirement in the brief. |
 
-Concretely: extractor / vision / indexer dispatches pass `model: "sonnet"`; refiner dispatches pass `model: "opus"`. The orchestrator itself inherits whatever model the parent session runs on — that is fine and unavoidable; only the dispatched sub-agents need the explicit override. If you find yourself dispatching a `/research` sub-agent without a `model` argument, that is a bug — add it.
+Concretely: extractor / vision dispatches pass `model: "sonnet"`; refiner dispatches pass `model: "opus"`. The orchestrator itself inherits whatever model the parent session runs on — that is fine and unavoidable; only the dispatched sub-agents need the explicit override. If you find yourself dispatching a `/research` sub-agent without a `model` argument, that is a bug — add it.
 
-**Math-heavy papers — recommend a manual orchestrator vision-pass audit after the refiner**: when the source paper carries scientifically load-bearing equations (radiative-transfer integrals, BRDF formulas, phase functions, error metrics, transport equations) AND the source is photoscanned with Acrobat OCR, the orchestrator (running on the parent-session model, typically Opus 4.x) should do a quick equation-by-equation cross-reference against the page renders before dispatching Pass 4. The refiner agent does this against text-layer artefacts, but a second pass by the orchestrator with direct visual access to the page renders is the right belt-and-braces approach for canonical primary sources. Add a one-line note to the index checklist entry recording the audit.
+**Math-heavy papers — recommend a manual orchestrator vision-pass audit after the refiner**: when the source paper carries scientifically load-bearing equations (radiative-transfer integrals, BRDF formulas, phase functions, error metrics, transport equations) AND the source is photoscanned with Acrobat OCR, the orchestrator (running on the parent-session model, typically Opus 4.x) should do a quick equation-by-equation cross-reference against the page renders before finishing the run. The refiner agent does this against text-layer artefacts, but a second pass by the orchestrator with direct visual access to the page renders is the right belt-and-braces approach for canonical primary sources. Note the audit in your final summary to the user.
 
-### Findings sidecars — cross-pass communication channel (REQUIRED)
+### Inline `FIXME` marks — cross-pass communication channel
 
-Every pass writes a findings sidecar to disk. The next pass reads it as required input. This makes pass-to-pass hand-offs robust to **orchestrator context-window loss**, which is the dominant failure mode in unsupervised batch runs (orchestrator dispatching dozens of papers in a phased flow can't carry every concern through every brief — there's too much detail and the briefs are written ahead of time, not in response to actual run findings). The sidecars are the durable hand-off: agent N writes flags to disk → agent N+1 reads from disk → agent N+1 writes resolution to disk. Orchestrator context window is bypassed for the load-bearing detail.
+Passes do not write separate findings-sidecar files. Instead, each pass that spots a problem it is not the right pass to fix **marks it inline in `<slug>.md`** with a greppable HTML comment placed at the problem site:
 
-| Pass | Sidecar path | Purpose |
-|---|---|---|
-| 1 — extractor | `assets/<slug>/findings-pass1-extractor.md` | Marker run status, OCR-quality concerns, equation-reconstruction outcomes, symbol-substitution risk register |
-| 2 — vision | `assets/<slug>/findings-pass2-vision.md` | Per-page uncertainty flags, body-text-vs-vision-block divergences, suspect body-text claims |
-| 3 — refiner | `assets/<slug>/findings-pass3-refiner.md` | Resolution log: every Pass-1 and Pass-2 finding gets a status (RESOLVED / ESCALATED / DISMISSED / OUT-OF-SCOPE); refiner-discovered issues; unresolved items needing orchestrator audit; recommended index-entry health flags |
+- **Pass 1 (extractor)** — `<!-- FIXME(extract): … -->`. Garbled / suspect equations, OCR artefacts, and every page that needs a vision-pass description (`<!-- FIXME(extract): pNNN needs vision — <one line on what's on the page> -->`).
+- **Pass 2 (vision)** — `<!-- FIXME(vision): … -->`. Uncertainty flags (a label / number it could not read cleanly) and body-text-vs-render divergences it spotted but does not have authority to fix.
+- **Pass 3 (refiner)** — resolves every `FIXME(extract)` and `FIXME(vision)` mark and **deletes the comment once handled**. Anything the refiner cannot resolve from text-layer + render evidence alone it re-marks `<!-- FIXME(audit): … -->` and surfaces in its return message for an orchestrator audit.
 
-**Required template structure** is in each agent's frontmatter spec (`agents/research-{extractor,vision,refiner,indexer}.md`). The agents enforce the template shape so the next pass can rely on a consistent grammar.
+**Why inline instead of sidecar files:** the mark lives exactly where the problem is, so the fixing pass sees it in context while reading the document it is already reading end-to-end — no second file to open, no template ceremony, no findings content passing through the orchestrator's context. The orchestrator counts marks with a single `grep -c`, never by reading them.
 
-**Multi-batch vision-pass appending**: when Pass 2 is dispatched as multiple batches against a single deck, each batch APPENDS to `findings-pass2-vision.md` under its own `## Batch <N>` heading. The refiner reads the union of all batches.
-
-**Indexer health flags**: Pass 4 reads `findings-pass3-refiner.md` and surfaces any escalated concerns in the index checklist entry as `[!audit-recommended]` / `[!OCR-degraded]` / `[!math-heavy]` prefixes. This makes the index a one-glance health view of the corpus.
-
-**Orchestrator briefs MUST cite the sidecar paths** when dispatching:
-
-- Pass 1 brief: state that `findings-pass1-extractor.md` is required output.
-- Pass 2 brief: state that `findings-pass2-vision.md` is required output (and is appended to on multi-batch dispatch).
-- Pass 3 brief: state that BOTH `findings-pass1-extractor.md` AND `findings-pass2-vision.md` are required INPUT (the agent will refuse to proceed without them) AND that `findings-pass3-refiner.md` is required output.
-- Pass 4 brief: state that `findings-pass3-refiner.md` is required input.
-
-**Why we don't trust agent return-message text alone**: agent return text is bounded (~500 tokens of summary in practice), the orchestrator's context window is the dominant scaling constraint when batching many papers, and there's no recovery path if the orchestrator misremembers or paraphrases a flag. Files on disk solve all three problems and double as a permanent audit trail for any future re-extraction. Do not skip the sidecars — they are the load-bearing protocol element, not a nice-to-have.
-
-**Sidecar-write-failure protocol — the orchestrator NEVER writes a sub-agent's sidecar.** Every findings sidecar is written by the agent that produced its content. If a dispatched agent reports it could not write its sidecar (permission denied, harness block, tool error), the orchestrator's ONLY correct response is to **re-dispatch** — either the same agent type again, or, if the write keeps failing, a dedicated writer agent whose entire brief is "here is the content, write it to `<path>`". The orchestrator MUST NOT:
-
-- write the sidecar itself from the agent's return text, or
-- instruct agents (in their briefs) to "return the full content verbatim if the write fails."
-
-Both of those force the orchestrator to read the agent's entire output AND then write a document — the content passes through the orchestrator's context twice, which is the precise token-budget anti-pattern the agent boundary exists to eliminate. An agent that cannot write its sidecar must emit a one-line `SIDECAR WRITE FAILED: <path> — <reason>` and stop; the orchestrator treats that as a re-dispatch signal, not a cue to do the work itself. (If sub-agent writes are failing systemically, the root cause is usually a missing `Write`/`Edit` permission-allow rule for the `/mnt/archive4/PAPERS/Prepared/**` path — add it to the user's global `~/.claude/settings.json` (or the settings of whatever project is currently running `/research`), and fix that, don't work around it.)
+**Orchestrator dispatch briefs must** tell each agent (a) to leave its `FIXME(<pass>)` marks inline at the problem site, and (b) — for the refiner — to grep for `FIXME(extract)` and `FIXME(vision)`, resolve each, and delete the comment. A refiner that finishes with `FIXME(extract)` / `FIXME(vision)` comments still in the document has not completed its pass. The marks are plain text inside the file every pass already edits, so there is no separate-file write that can fail — but if a sub-agent reports it cannot Edit `<slug>.md` at all (permission denied, harness block), the orchestrator's correct response is to **re-dispatch**, never to make the edits itself from the agent's return text. (If sub-agent edits are failing systemically, the root cause is usually a missing `Write`/`Edit` permission-allow rule for the `/mnt/archive4/PAPERS/Prepared/**` path — add it to the user's global `~/.claude/settings.json` and fix that, don't work around it.)
 
 ### Concurrency rules (read this before dispatching anything in parallel)
 
@@ -158,7 +134,6 @@ The /research pipeline mixes **GPU-bound local inference** (marker / surya) with
 
 - **Pass 1 (extraction) across any number of papers**. Marker's surya layout + text-recognition models need ~1.5–2 GiB contiguous VRAM and saturate the GPU during inference. Two parallel extractions guarantee CUDA OOM (one or both fall through to the PyMuPDF span-walker, silently degrading body-text quality). The legacy PyMuPDF-only path was parallel-safe, but post-marker that no longer holds — and an OOM-driven fall-through reads as "marker worked, but produced poor output" rather than a clear failure.
 - **Pass 1 → Pass 2 → Pass 3 within the same paper**. Each pass writes the same `<slug>.md`; the next pass reads what the previous wrote. Pipelined, not parallel.
-- **Pass 4 (indexer) across any number of papers**. All append to the same `/mnt/archive4/PAPERS/Prepared/index.md`. Two indexers in parallel race the table edit.
 - **Multiple vision-pass batches against the same paper**. Same `<slug>.md` again.
 
 **Parallel-safe — only when each agent owns a different `<slug>.md`:**
@@ -168,36 +143,35 @@ The /research pipeline mixes **GPU-bound local inference** (marker / surya) with
 
 **Recommended dispatch flow for a single paper** (the typical /research invocation):
 
-> Pass 1 → Pass 2 (one or more sequential batches if the deck is large) → Pass 3 → Pass 4. Fully sequential. This is what the four-agent dance assumes by default.
+> Pass 1 → Pass 2 (only if >5 pages need vision; one or more sequential batches if the deck is large) → Pass 3. Fully sequential. This is what the three-agent dance assumes by default.
 
 **Recommended dispatch flow for a batch of N papers** (when the user passes a list of sources):
 
 > 1. **Phase A — sequential extract.** Run Pass 1 once per paper, **one at a time** (GPU is shared). Wait for each extractor to finish before dispatching the next. Per-paper marker output is cached at `assets/<slug>/marker.md` so this phase is the GPU-bound bottleneck and worth getting right on the first try (avoid `--force` retries unless you observe a marker failure in the agent's report).
-> 2. **Phase B — parallel vision.** Once Phase A is done, dispatch N `research-vision` agents in parallel — one per paper. Each owns its own `<slug>.md` so there's no edit collision; vision is API-bound (Sonnet) so there's no local-GPU contention.
-> 3. **Phase C — parallel refine.** Same pattern: N `research-refiner` agents, one per paper, dispatched in parallel.
-> 4. **Phase D — sequential index.** Pass 4 must serialise (single `index.md`). Run the indexer once per paper, in sequence. The indexer is fast — it's just one Edit + one rm — so the serial cost is small.
+> 2. **Phase B — parallel vision.** Once Phase A is done, dispatch a `research-vision` agent for each paper whose vision-flag count is >5 — in parallel, one per paper. Each owns its own `<slug>.md` so there's no edit collision; vision is API-bound (Sonnet) so there's no local-GPU contention. Papers with ≤5 vision flags skip this phase (folded into Phase C).
+> 3. **Phase C — parallel refine.** Same pattern: N `research-refiner` agents, one per paper, dispatched in parallel. For papers that skipped Phase B, the refiner brief carries the inline-vision page list.
 
-The phased flow turns what would be N × (Pass 1 + Pass 2 + Pass 3 + Pass 4) sequential dispatches into approximately (N × Pass 1) + max(Pass 2) + max(Pass 3) + (N × Pass 4) wall time, which on a typical 5-paper batch is roughly 2–3× faster.
+The phased flow turns what would be N × (Pass 1 + Pass 2 + Pass 3) sequential dispatches into approximately (N × Pass 1) + max(Pass 2) + max(Pass 3) wall time, which on a typical 5-paper batch is roughly 2× faster.
 
 **Pre-marker history**: the old skill text said research extraction was exempt from the project's "no parallel sub-agents" rule because PyMuPDF + OpenOCR were CPU-bound and embarrassingly parallel. That exemption no longer applies — the marker prepass moved Pass 1 onto the GPU and Pass 1 is now hard-serialised across papers. Pass 2 and Pass 3 remain parallel-safe across different papers because they don't touch the local GPU.
 
 ### Running inside a /delegate orchestrator
 
-If your top-level invocation came from `/delegate` (the multi-agent orchestration mode that uses shared `docs/orchestrate/<topic>/` files), you are **doubly orchestrating**: /delegate dispatched you to handle the research portion, and you in turn dispatch the four research sub-agents. In that mode:
+If your top-level invocation came from `/delegate` (the multi-agent orchestration mode that uses shared `docs/orchestrate/<topic>/` files), you are **doubly orchestrating**: /delegate dispatched you to handle the research portion, and you in turn dispatch the three research sub-agents. In that mode:
 
 - The parent `/delegate` orchestrator owns `docs/orchestrate/<topic>/` and expects status reports there. Pass that directory path through to each sub-agent's brief so they append their findings to `docs/orchestrate/<topic>/<NN>-research-<pass>.md`.
 - Do not re-do reuse-audit / architectural Q&A — `/delegate` already covered those. Treat your role as "the one that knows /research" within the larger plan.
 - Your final message to the parent /delegate orchestrator is a one-screen summary; the file deliverables on disk are the load-bearing output.
 
-If you are invoked directly (not via /delegate), skip the `docs/orchestrate/<topic>/` dance — the briefs talk to the four research agents directly, and your final message to the user summarises the work.
+If you are invoked directly (not via /delegate), skip the `docs/orchestrate/<topic>/` dance — the briefs talk to the three research agents directly, and your final message to the user summarises the work.
 
 ### When to skip dispatch
 
-For a small extraction (single-page paper, < 5 slides, or "just rerun extraction on an existing source"), running the four-agent dance is wasteful. In that case:
+For a small extraction (single-page paper, < 5 slides, or "just rerun extraction on an existing source"), running the three-agent dance is wasteful. In that case:
 
 - Pass 1 you can run inline (it's a script invocation).
-- Pass 4 you can run inline (one Edit + one rm).
-- **Pass 2 (vision) and Pass 3 (refine) still get dispatched**: they are the context-heavy passes and the agent boundary is what makes the skill scale.
+- **Pass 3 (refine) still gets dispatched**: it is the context-heavy quality gate and the agent boundary is what makes the skill scale.
+- Pass 2 (vision) follows the >5-page rule like always — for a sub-5-page source it is folded into Pass 3 by definition.
 
 ## Diagram description policy (vision pass output)
 
@@ -234,11 +208,7 @@ Any slide with a real visual gets a per-slide block.
 
 ## REQUIRED: Citable Canonical Naming
 
-Every extracted document MUST be renamed (and its asset directory MUST be renamed) to a **citable canonical slug** before pass 4. The Pass 1 script emits a slug derived from the source title (e.g. `intro-to-gpu-occlusion`) — this is **scaffolding only** and is never the final filename.
-
-## REQUIRED: Citable Canonical Naming
-
-Every extracted document MUST be renamed (and its asset directory MUST be renamed) to a **citable canonical slug** before pass 4. The Pass 1 script emits a slug derived from the source title (e.g. `intro-to-gpu-occlusion`) — this is **scaffolding only** and is never the final filename.
+Every extracted document MUST be renamed (and its asset directory MUST be renamed) to a **citable canonical slug** before you finish the run. The Pass 1 script emits a slug derived from the source title (e.g. `intro-to-gpu-occlusion`) — this is **scaffolding only** and is never the final filename.
 
 **Pattern:** `<author-surname(-coauthor)?>-<year>-<short-topic>.md`
 
@@ -261,13 +231,12 @@ Every extracted document MUST be renamed (and its asset directory MUST be rename
 
 **Why this matters:** the corpus is cross-referenced from `docs/`, memory files, and other research notes by slug. Title-derived slugs (`intro-to-gpu-occlusion`, `volumetric-fog-in-enshrouded`) are not citation-stable — two unrelated talks could share a generic title — and they break the corpus convention. Anything filed under a non-canonical slug must be renamed before commit; deferring this creates dangling references.
 
-**Required actions before pass 4:**
+**Required actions before you finish the run:**
 
-1. Pick the canonical slug per the rules above (cross-check `/mnt/archive4/PAPERS/Prepared/index.md` for adjacent precedent if unsure — match the surrounding pattern).
+1. Pick the canonical slug per the rules above (cross-check the existing `*.md` files in `/mnt/archive4/PAPERS/Prepared/` for adjacent precedent if unsure — match the surrounding pattern).
 2. `mv /mnt/archive4/PAPERS/Prepared/<scaffolding>.md /mnt/archive4/PAPERS/Prepared/<canonical>.md`
 3. `mv /mnt/archive4/PAPERS/Prepared/assets/<scaffolding>/ /mnt/archive4/PAPERS/Prepared/assets/<canonical>/`
 4. Update inside the markdown: `slug:` frontmatter field, every `assets/<scaffolding>/` image path.
-5. Pass 4 (index update) uses the canonical slug from this point forward.
 
 If the source genuinely has no clear single author (e.g. an Epic UE documentation page, a vendor whitepaper), use the publishing organisation in lowercase as the "author": `epic-2022-ue51-virtual-shadow-maps-docs`, `khronos-2023-...`. Match adjacent corpus precedent.
 
@@ -303,7 +272,7 @@ The canonical slug is the same one used for `/mnt/archive4/PAPERS/Prepared/<slug
     └── dekeersmaecker-2024-numerical-precision-large-worlds.en.srt
 ```
 
-**When to copy:** After Pass 1 (automated extraction) finishes and the canonical slug is decided, copy the source(s) into PAPERS/ **before Pass 4** (index update). Copy must use the canonical slug, never the scaffolding slug emitted by Pass 1.
+**When to copy:** After Pass 1 (automated extraction) finishes and the canonical slug is decided, copy the source(s) into PAPERS/ **before you finish the run**. Copy must use the canonical slug, never the scaffolding slug emitted by Pass 1.
 
 For PDFs / PPTXs:
 ```bash
@@ -411,11 +380,11 @@ PPTX conversion takes ~30-60s per deck (LibreOffice cold-start + PDF export). Su
 
 You may see `MuPDF error: format error: No common ancestor in structure tree` warnings during PPTX rendering — these are non-fatal, MuPDF complaining about LibreOffice's PDF tagging structure. The rendered images are still correct.
 
-## Full Pipeline (4 passes — orchestrator dispatches each)
+## Full Pipeline (3 passes — orchestrator dispatches each)
 
-### Pass 1: Extraction (dispatched to research-extractor, or run inline for trivial sources)
+### Pass 1: Extract & mark (dispatched to research-extractor, or run inline for trivial sources)
 
-For PDFs / PPTXs and recorded-talk videos, dispatch a `research-extractor` agent with a brief naming the source path / URL and the canonical slug. The agent adds the source to `tools/extract_research.py` SOURCES, runs the extraction script(s), runs phase2 OCR + cleanup, archives the source to `/mnt/archive4/PAPERS/`, and reports back.
+For PDFs / PPTXs and recorded-talk videos, dispatch a `research-extractor` agent with a brief naming the source path / URL and the canonical slug. The agent adds the source to `tools/extract_research.py` SOURCES, runs the extraction script(s), runs phase2 OCR + cleanup, archives the source to `/mnt/archive4/PAPERS/`, then **reads the produced markdown end-to-end and marks every problematic area inline** with a `<!-- FIXME(extract): … -->` comment — garbled / suspect equations, OCR artefacts, and (critically) each page that carries a figure / plot / diagram and therefore needs a vision-pass description (`<!-- FIXME(extract): pNNN needs vision — <one line> -->`). It reports back the slug, asset counts, and **the count of pages flagged for vision** — the orchestrator uses that count to decide whether Pass 2 is dispatched at all (see Pass 2 below).
 
 For trivial cases (single-page paper, source already in SOURCES, just need to rerun under `--force`), the orchestrator may run inline:
 
@@ -516,9 +485,19 @@ These helpers are non-destructive — they only write new `scene-NNN-*.jpg` / `s
 
 If you find yourself wanting yet-another redetection knob (different colourspace, edge-detection instead of histogram, etc.), edit `tools/redetect_scenes.py` and commit the change — never spawn a one-off `/tmp/*.py` for it.
 
-### Pass 2: Vision (dispatched to research-vision)
+### Pass 2: Vision — conditional (dispatched to research-vision)
 
-**This is the expensive, context-heavy pass.** It MUST be dispatched to the `research-vision` sub-agent — never run inline. A 268-slide deck would burn the orchestrator's context window in vision-pass alone; the agent boundary is what makes the pass scale.
+**Pass 2 is dispatched ONLY when more than 5 pages need a vision pass.** After Pass 1, count the vision flags the extractor left:
+
+```bash
+grep -c 'FIXME(extract):.*needs vision' /mnt/archive4/PAPERS/Prepared/<slug>.md
+```
+
+- **> 5 pages flagged** → dispatch the `research-vision` sub-agent (Sonnet 4.6). This is the expensive, context-heavy case — never run it inline; a 268-slide deck would burn the orchestrator's context window in vision-pass alone, and the agent boundary is what makes the pass scale.
+- **≤ 5 pages flagged** → **skip Pass 2 entirely.** Fold the handful of vision descriptions into the Pass 3 refiner brief instead (the refiner is already reading the document end-to-end on Opus 1M; spinning a separate agent for ≤5 images costs more in dispatch overhead than it saves). List those page numbers in the refiner brief and tell it to write the `**X (LLM vision pass):**` blocks itself.
+- **0 pages flagged** → no vision work at all; go straight to Pass 2.5.
+
+The rest of this section describes the dispatched-agent case (>5 pages).
 
 #### Dispatch pattern
 
@@ -580,21 +559,23 @@ After all Pass-2 vision batches complete and **before** dispatching Pass 3, the 
 
 **Refiner brief MUST cite the report.** When dispatching Pass 3, the orchestrator brief states the path to `findings-pass2.5-validate.md` and lists the specific errors the refiner is expected to address. Skipping this step puts the refiner back into "find the bug visually" mode — which is the failure mode that motivated this pass.
 
-**Pass 3.5 — re-validate after refine** (recommended): re-run the same command after Pass 3 completes. If the report shows zero errors, proceed to Pass 4. If errors regressed (refiner introduced new ones, missed some, or the LaTeX they wrote doesn't compile), re-dispatch the refiner with the new error list. This is a fast loop — the validator runs in seconds even on 5K-line documents.
+**Pass 3.5 — re-validate after refine** (recommended): re-run the same command after Pass 3 completes. If the report shows zero errors, the run is done. If errors regressed (refiner introduced new ones, missed some, or the LaTeX they wrote doesn't compile), re-dispatch the refiner with the new error list. This is a fast loop — the validator runs in seconds even on 5K-line documents.
 
 **HTML preview** (`--html`): writes `assets/<slug>/<slug>.preview.html` — a self-contained page with KaTeX-rendered math (server-side, so KaTeX errors paint inline in red) and mermaid client-side render (loads `mermaid` from jsdelivr CDN). Open in a browser to visually verify the document end-to-end. The preview is gitignored implicitly (under `assets/<slug>/`); if you want it committed, set `--html-out=<path>` to direct it elsewhere.
 
 **Exit-status contract:**
-- `0` — all blocks clean. Proceed to Pass 3 (or, on the post-refine re-validate, to Pass 4).
+- `0` — all blocks clean. Proceed to Pass 3 (or, on the post-refine re-validate, finish the run).
 - `1` — at least one parse error. Block downstream dispatch until resolved.
 - `2` — tool error (Node missing, `node_modules/` missing, malformed CLI args). Fix the toolchain before retrying — do NOT skip Pass 2.5 because the validator failed to set up.
 
 **Inline math false-positive guard:** the extractor is conservative about `$…$` matches — it requires at least one LaTeX-ish character (`\^_{}=<>+-*/`) and skips matches that look like currency (`$5.00`, `$200/month`). It will not flag prose containing dollar signs. If the validator reports an "inline" block that's actually prose, file it as an extractor false-positive and refine the heuristic in `tools/validate_research.py` rather than wrapping the prose in a math escape.
 
-### Pass 3: Refine (dispatched to research-refiner)
+### Pass 3: Refine — + inline vision (dispatched to research-refiner)
 
-After Pass 2.5 (validate) completes with errors enumerated to disk, dispatch a single `research-refiner` agent with a brief listing the specific concerns the orchestrator wants fixed:
+After Pass 2.5 (validate) completes with errors enumerated to disk, dispatch a single `research-refiner` agent (Opus 4.7, 1M context) with a brief listing the specific concerns the orchestrator wants fixed:
 
+- **Resolve every inline `FIXME` mark.** The brief MUST tell the refiner to `grep -n 'FIXME(extract)\|FIXME(vision)'` the document, fix each flagged item, and delete the comment once handled. Anything it cannot resolve from text-layer + render evidence alone it re-marks `<!-- FIXME(audit): … -->` and lists in its return message. A refiner that finishes with `FIXME(extract)` / `FIXME(vision)` comments still present has not completed its pass.
+- **Inline vision pages (when Pass 2 was skipped).** If the ≤5-page rule meant Pass 2 was not dispatched, the brief lists the page numbers the extractor flagged `needs vision` and instructs the refiner to write the `**X (LLM vision pass):**` blocks for them itself, following the "Diagram description policy" section of this skill. (When Pass 2 *was* dispatched, those blocks already exist — the refiner only flags suspect ones, never rewrites them.)
 - **The Pass 2.5 sidecar path** (`/mnt/archive4/PAPERS/Prepared/assets/<slug>/findings-pass2.5-validate.md`) — REQUIRED. The refiner is expected to address every error the validator reported. Brief explicitly: "Read the sidecar first; every entry under `## Errors` must be fixed in your edit pass."
 - Broken-Unicode equations (slide numbers, beyond what Pass 2.5 already caught).
 - Heading fixes (slide numbers + recommended titles, or "infer from slide content").
@@ -603,28 +584,11 @@ After Pass 2.5 (validate) completes with errors enumerated to disk, dispatch a s
 
 The refiner reads the document end-to-end in its own context window — never run this inline either, because the document is typically 3-5 K lines long after Pass 2.
 
-After Pass 3 returns, the orchestrator re-runs `tools/validate_research.py --only=<slug>` (Pass 3.5) as the clean-room check before Pass 4 dispatch — see Pass 2.5 above.
-
-### Pass 4: Index Update (dispatched to research-indexer)
-
-`/mnt/archive4/PAPERS/Prepared/index.md` is agent-curated. No tool ever writes to it (`extract_research.py` and `extract_research_phase2.py` were both neutralised on this concern; they emit `index_extracted_pending-<timestamp>-<rand>.md` sidecars for the indexer to drain).
-
-Dispatch a single `research-indexer` agent with:
-
-- The canonical slug.
-- The path to the produced `/mnt/archive4/PAPERS/Prepared/<slug>.md`.
-- Confirmation the source has been archived to `/mnt/archive4/PAPERS/<slug>.<ext>` (or the video subfolder).
-- Optional: explicit cross-references to memory entries (`project_*`, `feedback_*`) the indexer should mention in the checklist entry. If omitted, the indexer infers from the document's existing top-of-doc Summary section.
-
-**Preconditions** (orchestrator MUST verify before dispatch):
-
-1. The file is at its canonical slug. Title-derived scaffolding slugs (`intro-to-foo`, `the-X-of-Y`) NEVER reach the indexer — rename first.
-2. The source master is at `/mnt/archive4/PAPERS/<slug>.<ext>`.
-3. There is at most one `index_extracted_pending-*.md` file matching this slug. (Multiple pending files for the same slug indicate a duplicate extraction run; resolve before dispatch.)
+After Pass 3 returns, the orchestrator re-runs `tools/validate_research.py --only=<slug>` (Pass 3.5) as the clean-room check — see Pass 2.5 above. When 3.5 is clean and no `FIXME(extract)` / `FIXME(vision)` marks remain, the run is done; summarise the work in your final message to the user (note any `FIXME(audit)` marks the refiner escalated).
 
 ## Pipeline Scripts
 
-All scripts live in `tools/` and use the venv at `tools/.venv/`. None of them touch `/mnt/archive4/PAPERS/Prepared/index.md`. None of them silently overwrite an existing per-slug `.md` — if a `<slug>.md` already exists, they either skip or write a `<slug>.md.regen` sidecar.
+All scripts live in `tools/` and use the venv at `tools/.venv/`. None of them silently overwrite an existing per-slug `.md` — if a `<slug>.md` already exists, they either skip or write a `<slug>.md.regen` sidecar.
 
 | Script | Purpose | Destructive? |
 |--------|---------|---------------|
@@ -633,8 +597,8 @@ All scripts live in `tools/` and use the venv at `tools/.venv/`. None of them to
 | `tools/subsample_long_scenes.py` | Reads the `redetect_scenes` TSV and writes additional `sub-NNN-MM-*.jpg` frames inside any scene longer than `--min-len`. | Append-only. |
 | `tools/srt_to_windows.py` | Groups an SRT into per-slide transcript windows from a `slide_starts.txt`. Output to a chosen path (defaults to `/tmp`). | Writes only to the explicit `--out` path. |
 | `tools/transcribe_to_srt.py` | faster-whisper SRT generation for non-YouTube videos (HLS, local mp4 with no captions). | Refuses to overwrite an existing SRT — writes `<srt-stem>.regen-<YYYYMMDD-HHMMSS>-<6hex>.srt` sidecar instead. Pass `--force` to overwrite in place. |
-| `tools/extract_research.py` | PDF/PPTX → text + image extraction. Supports `--only=SLUG` and `--force`. | Refuses to overwrite an existing per-slug `.md` even under `--only` — writes a `<slug>.regen-<YYYYMMDD-HHMMSS>-<6hex>.md` sidecar instead. Pass `--force` to overwrite in place. **Never writes index.md** — writes a suggested-rows file at `index_extracted_pending-<YYYYMMDD-HHMMSS>-<6hex>.md` instead (merge by hand, then delete). All sidecar suffixes are randomised so concurrent agents don't clobber each other. |
-| `tools/extract_research_phase2.py` | Extract videos embedded in PPTX decks and transcribe them with faster-whisper. (Body-text OCR fallback for image-only PDFs / slides moved into phase 1; per-image OCR was removed entirely — the vision pass owns image description.) Supports `--only=SLUG[,SLUG2]`. | Per-slug `.md` only. **Never writes index.md**. |
+| `tools/extract_research.py` | PDF/PPTX → text + image extraction. Supports `--only=SLUG` and `--force`. | Refuses to overwrite an existing per-slug `.md` even under `--only` — writes a `<slug>.regen-<YYYYMMDD-HHMMSS>-<6hex>.md` sidecar instead. Pass `--force` to overwrite in place. Sidecar suffixes are randomised so concurrent agents don't clobber each other. |
+| `tools/extract_research_phase2.py` | Extract videos embedded in PPTX decks and transcribe them with faster-whisper. (Body-text OCR fallback for image-only PDFs / slides moved into phase 1; per-image OCR was removed entirely — the vision pass owns image description.) Supports `--only=SLUG[,SLUG2]`. | Per-slug `.md` only. |
 | `tools/cleanup_research.py` | Strip watermarks, duplicate headings, garbage OCR. Supports `--only=SLUG`. | Per-slug `.md` only. |
 | `tools/validate_research.py` | Pass 2.5: extract every LaTeX/Mermaid block from `/mnt/archive4/PAPERS/Prepared/<slug>.md`, validate via the Node helper, write `findings-pass2.5-validate.md` sidecar. Supports `--only=SLUG[,SLUG2]`, `--html`. Exits 1 on any parse error. | Read-only on the markdown source; writes only to `assets/<slug>/findings-pass2.5-validate.md` (and `<slug>.preview.html` under `--html`). |
 | `tools/validate_md.mjs` | Node helper invoked by `validate_research.py`. Reads JSON blocks on stdin, validates LaTeX via `katex.renderToString({throwOnError:true})` and Mermaid via `mermaid.parse()` (jsdom-backed). Returns JSON with per-block `ok` + `error`. Not normally called directly. | Pure stdin → stdout, no file writes. |
@@ -654,7 +618,6 @@ All scripts live in `tools/` and use the venv at `tools/.venv/`. None of them to
 
 ```
 /mnt/archive4/PAPERS/Prepared/
-  index.md                          # TOC for all extracted documents
   {slug}.md                         # one markdown per source
   assets/{slug}/                    # images, frames, videos
 ```

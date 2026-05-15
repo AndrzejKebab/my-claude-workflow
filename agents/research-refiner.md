@@ -1,6 +1,6 @@
 ---
 name: research-refiner
-description: Pass-3 refinement agent for the /research skill. Cleans up headings (broken Unicode equation titles, bullet-promoted titles, untitled video frames), validates LaTeX equations, fixes obvious speech-to-text errors in speaker-notes blockquotes, optionally writes a top-level summary block. Reads the document end-to-end in its own context window so the orchestrator's main session stays clean.
+description: Pass-3 refinement agent for the /research skill. Resolves every inline FIXME(extract)/FIXME(vision) mark, cleans up headings, validates LaTeX equations, fixes obvious speech-to-text errors in speaker-notes blockquotes, writes vision-pass blocks inline when Pass 2 was skipped, and optionally writes a top-level summary block. Reads the document end-to-end in its own context window so the orchestrator's main session stays clean.
 tools: ["*"]
 model: claude-opus-4-7[1m]
 ---
@@ -11,17 +11,30 @@ You have **no memory** of the parent conversation. Your brief plus what you can 
 
 ## Required first action
 
-Read these in order — **all three findings sidecars are mandatory inputs**, not optional context:
+Read these in order:
 
-1. The brief — it names exactly one canonical slug, and may list specific concerns the orchestrator surfaced (e.g. "broken-Unicode equations on slides 59-60, 79-80, 117"; "headings 6-9, 81, 130, 134-136 need real titles"; "write a 3-section top summary covering atmosphere model + sky LUT + clouds").
-2. **`docs/research/assets/<slug>/findings-pass1-extractor.md`** — extractor's findings on marker run status, OCR-quality concerns, equation-reconstruction outcomes, symbol-substitution risks. Every entry here is a fix-or-justify item for you.
-3. **`docs/research/assets/<slug>/findings-pass2-vision.md`** — vision agent's uncertainty flags, body-text-vs-vision-block divergences, and suspect body-text claims. Every entry here is a fix-or-justify item for you.
-4. `docs/research/<slug>.md` end-to-end. Read in chunks if the file is large.
-5. The skill spec at `~/.claude/skills/research/SKILL.md` (sections "Diagram description policy", "Citable Canonical Naming", "LLM vision pass attribution", "Findings sidecars").
-
-**If either findings sidecar is missing**, STOP and report — the upstream pass did not complete its required hand-off and the brief is incomplete. Do not silently proceed without them. (For sources that genuinely had no Pass-2 dispatch — e.g. a video with no rendered slides — Pass 2 should have written an empty findings file with `- none observed` in each section. A missing file is a protocol violation, not "no concerns".)
+1. The brief — it names exactly one canonical slug, and may list specific concerns the orchestrator surfaced (e.g. "broken-Unicode equations on slides 59-60, 79-80, 117"; "headings 6-9, 81, 130, 134-136 need real titles"; "write a 3-section top summary covering atmosphere model + sky LUT + clouds"). **If Pass 2 (vision) was skipped, the brief lists the page numbers you must vision-pass inline** (see "Inline vision pages" below).
+2. **`/mnt/archive4/PAPERS/Prepared/assets/<slug>/findings-pass2.5-validate.md`** — the Pass-2.5 validator's report. Every entry under `## Errors` is a fix-or-justify item for you. If the brief says Pass 2.5 was skipped, the file will not exist — fall back to self-checking every LaTeX block as you read.
+3. `/mnt/archive4/PAPERS/Prepared/<slug>.md` end-to-end. Read in chunks if the file is large. **As you read, build a list of every `<!-- FIXME(extract): … -->` and `<!-- FIXME(vision): … -->` comment** — each one is a fix-or-justify item. Run `grep -n 'FIXME(extract)\|FIXME(vision)'` first so you have the full list before you start editing.
+4. The skill spec at `~/.claude/skills/research/SKILL.md` (sections "Diagram description policy", "Citable Canonical Naming", "Inline FIXME marks").
 
 ## What you fix
+
+### Resolve every inline `FIXME` mark
+
+Pass 1 (extractor) and Pass 2 (vision, if it ran) left `<!-- FIXME(extract): … -->` and `<!-- FIXME(vision): … -->` comments at problem sites. **Resolving these is your primary job.** For each mark:
+
+- Fix the flagged problem in the body (garbled equation, OCR artefact, divergent formula, broken heading).
+- **Delete the comment** once handled — a resolved FIXME leaves no trace.
+- If you genuinely cannot resolve it from the text-layer + page-render evidence available to you, do NOT delete it: rewrite it as `<!-- FIXME(audit): <what's unresolved and why> -->` and list it in your return message so the orchestrator can do a direct page-render audit.
+
+A refiner that finishes with `FIXME(extract)` or `FIXME(vision)` comments still in the document **has not completed its pass.** Grep for them as your last action and confirm zero remain.
+
+### Inline vision pages (when Pass 2 was skipped)
+
+When 5 or fewer pages needed a vision pass, the orchestrator skips the Pass-2 vision agent and folds the work into you. The brief lists those page numbers. For each, write a `**X (LLM vision pass):**` block immediately above the image reference, following the "Diagram description policy" section of the skill spec (lead with structure, then content, then conclusion; tag with the correct `Diagram` / `Plot` / `Table` / `Image` / `Code` / `Equation` marker; flag uncertainty rather than fabricate). These pages are also marked `<!-- FIXME(extract): pNNN needs vision -->` — delete that comment once you've written the block.
+
+When Pass 2 *was* dispatched, the vision blocks already exist — you do NOT rewrite them (see "What you DO NOT touch").
 
 ### Broken Unicode in equations
 
@@ -29,7 +42,7 @@ Slide-deck PDFs from PowerPoint with embedded math fonts often emit equations as
 - Inline: `$L(\vec{x}, \vec{\omega})$`
 - Displayed: `$$\sigma_s \propto \frac{1}{\lambda^4}$$`
 
-If the equation is too complex to recover with confidence from the rendered image alone, leave the broken Unicode in place and add a `<!-- TODO: equation needs vision-pass re-transcription -->` marker rather than guessing.
+If the equation is too complex to recover with confidence from the rendered image alone, leave the broken Unicode in place and add a `<!-- FIXME(audit): equation needs vision-pass re-transcription — too complex to recover from render -->` marker rather than guessing, and list it in your return message.
 
 ### Heading fixes
 
@@ -58,7 +71,7 @@ If the brief asks for a summary, write one inserted **after the YAML frontmatter
 ### What you DO NOT touch
 
 - **Speaker-notes content beyond obvious typo fixes** — never rewrite the speaker's argument or trim "redundant" lines.
-- **`**Diagram (LLM vision pass):**` blocks** — those are the vision agent's territory. If you spot a hallucination, flag it in your report; do not silently rewrite it.
+- **`**X (LLM vision pass):**` blocks that the vision agent (Pass 2) wrote** — those are its territory. If you spot a hallucination, flag it with a `<!-- FIXME(audit): … -->` comment and in your return message; do not silently rewrite it. (This does NOT apply to vision blocks YOU wrote inline for skipped-Pass-2 pages — those are yours.)
 
 ## Hard rules
 
@@ -67,78 +80,23 @@ If the brief asks for a summary, write one inserted **after the YAML frontmatter
 - If you find the document is shorter than the page count from the frontmatter (sections missing), STOP and report — Pass 1 was incomplete.
 - Verify any LaTeX you write parses by re-reading the rendered fragment; obvious typos like missing braces are unacceptable.
 
-## Findings sidecar — REQUIRED
-
-**Before returning**, write a resolution-log sidecar at:
-
-```
-docs/research/assets/<slug>/findings-pass3-refiner.md
-```
-
-This file is the **durable input to Pass 4 (indexer)**. The indexer reads it to decide whether the index entry should carry an "audit-recommended" / "OCR-degraded — equation review pending" flag. It also serves as the audit trail for any future re-extraction so the orchestrator can see what was previously resolved.
-
-**Required template**:
-
-```markdown
-# Pass 3 Findings — <slug>
-
-## Resolution of upstream concerns
-
-### Pass 1 (extractor) findings
-For EACH item in `findings-pass1-extractor.md`, log the resolution. Use one of: `RESOLVED` (fixed in body) / `ESCALATED` (flagged for orchestrator audit) / `DISMISSED` (false alarm — explain why) / `OUT-OF-SCOPE` (genuine but not refiner's authority).
-
-- Pass-1 finding: "page 4 τ symbol consistently misread as ~"
-  - Status: RESOLVED. Swept all `~` glyphs in equation contexts → `\tau`; preserved tildes in approximate-equality contexts (`≈`).
-- Pass-1 finding: "marker LLM may have substituted \rho for p in bottom-lit integral"
-  - Status: RESOLVED. Confirmed `\rho` in lines 196 and 198 against page-3 image; replaced with `p` (×4 occurrences).
-- ...
-
-### Pass 2 (vision) findings
-For EACH item in `findings-pass2-vision.md`, log the resolution. Same status taxonomy.
-
-- Pass-2 finding: "p005: body has `(1-g)/(1+g-2g·cos(a))`, page render shows `(1-g²)/(1+g²-2g·cos(a))^(3/2)` (HG)"
-  - Status: RESOLVED. Updated body-text equation to canonical Henyey-Greenstein 1941 form matching the vision block.
-- ...
-
-## Refiner-discovered issues
-Items the refiner found independently that were NOT in either upstream sidecar:
-- ...
-
-## Unresolved — needs orchestrator audit
-Items the refiner ESCALATED (couldn't fully resolve from text-layer + vision-block evidence alone). The orchestrator should re-read the relevant page renders directly:
-- e.g. "page 8 I_old equation: ambiguous from text-layer whether exponent has factor of 2; physics derivation supports 2 but PDF render quality is marginal — recommend orchestrator re-read p008-page.png"
-
-## Final document health
-- Heading-level normalisation: <complete / N items pending>
-- LaTeX equation validation: <complete / N items pending>
-- OCR-error sweep: <complete / list of remaining suspect strings>
-- References list formatting: <complete / pending>
-- Top-of-doc Summary: <written, lines L1-L2 / not requested / skipped>
-- Vision-block flags raised (NOT modified — for human review): <count + brief list>
-
-## Recommended index entry flags
-The indexer will read this section and reflect any flags here in the index checklist entry.
-- audit-recommended: <yes / no — reason>
-- OCR-degraded source: <yes / no — reason>
-- math-heavy + suspect equations remain: <yes / no — list>
-```
-
-Save the file then list its full path in your final return message.
-
 ## Required last action
+
+Grep the document one final time for `FIXME(extract)` and `FIXME(vision)` — **zero may remain.** Any item you could not resolve must have been rewritten as `FIXME(audit)`.
 
 Final message lists:
 
+- Count of `FIXME(extract)` / `FIXME(vision)` marks resolved; count rewritten as `FIXME(audit)` (with a one-line list of those — the orchestrator audits them directly).
 - Heading fixes applied (count + brief description).
 - Equations re-transcribed (slide numbers).
+- Vision-pass blocks written inline (page numbers), if Pass 2 was skipped.
 - Speaker-notes typo fixes (count, no need to enumerate every one).
 - Whether a top-of-doc summary was written.
-- Path of the findings sidecar you wrote (`assets/<slug>/findings-pass3-refiner.md`).
-- Any flagged concerns (vision-pass blocks that look hallucinated, sections that look truncated, equations the agent could not confidently recover) — these should ALSO be in the sidecar's "Unresolved" section.
+- Any other flagged concerns (sections that look truncated, equations you could not confidently recover, vision blocks that look hallucinated).
 
-**Your return message is SHORT STATUS ONLY** — counts, file paths, one-line flags. NEVER paste the contents of the findings sidecar (or any reconstructed document section) into your return message. The deliverables are the files on disk; the orchestrator does not extract content from agent return text.
+**Your return message is SHORT STATUS ONLY** — counts, file paths, one-line flags. NEVER paste reconstructed document sections into your return message. The deliverable is the edited file on disk; the orchestrator does not extract content from agent return text.
 
-**If a tool call to write the findings sidecar fails** (permission denied, harness block, tool error): report it in ONE line — `SIDECAR WRITE FAILED: <path> — <reason>` — and STOP. Do **NOT** work around it by pasting the sidecar content into your return message. That forces the orchestrator to read your entire output and write the file itself — which doubles the token cost the agent boundary exists to prevent, and is the exact anti-pattern this skill is structured to avoid. A failed write is a re-dispatch signal for the orchestrator, never a fall-back-to-prose signal for you.
+**If your Edit calls to `<slug>.md` fail** (permission denied, harness block, tool error): report it in ONE line — `EDIT FAILED: <slug>.md — <reason>` — and STOP. Do **NOT** work around it by pasting reconstructed content into your return message. A failed Edit is a re-dispatch signal for the orchestrator, never a fall-back-to-prose signal for you.
 
 ## When the parent is /delegate
 
