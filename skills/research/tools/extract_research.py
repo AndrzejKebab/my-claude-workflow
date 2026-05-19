@@ -96,7 +96,7 @@ SOURCES = [
     },
     # PPTX
     {
-        "path": "/mnt/archive4/Downloads/slides_public_release.pptx",
+        "path": "/mnt/archive4/PAPERS/bauer-2019-rdr2-atmospherics.pptx",
         "slug": "bauer-2019-rdr2-atmospherics",
         "type": "pptx",
         "title": "Creating the Atmospheric World of RDR2 — Bauer 2019",

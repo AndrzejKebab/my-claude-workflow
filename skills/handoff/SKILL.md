@@ -3,60 +3,57 @@ name: handoff
 description: Write a handoff prompt for a future session. Use when the user asks to write a handoff, prepare a handoff, or document context for a next agent to pick up the investigation.
 ---
 
-Write a handoff prompt as a markdown file under `/tmp`. The file must be usable by a fresh agent that has no memory of this conversation.
+# A handoff is a context briefing. Never a diagnosis.
 
-## Hard rules
+You are writing a handoff because **you didn't finish the task** — out of context budget, out of expertise, or out of time. That premise is binding. **An agent who couldn't finish the task cannot have diagnosed it.** Whatever you "think the bug is" is the same theory that just failed to land a fix.
 
-- **Self-contained.** No dangling references. Do NOT cite tags, hypothesis labels (H1/H2/…), code names, or prior document titles without inlining their meaning. If a fact came from an earlier handoff, copy the fact — not the reference. Assume the next agent will not read any other file you name unless you explicitly tell them to.
+So the handoff carries **context cues only**: the symptom, where the next agent should start looking, what's already been tried and ruled out. Nothing else.
 
-- **Pick one mode, not both.**
-  1. **Diagnosed.** State a single root cause per distinct symptom, with file + line references, and the fix to apply. No alternatives. No ranked hypothesis list.
-  2. **Investigate.** Point at concrete code ranges that must be read end-to-end, and the specific questions to answer after reading. No "probably" or "maybe" commentary in this mode either — the agent decides after reading.
+## Absolute prohibitions
 
-  Never produce a handoff that mixes both ("here's what I think AND here's what to check"). That is the circular-hypothesis pattern that wastes sessions.
+- **No `Mode: Diagnosed`.** No mode field of any kind.
+- **No "Root cause" section.** Not even hedged. Not even "the likely root cause."
+- **No "Fix" / "Three sites" / "Plan" section.** No prescriptive change recipes.
+- **No ranked hypothesis list** ("maybe it's A, maybe B"). Same trap, opposite shape — biases the next session toward your unverified hunches.
+- **No file:line refs that point at "where the fix goes."** File:line refs are allowed ONLY for "here is where the code that exhibits the symptom lives — start your investigation here."
 
-- **No ranked-hypothesis dumps.** A numbered list of 3–5 "maybe" causes is the failure mode this skill exists to prevent. If you feel like writing one, you have not read enough code — read more, then pick one of the two modes above.
+If you find yourself typing any of those — **delete it.** Your theory is unverified by definition.
 
-- **Forbid inherited bad patterns.** If prior sessions went in circles, say so explicitly and list the already-tried-and-disproven directions under "do not revisit" with one-line inlined summaries (not tag refs).
-
-- **Code refs, not paraphrases.** For every load-bearing claim about what code does, quote the file path and line number the next agent must Read directly. Do not paraphrase — paraphrased summaries silently drop early-outs, guards, and branches that change the diagnosis.
-
-- **Deliverable shape.** Close with an explicit "Deliverable" section describing what the next session's reply must contain (walkthrough / diagnosis / fix / verification). This prevents the next agent from defaulting to "here are some more hypotheses".
-
-## Structure
+## Required sections (only these)
 
 ```
 # Handoff: <short topic>
 
 ## Why this handoff exists
-<one short paragraph: what went wrong in prior sessions, if anything; why this document exists>
+One short paragraph. What you attempted, why you ran out (context / expertise / time). Be honest that you did NOT solve this.
 
-## Symptom(s)
-<concrete user-visible behaviour, with repro steps and image paths if relevant>
+## Symptom
+Concrete user-visible behaviour. Exact repro steps. Absolute image paths if relevant.
 
-## Mode: <Diagnosed | Investigate>
+## Where to start reading
+File paths + line ranges + one-line "this is where the symptom surfaces". Orientation, not a guided tour to a predetermined answer.
 
-### If Diagnosed
-- Root cause (one sentence, code-grounded)
-- Fix (file + line + new code)
-
-### If Investigate
-- Required reading (file paths + line ranges)
-- Questions to answer after reading (numbered, code-grounded)
-
-## Already-tried and do-not-revisit
-<bulleted list; each item is a one-line inlined summary, not a tag reference>
+## Already tried (do not revisit)
+Bulleted, one-line each. ONLY things actually attempted and falsified, with the evidence in one phrase. NOT a list of "things I considered."
 
 ## Forbidden moves
-<explicit rules for the next agent — e.g. "no ranked-hypothesis lists", "verify load-bearing claims with direct Read before quoting them">
+Project-level constraints the next agent must respect (e.g. "no `cargo run --bin foo` as verification", "no edits to <module>", "no commits without user instruction").
 
 ## Deliverable
-<exact shape the next session's reply must take>
+What the next session's reply must contain — investigation findings + diagnosis + proposed fix + verification, in that order. This forces the next session to investigate, not extend your guess.
 
 ## Repro / env
-<minimal steps + asset/config versions>
+Worktree path. Branch. Minimal repro. Asset/config versions if material.
 ```
+
+## Why this matters
+
+The single most expensive failure this skill exists to prevent: **a handoff that looks diagnosed convinces the next session not to investigate.** They iterate on your dead-end hypothesis until the user redirects, having burned an entire orchestration cycle on the wrong layer.
+
+The handoff that triggered the rewrite of this skill (`/tmp/taa-streaming-hash-handoff.md`, May 2026) claimed `Mode: Diagnosed`, gave three load-bearing file:line "fix sites", and was wrong about the root cause. Two iterations of agents trusted the framing and never investigated. The actual bug was one layer deeper. ~Half the orchestration's cost was wasted because the handoff *looked* authoritative.
+
+If you genuinely have evidence pinning a root cause, **you wouldn't be writing a handoff** — you'd be landing the fix or telling the user directly. The act of writing a handoff is itself the evidence that your theory is unverified. Treat it accordingly.
 
 ## Filename
 
-`/tmp/<short-kebab-topic>-handoff.md`. If a previous handoff exists at a similar name, add `-v2`, `-v3`, etc. — never overwrite, the prior file is evidence of what didn't work.
+`/tmp/<short-kebab-topic>-handoff.md`. If a prior handoff exists at a similar name, append `-v2` / `-v3`. **Never overwrite** — the prior file is evidence of what didn't work.

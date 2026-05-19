@@ -63,7 +63,7 @@ SOURCES_BY_SLUG = {
         "type": "pdf",
     },
     "bauer-2019-rdr2-atmospherics": {
-        "path": "/mnt/archive4/Downloads/slides_public_release.pptx",
+        "path": "/mnt/archive4/PAPERS/bauer-2019-rdr2-atmospherics.pptx",
         "type": "pptx",
     },
     "frostbite-pb-volumetrics": {

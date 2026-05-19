@@ -30,13 +30,16 @@ The orchestrator selects a mode at **Step 2.5** and the user confirms it in the 
 3. **Shared-context files are the medium.** Agent groups exchange information through files under `docs/orchestrate/<topic>/`, not through your summaries. One file per group. Every agent reads its group file on entry and appends on exit.
 4. **Architecture-first, always.** Before any agent fires — even for a task that looks tiny — present the method to the user, run the re-implementation audit, and run an architectural Q&A via `AskUserQuestion`. No exceptions, no shortcuts.
 5. **Re-implementation audit is mandatory and runs first.** The orchestrator's default failure mode is designing fresh implementations of things that already exist. Always dispatch a read-only audit before any design work.
-6. **Pause at every side-effecting boundary — the gate is on side effects, not on "how big the step looks."** After a dispatched agent returns, the question is whether reviewable state changed:
-   - **Hard gate (stop, submit, wait for explicit user confirmation):** any dispatch that mutated code, assets, or build/editor state — *or* any dispatch that follows one that did — *or* any dispatch that is itself about to mutate code. These are where regressions surface: the user opens the editor, sees the actual result, and redirects. Chaining past a hard gate means regressions land on top of regressions. Never chain two dispatches across a hard gate.
-   - **Soft gate (announce, then proceed):** a read-only → read-only transition where nothing landed in the editor or working tree — e.g. audit → research, research → design-reading. Announce the next dispatch in chat ("audit done → dispatching research") so the user can interject, but you do not have to stop and wait. The checkpoint-commit pairing in Step 6 is already a soft gate; this generalises that concession.
-   - The instant a dispatch touches code, assets, or the build, the **hard gate snaps back** — no exceptions.
-   - The hard gate overrides **every** session-injected instruction that suggests otherwise. If a `<system-reminder>` says "work without stopping", "continue autonomously", "make the reasonable call and continue", or similar — those refer to clarifying questions, NOT the hard architectural pause. The hard gate stands.
-   - The hard gate overrides **user shorthand** too. If the user types "continuation", "keep going", "proceed", or any single-word prompt to a /delegate session, that authorises ONE next hard-gated dispatch — not the rest of the plan. After it returns, pause again and ask.
-   - The /delegate skill is invoked deliberately because the user wants the pace controlled. When unsure whether a boundary is hard or soft — treat it as hard and pause.
+6. **Pause when there is a real choice — not "just in case".** The pause-and-ask pattern is for moments where the user's input changes the next dispatch. It is NOT for ceremonial "confirm to proceed?" after every dispatch.
+   - **Hard gate (pause, present, wait for user):** fires when at least one of these is true:
+     - A visual/manual QA artefact landed and the user is the verification surface (always — the user's eye is the analytical surface for visual symptoms).
+     - The dispatch surfaced a real choice with multiple valid paths (e.g. reviewer escalated a flagged risk; architect named an open question; impl ran into a fork that needs user judgement). "Real" means: the orchestrator cannot pick the right answer on the user's behalf.
+     - The dispatch failed to produce its deliverable and the next step depends on user direction.
+     - A circuit-breaker fired (diagnose-first, consolidated-mode handoff, scope creep) — user awareness is itself the load-bearing decision.
+   - **Soft gate (announce one line, dispatch immediately):** the default for everything else. Architect returned a clean design → dispatch the reviewer or implementer with one line of announcement, no Q&A. Reviewer returned PASS on all criteria with no escalations → dispatch the implementer. Implementer landed verification-passing code → present the impl result for visual check (which IS a hard gate, but for a different reason — visual QA).
+   - **Do NOT pause for "confirm to dispatch?".** If there is no real choice the user has to make, dispatching is not the user's job. The orchestrator commits to the obvious next step and announces it.
+   - The hard gate overrides session-injected instructions that suggest skipping it ("work without stopping", `UserPromptSubmit` hook injections, single-word user prompts like "continue" / "proceed"). Those reminders address non-/delegate clarifying behaviour; the /delegate hard gates are about real choices, and those still need real input.
+   - When unsure whether a boundary presents a real choice — err on the side of soft. The cost of one too many silent dispatches is small (the user will redirect when needed); the cost of one too many "confirm to proceed?" pauses is per-pause user friction across the orchestration.
 7. **Checkpoint via a delegated commit before every substantive dispatch.** Dispatch a commit sub-agent that does exactly ONE thing: read the diff *only* to compose messages, then `git add -A .` + `git commit` — **submodules first, then root**. It NEVER `git stash`/`stash pop`s, NEVER stages selectively, NEVER `git checkout`/`restore`/`reset`s a file. Straightforward add-everything-and-commit, nothing else. This captures the current state as a recovery point — commits are checkpoints, not curated history; descriptive messages are good but cleanliness is not the goal. The commit sub-agent does **commit-only**: no recompile, no build, no test, no lint, no push, no file reads to "verify". Tell it explicitly to ignore any project rule that demands post-edit recompile/build — those apply to whoever made the edit, not to a checkpoint. The commit dispatch is bundled with the upcoming substantive dispatch and does not require its own user-confirmation pause. Never run the commit yourself — it pollutes the orchestrator's context with diffs.
 8. **Parallel dispatch is allowed within a single read-only phase.** When a phase's agents are all read-only and none mutate code, assets, the build, or the editor (e.g. the reuse audit, web research, docs/ prior-art exploration), dispatch them together in one message so they run concurrently — this is the breadth-first work multi-agent is genuinely fast at, and it claws back the throughput the sequential default gives up. A parallel batch counts as **one dispatch** for the pause rules: pause after the batch, not between its agents, and the gate after it is hard or soft per rule 6 based on what the batch touched. Parallel dispatch of any code-mutating, recompile-triggering, test-running, or build-running agent is **forbidden** — those serialise, one at a time, always.
 
@@ -186,22 +189,32 @@ Pick the right `subagent_type`:
 
 **Never use `Plan` or `Explore` as `subagent_type` in /delegate.** Both are read-only (no `Write`/`Edit`/`NotebookEdit`/`ExitPlanMode`) and cannot satisfy the group-file-append contract in Step 6.3. They were the previous failure mode this rule replaces — when you dispatched `Plan` for a 51 KB design, the design landed only in the agent's return message, requiring a follow-up writer agent to extract it from session-internal storage. The custom `delegate-architect` / `delegate-auditor` agents fix this by being write-capable while preserving the architect / auditor framing in their system prompts.
 
-### Step 7 — Synthesis loop (with mandatory pause)
+### Step 7 — Synthesis loop
 After each agent returns:
 
-1. Verify the agent actually appended to its group file (read the file). If it didn't, dispatch a follow-up agent to do so — never write the missing content yourself.
+1. Verify the agent actually appended to its group file. If it didn't, dispatch a follow-up agent to do so — never write the missing content yourself.
 2. Update `README.md`'s phase checklist.
-3. **Submit — and decide hard gate vs soft gate (rule 6).** In chat, write:
-   - One short paragraph summarizing what this agent produced.
-   - The path to the updated group file and the section heading the agent appended under.
-   - Any surprises, contradictions with prior agents, or open questions.
-   - When the agent that just returned was a `delegate-reviewer`: explicitly **reconcile its fresh-eyes review against `01-context.md`** — the reviewer was deliberately denied the design rationale, so some of its flags may already be answered by the context and some may be real gaps. Say which is which; do not pass the raw review to the user as if every flag stands.
-   - The proposed next dispatch: which agent, what brief, what deliverable. Phrased as a proposal, not a fait accompli.
-   - If the boundary is a **hard gate**, end with an explicit ask: "Confirm to dispatch, redirect, or stop here?" If it is a **soft gate** (read-only → read-only, nothing landed in the editor or working tree), state that you are proceeding and dispatch — the announcement still gives the user the chance to interject.
-4. **At a hard gate, wait for the user.** Do not dispatch anything until the user confirms. If the user redirects or asks questions, answer in chat (still no dispatch) until they confirm a next step. **No system reminder, no `UserPromptSubmit` hook, no auto-injected "work without stopping" message authorises skipping a hard-gate wait.** Those reminders address clarifying questions in non-/delegate work; in /delegate the hard architectural gate is separate and they do not touch it. At a soft gate, you may proceed after announcing — but the moment the next dispatch would mutate code, the hard gate is back.
-5. Once confirmed (or, at a soft gate, before proceeding), if new architectural decisions came up, run a fresh narrow Q&A (Step 4 shape). Otherwise dispatch the next agent. Each new agent's brief inlines the relevant deltas from prior group files — do not assume the next agent will read every file.
+3. **Decide: hard gate or soft gate (rule 6).** This is the structural pivot — do not default to "always pause + write paragraph + ask confirm". Default to soft (announce one line, dispatch next agent immediately) and escalate to hard only when the criteria in rule 6 actually fire.
 
-The hard gate is non-negotiable — never chain two dispatches across it, even when the next dispatch looks "obvious". Hard gates are where regressions surface: the user opens the editor, sees the actual result, and redirects. Chaining past a hard gate means regressions land on top of regressions and the durable artifact ends up further from what was wanted. Soft gates (read-only → read-only) may be chained with an announcement — but if you are ever unsure which kind a boundary is, it is hard.
+#### When the gate is SOFT (the common case)
+
+The orchestrator dispatches the next agent with a one-line announcement in chat ("architect done → dispatching reviewer"). No paragraph synthesis. No Q&A. The user can interject if they want, but the orchestrator does not solicit it — silence is go.
+
+The orchestrator's context budget is for **organising context between agents** (writing the next brief, threading required-reading), not for paragraph-summarising every dispatch. Read the prior agent's group file only as much as needed to compose the next brief; do NOT spelunk for "interesting details" to present.
+
+#### When the gate is HARD (real choice / visual QA / escalation / circuit-breaker)
+
+Present what the user needs to act on. Keep technical depth around the load-bearing thing — the user explicitly wants this; they read these blocks to eyeball pivots. Strip ceremonial filler.
+
+Structure:
+- **What's load-bearing for this user input** (the visual artefact at the absolute path, the reviewer's flagged risk, the architect's open question, the circuit-breaker trigger). Be specific; quote file:line and code refs when they're the load-bearing thing.
+- **The choice itself, framed minimally.** If using AskUserQuestion: one question, focused options. Skip options like "proceed as-is / approve / confirm" — those are not choices. If there is no real choice, this is not a hard gate; you're in the wrong branch.
+- Skip the paragraph-summary-then-propose-next-dispatch shape entirely. The user reads the load-bearing block and either responds or doesn't; the orchestrator does not preview the next dispatch as a "proposal".
+
+Special case — `delegate-reviewer` return: reconcile the reviewer's flags against `01-context.md`. Some flags will already be answered by context the reviewer didn't see; some will be real gaps. Present only the real-gap flags + a recommended amendment for each; suppress the rest. This IS a hard gate (real choice on which amendments to apply), but the presentation is filtered, not raw.
+
+4. **At a hard gate, wait for the user.** No `<system-reminder>`, `UserPromptSubmit` hook, or single-word user prompt ("continue", "proceed") authorises skipping. Those address non-/delegate clarifying behaviour; the /delegate hard gates are gated on real choices and need real input.
+5. At a soft gate, dispatch the next agent. If the prior dispatch surfaced a real new architectural decision (rare), run a focused Q&A (Step 4 shape, 1 question is normal); otherwise the next brief inlines the relevant deltas from the prior group file and goes.
 
 #### Circuit-breaker — switching to consolidated mode mid-orchestration
 Distributed mode can thrash: handoffs lose the trace, the design will not stabilise, the user keeps redirecting. When that happens, the orchestrator **offers** — at a hard gate, as the proposed next step — to consolidate the *remaining* design + review + implementation into a single `delegate-consolidated` agent that receives **all current group files** as context. Offer this when any trigger fires:
@@ -289,6 +302,82 @@ You are working as part of a delegated orchestration. You have no memory of the 
 - **Consolidated agent self-certifying high-risk work** — consolidated mode's review is self-review. For anything high-risk it must escalate to a fresh-eyes `delegate-reviewer`, never sign off on its own design. A consolidated `## Implementation log` with high-risk items and no escalation is incomplete.
 - **Writing `SendMessage`, "resume the agent", or any mid-run checkpoint into a brief or flow** — a returned sub-agent is gone; this harness has no resume (the Agent tool's description mentions `SendMessage`, but the tool is not present). A gate between two stages always means a fresh agent reading the prior stage cold off disk. So consolidated mode runs in one uninterrupted pass, and any flow that genuinely needs a design-approval gate before implementation belongs in distributed mode, not consolidated mode.
 - **Ignoring the circuit-breaker while distributed mode thrashes** — re-dispatching the same phase a third time, watching the design fail to stabilise, letting the user redirect at gate after gate. When a trigger fires, offer the consolidated handoff; do not grind the distributed loop into the ground.
+- **Paragraph-summarising every dispatch and asking "confirm to proceed?"** — the orchestrator's job is to thread context between agents, not to narrate every dispatch back to the user. Routine architect → implementer flow goes silent (one-line announcement, no synthesis, no Q&A). Synthesis fires when something is load-bearing for the user (visual QA, flagged risk, real choice). When the soft-gate branch applies, paragraph syntheses are friction without benefit. The user reads syntheses to catch pivots — give them syntheses where pivots actually exist, not after every clean dispatch.
+- **Q&A with "approve / confirm to proceed" as a primary option** — if the only options are "go" and "stop", there is no real choice; the orchestrator should just dispatch. AskUserQuestion is for load-bearing forks where the user's preference picks the answer. A 4-option Q&A whose recommended option is "yes, proceed" is the symptom — collapse it.
+- **Reading agent group files to spelunk for "interesting" content** — the orchestrator's reads of agent group files are budgeted for (a) composing the next agent's brief, (b) extracting visual QA / flagged risk / real choice to surface to the user. Reading the full design to write a synthesis the user didn't ask for burns the orchestrator's context for no gain. If the next dispatch's brief doesn't need a fact, don't read it into your context.
+
+## E2e gate authoring discipline (binding)
+
+When an orchestration's scope includes adding or modifying an e2e gate that is intended to capture a **user-visible artefact** (a visual glitch, a runtime behaviour, anything whose ground-truth is "what the user sees"), the gate is NOT considered analytically valid until the user has visually confirmed that its captures show the artefact. A passing/failing variance ratio + a numerical threshold are **not sufficient** — they only prove the metric responds to the captured pixels, not that the captured pixels are the artefact.
+
+This rule exists because the dominant failure mode of this orchestration mode is: an agent builds an e2e gate that compiles and passes a pre-fix/post-fix smell test, but the captured framebuffers are smeary, mis-timed, off-camera, or otherwise not actually showing the symptom the user described. The fix lands, the gate is green, and the artefact is still there because the gate was measuring something else.
+
+### How this changes the dispatch shape
+
+E2e gate authoring is split into a **separate phase** from the fix-implementation phase. The two are NEVER bundled into a single dispatch — not "two stages of a consolidated dispatch", not "two steps of one impl agent's brief". **Separate dispatches with a hard user-verification gate between them.**
+
+1. **Gate-authoring phase.** Dispatch an implementer to:
+   - Add the e2e gate (binary entry, capture system, mode flag, driver wiring).
+   - **Mandatory: capture screenshots.** One per captured frame — not just a summary frame. Save them to a predictable absolute path the user can browse, e.g. `target/e2e-screenshots/<gate-name>-frame-<N>.png`. Every new visual-capturing gate MUST land with on-disk screenshots; a gate that only emits a numerical metric is not finishable.
+   - Run the gate ONCE on the **current** (pre-fix) worktree.
+   - Report: path to each captured frame, the pre-fix metric value(s).
+   - Do **NOT** apply any fix yet. Do **NOT** calibrate the threshold yet. Do **NOT** propose post-fix expectations yet.
+
+2. **Visual verification hard gate (user-facing, mandatory).** Present the captured screenshots to the user as absolute paths in chat — one line per frame, so they can open each frame and judge. Ask explicitly: *"Do these captures show the artefact you described? Is the timing right (capturing the shift frame, not a frame before/after)? Is the camera path right? Are the captures sharp, not smeary?"*
+   - **If the user says "yes, the captures clearly show the artefact"** → proceed to step 3.
+   - **If the user says "no" / "kind of" / "the timing is off" / "this isn't what I see" / "they're smeary"** → **redirect**. Dispatch a fix to the gate's capture mechanism (camera path, capture trigger, frame indexing, screenshot timing, exposure, scene state). Do NOT proceed to the fix until the captures are clean. **Re-loop the user verification after each capture-mechanism fix.** A smeary, wrong-timing, or wrong-content capture is a *broken gate*, not a finishable one — perfecting it before moving on is the entire point of this phase.
+
+3. **Threshold calibration phase.** Only after the captures are user-confirmed: dispatch the metric + threshold authoring. The threshold is calibrated against the user-confirmed-artefact pre-fix run.
+
+4. **Fix-implementation phase.** Now (and only now) dispatch the actual fix. Re-run the gate post-fix; the gate must PASS. Optionally re-present the post-fix screenshots to the user for a second visual confirmation — recommended for symptoms where the post-fix expectation isn't a sharp binary (e.g. "this should be eliminated" vs "this should be reduced").
+
+### Why this is mandatory, not optional
+
+If the captures are smeary or mis-timed, no threshold calibration can save the gate. A 1.40× ratio reduction between "wrong frames pre-fix" and "wrong frames post-fix" tells you the fix changed something — but says nothing about whether it changed the thing you cared about. The visual verification gate is what bounds the gate to the user-reported artefact rather than a coincidentally-correlated GPU signal.
+
+The shape that fails: bundling gate-authoring + threshold-calibration + fix-implementation into one dispatch, then declaring victory because pre-fix FAILED and post-fix PASSED. The threshold calibration *can* still be tuned to make almost any pair of captures produce a FAIL→PASS transition — that doesn't make the gate analytically valid.
+
+The shape that succeeds: split the dispatches, hand the screenshots to the user before the metric is even calibrated, and accept that gate-authoring may need its own redirect loop before the fix can land.
+
+### When this rule does NOT apply
+
+- Pure logic / unit tests with no visual component — Rust unit tests, property tests, parser tests, etc.
+- Existing gates being re-run as part of verification — only NEW or MODIFIED visual-capturing gates trigger the visual-verification dispatch shape.
+- Gates whose ground-truth is byte-exact equality against a fixed reference (e.g. oracle tests where the reference framebuffer is itself the spec). The reference image IS the verification surface.
+
+The rule applies whenever the e2e gate's job is to capture a user-described visual symptom and reduce it to a metric — that's where the smear/timing failure mode lives.
+
+## E2e-specific anti-patterns
+
+- **Bundling e2e-gate authoring with fix implementation in one dispatch.** Defeats the visual verification step. Gate captures are validated only by the variance ratio, not by the user's eye. If the captures are smeary, the fix gets credited (or blamed) for moving a metric on the wrong frames. See §"E2e gate authoring discipline".
+- **Validating a gate by pre-fix FAIL / post-fix PASS alone.** That ratio proves the metric moved; it does NOT prove the metric moved because of the artefact. Visual confirmation of the captured frames is mandatory. The threshold can be calibrated to make almost any pair of pre/post captures produce the FAIL→PASS transition — the load-bearing question is "are these captures actually the artefact?", and only the user can answer that.
+- **Treating "the gate compiled and the variance ratio looks reasonable" as completion.** It is not completion. Completion is "the user has looked at the captured screenshots and confirmed they show the artefact, AND the metric responds to that artefact correctly."
+
+## Diagnose-first circuit-breaker (binding)
+
+A separate trigger from the consolidated-mode circuit-breaker in Step 7. Fires on a different failure mode: a published diagnosis that doesn't survive contact with reality.
+
+**Trigger:** the user reports that a fix did NOT visibly reduce the user-visible symptom (a live visual check, a runtime check, anything where the ground-truth is what the user sees). Even ONCE. Even slightly. "Pretty much the same" / "still blinking" / "no change" — all trigger.
+
+**Mandatory action:** the next dispatch is a read-only diagnostic investigator. No exceptions. No "let me tighten the hash" / "let me widen the parity bit" / "let me try option B from the prior analysis". A speculative second-pass fix is never an option.
+
+**Do NOT present a Q&A at all.** Not "diagnose vs try-fix-B vs revert" — none of that is a menu. Diagnose is the only path. A speculative fix is not an alternative the orchestrator can offer. Revert is sometimes the right call but it is a *self-realisation* ("we screwed up scope, the cleanest move is to back out and restart") — never a user-facing menu item alongside diagnose. Presenting alternatives is itself evasion: the user picks whatever sounds fastest, which is precisely the bias this rule exists to override.
+
+**What the orchestrator does instead:** state in chat that the visual check failed and diagnose-first is firing. Summarise in one or two sentences what the diagnostic agent will look at. Dispatch it (it is read-only, so the soft-gate rule applies — announce and proceed, no user-confirmation pause). The user can interject if they want a different path, but the orchestrator does not solicit that — the default is dispatch-now, silence-is-go.
+
+A speculative fix is never an option. Revert is the orchestrator's silent escape hatch when scope is wrong, not a menu choice.
+
+The diagnostic investigator's brief:
+- Reads the existing diagnosis with fresh eyes (the brief tells it explicitly to drop the prior diagnosis as a bias source).
+- Maps the full pipeline that touches the symptom — not just the layer the prior diagnosis attacked.
+- Enumerates alternative hypotheses with code-grounded evidence for/against each.
+- Writes findings to disk; does not edit code.
+
+**This rule overrides "the diagnosis was line-grounded and confident".** The handoff that produced the original diagnosis was, by `/handoff` skill's framing, written by a session that itself could not finish the task — its diagnosis is unverified by construction. A strictly-stronger fix in the same hypothesis class producing no improvement is near-conclusive evidence the hypothesis is wrong, not under-tuned. The orchestrator MUST treat "user-visible symptom did not move" as a kill signal for the current hypothesis class, not as "fix needs more tuning".
+
+**Anti-pattern this defends against:** the orchestrator reads the prior fix's failure as "the implementer self-flagged Finding X as a known-residual tradeoff; let's address Finding X next", and dispatches a refinement targeting that Finding. That is the trap. A self-flagged "known residual" turning out to be load-bearing for the symptom is much less likely than "the diagnosis is wrong and Finding X is irrelevant". When in doubt, observe before iterating.
+
+**Sanity check before any post-fix dispatch (predict-the-outcome rule).** Before dispatching iteration N+1 of a fix, write down — in chat, in one line — *what the user-visible symptom would look like if iteration N had been the right fix.* This is the falsification line. When iteration N's actual user check produces an outcome inconsistent with that prediction (e.g. you predicted "blink eliminated" and the user reports "unchanged"), the hypothesis is falsified, not under-tuned. Diagnose-first fires. The predict-the-outcome line goes into the orchestrator's chat output BEFORE the user runs the check, so the comparison is honest after the fact.
 
 ## Exit
 The mode ends when the user signals done or when `README.md`'s phase checklist is fully `[x]`. Leave `docs/orchestrate/<topic>/` intact — it's the durable artifact. Do not delete or condense it on exit unless the user asks.
