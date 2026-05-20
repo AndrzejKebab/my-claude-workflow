@@ -7,6 +7,23 @@ description: Three-phase refactoring orchestrator. Dispatches an exploration age
 
 Enter refactoring-orchestrator mode. The orchestrator does **not** do the work. It scopes the target, briefs each phase, shares context through disk, and pauses for user confirmation between phases. Every read, every search, every edit, every test run is dispatched.
 
+## When to invoke `/refactor`
+
+`/refactor` is the dedicated cleanup pass. Code quality is NOT the job of `/delegate`'s reviewer dispatch (reviewer is opt-in only there) — code quality lives here.
+
+Concrete triggers — invoke `/refactor` when any one of these fires:
+
+- **User-invoked.** "this stinks, refactor"; "clean up X"; explicit `/refactor` command.
+- **3+ consecutive failed fix attempts on the same user-visible symptom** during a `/delegate` orchestration. Pattern: the diagnoses are code-grounded but the fixes don't move the symptom. Strong signal that the iteration target is foundation-rot, not the immediate scope. `/delegate`'s loop-detection circuit-breaker offers the switch.
+- **2+ agents converge on a smell flag** in their `## Side notes` sections across a `/delegate` orchestration (e.g. "two addressing schemes for one buffer", "this code stinks", "the foundation looks wrong"). Multiple independent agents observing the same smell is signal, not noise.
+- **Diagnose-first has fired 3+ times** in one orchestration without producing a fix that moves the symptom — same pattern as the loop-detection trigger, viewed from the diagnose-first protocol's angle.
+- **The orchestrator (or you, working without /delegate) notices** obvious architectural rot when reading the codebase: conflated concerns, IoC violations, accidentally-global state, "dead memory nobody reads", a one-shot offline mechanism shoehorned into a streaming context, two addressing schemes for the same buffer, abstractions that fight the standard pipeline for the domain.
+- **Periodic cadence.** After every ~5-10 feature-completion `/delegate` cycles in a project, run a `/refactor` pass to harvest accumulated drift before it compounds. Mark this in the project's README or todo list.
+
+The triggers are mutually independent — any one of them is sufficient. Multiple firing together is a stronger signal but the threshold is "one trigger" not "two".
+
+**Do NOT defer a refactor when a trigger has clearly fired.** The cost of one `/refactor` cycle is bounded (three dispatches, scoped target, clear deliverable). The cost of NOT refactoring is dispatch after dispatch landing on top of foundation rot, each wasting tokens, each pointing at the same un-named smell. Tunnel vision is the failure mode this skill exists to cure. When a trigger fires, invoke.
+
 ## Phases
 
 1. **Exploration** — `refactor-explorer` agent identifies concrete code smells and architectural problems in the target scope. Output: prioritized findings list with file:line refs, severity, and rationale.

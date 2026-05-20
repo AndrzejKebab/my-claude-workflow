@@ -17,11 +17,32 @@ Enter orchestration mode. In this mode the orchestrator does **not** do the work
 - **Cognition** ("Don't Build Multi-Agents") identified the failure mechanism: handoff and parallel workers make *conflicting implicit decisions*, because the full agent trace does not survive being compressed into a handoff file. Their fix is to keep context continuous — share full traces, not distilled summaries.
 - **Therefore:** the multi-agent split is right when the work is genuinely breadth-first, independent, exploration-heavy, or too big for one context. It is *wrong* — by both labs' findings — when the work is one cohesive, dependency-dense, design↔implementation-coupled change that fits in one context. A large fraction of real `/delegate` tasks are the second kind.
 
-**Distributed mode (default).** Orchestrator + separate auditor / architect / reviewer / implementer agents, phase gates, shared-context files. Buys context isolation and a genuinely independent fresh-eyes reviewer. Costs: trace loss across handoffs, the token multiplier, latency, re-dispatch thrash.
+**Distributed mode (default).** Orchestrator + separate auditor / architect / implementer agents, phase gates, shared-context files. Buys context isolation. Costs: trace loss across handoffs, the token multiplier, latency, re-dispatch thrash. **A fresh-eyes reviewer is NOT in the default flow** — reviewer dispatches are opt-in, invoked only when there's a concrete reason (high-stakes hard-to-revert change, user explicitly requested it, design crosses a critical boundary). The default verification is the probe-gate (tests + e2e + user-visual); code-quality / smell concerns belong to `/refactor` sessions, not to an inline reviewer pass. See Step 6's subagent_type list for the reviewer's opt-in framing.
 
-**Consolidated mode.** The orchestrator still does the cheap load-bearing parts itself — scoping, the re-implementation audit, the architectural Q&A with the user, writing `01-context.md`. Then it dispatches **one** agent in a 1M-context window that designs → independently self-reviews → implements → logs, in a single uninterrupted run, flushing each stage to its group file as it goes. One continuous context throughout — the full reasoning trace carries from design into implementation with zero handoff loss, which is the entire point of the mode. The price is named and real: there is no design-approval gate *before* code is written (a returned sub-agent cannot be resumed in this harness — see "Sub-agent context boundaries"), and the review is *self*-review, not fresh-eyes. Both are bounded by the Step 2.5 eligibility criteria — consolidated mode is only for low-blast-radius, reversible work — and it carries an escalation valve (it must escalate high-risk findings to a real `delegate-reviewer`). If the work needs a design-approval gate before implementation, that is distributed mode's native structure — use distributed mode.
+**Consolidated mode.** The orchestrator still does the cheap load-bearing parts itself — scoping, the re-implementation audit, the architectural Q&A with the user, writing `01-context.md`. Then it dispatches **one** agent in a 1M-context window that runs the compounded phases in a single uninterrupted run, flushing each stage to its group file as it goes. One continuous context throughout — the full reasoning trace carries phase-to-phase with zero handoff loss, which is the entire point of the mode. The price is named and real: there is no mid-run approval gate (a returned sub-agent cannot be resumed in this harness — see "Sub-agent context boundaries"), and when implementation is included the review is *self*-review. Both are bounded by the Step 2.5 eligibility criteria. If the work needs a hard approval gate between phases, that is distributed mode's native structure — use distributed mode.
 
 The orchestrator selects a mode at **Step 2.5** and the user confirms it in the **Step 4** Q&A. Distributed mode can also hand off to consolidated mode mid-orchestration when it is thrashing — the **circuit-breaker** in Step 7.
+
+### Consolidated dispatch shapes
+
+Consolidated mode is NOT a single fixed pipeline — it is a family of dispatch shapes. The **compound** shapes stitch multiple phases (research, architect, implement) into one continuous trace; the **singular** shapes run only one phase. Default to compound — singular dispatches forfeit the trace continuity that makes consolidated mode worth choosing.
+
+- **Research → Architect** (compound, design-producing). The agent investigates research / prior art / the codebase, then designs. Output is a design document; no code is written. Suitable for: large preliminary fieldsearch, big refactors, new greenfield work, or when the user explicitly asked for a design document.
+- **Prompt → Architect** (compound, design-producing). Same shape but the architecting starts directly from the brief without a preliminary investigation pass — appropriate when the brief itself carries enough context (handoff doc, prior orchestration's group files, user-supplied research). Same use cases as Research → Architect.
+- **Research → Architect → Implement** (compound, full pipeline). For one significant task inside a larger debugging set — the kind of work where the design genuinely cannot be frozen before implementation because impl discoveries feed back. Briefed in **freeform** — the agent receives a clear explanation of the problemspace (symptoms, hypotheses, pipeline geometry, prior diagnoses) and is trusted to phase its own work. NO strict scenario, NO enforced roleset; the brief explains the problem and the expected artefact at the end, the agent decides the rest.
+- **Singular Research** OR **Singular Architect** (singular, rare). Standalone investigation, or standalone architecting from research already on disk. Use sparingly — there is almost always a benefit to compounding (the trace from investigation → design, or design → code, is what consolidated mode buys you, and the singular shape throws it away). Reach for these only when the next phase is genuinely independent (a literature review the user wants to read and react to before deciding direction; a design pass that will be implemented weeks later by a different orchestration).
+
+The Step 2.5 eligibility criteria (bounded context, single cohesive scope, low blast radius / reversible, tight design↔impl coupling) all apply to **Implement-containing** consolidated shapes — they are what bound the no-pre-impl-gate and self-review costs. Design-only shapes (Research → Architect, Prompt → Architect, Singular Architect) write no code, so the blast-radius criterion does not apply; they are eligible whenever the work matches their use case. Singular Research writes no design or code; it is eligible whenever the investigation is the user-visible artefact.
+
+### Suggestive roles, not enforced roles
+
+Roles in `/delegate` are *suggestive*. The brief tells a sub-agent what the WORK is, not who the sub-agent has to pretend to be. Briefs that say "you are an architect; your only job is X, do not touch Y" force the agent into tunnel vision — the agent's sense of responsibility evaporates inside the role boundary, and it ignores everything outside its labelled scope, including the side-notes channel that exists precisely to catch what the brief missed. The same failure mode plays out at every scale: a "diagnostic agent" that won't flag an obvious upstream architectural smell because "that's not what I was asked to look at", an "implementer" that grinds through a bad design instead of bailing out, a "reviewer" that signs off on a passing test even though the test measures the wrong thing.
+
+Frame the agent's responsibility broadly. Lead with the problemspace ("this is a debugging task — here is the symptom, here is the pipeline, here is the artefact we want at the end"), then SUGGEST phasing ("you'll likely want to investigate first, then design, then implement"), then specify the structural contract (required reading, deliverable-on-disk, side-notes). The agent is on equal footing — flagship Opus, full context window, equal entitlement to call smells, raise scope concerns, and redirect direction.
+
+The only non-negotiables are the structural contracts: required reading, deliverable on disk, the side-notes section. The role label itself ("architect", "implementer", "diagnostic") is decorative — useful for the orchestrator to think about phasing, not a cage to put the agent in. This applies to every brief, every dispatch, every shape — distributed and consolidated, compound and singular.
+
+**Orchestrator speculation is a particularly damaging form of role-forcing** — it forces the agent to address a hypothesis the orchestrator pulled from training-data pattern-match rather than from any code reading. See Hard Rule 9 for the absolute binding version: the orchestrator does NOT speculate code-grounded mechanisms in synthesis blocks, briefs, or orchestrate documents. Speculations leak as "candidate mechanisms" lists, "the issue is probably X" framings, "the most plausible causes are A / B / C" hard-gate blocks. All forbidden. Surface user observations and grounded prior findings; dispatch; trust the dispatched agent to find the mechanism.
 
 ## Hard rules
 
@@ -42,6 +63,17 @@ The orchestrator selects a mode at **Step 2.5** and the user confirms it in the 
    - When unsure whether a boundary presents a real choice — err on the side of soft. The cost of one too many silent dispatches is small (the user will redirect when needed); the cost of one too many "confirm to proceed?" pauses is per-pause user friction across the orchestration.
 7. **Checkpoint via a delegated commit before every substantive dispatch.** Dispatch a commit sub-agent that does exactly ONE thing: read the diff *only* to compose messages, then `git add -A .` + `git commit` — **submodules first, then root**. It NEVER `git stash`/`stash pop`s, NEVER stages selectively, NEVER `git checkout`/`restore`/`reset`s a file. Straightforward add-everything-and-commit, nothing else. This captures the current state as a recovery point — commits are checkpoints, not curated history; descriptive messages are good but cleanliness is not the goal. The commit sub-agent does **commit-only**: no recompile, no build, no test, no lint, no push, no file reads to "verify". Tell it explicitly to ignore any project rule that demands post-edit recompile/build — those apply to whoever made the edit, not to a checkpoint. The commit dispatch is bundled with the upcoming substantive dispatch and does not require its own user-confirmation pause. Never run the commit yourself — it pollutes the orchestrator's context with diffs.
 8. **Parallel dispatch is allowed within a single read-only phase.** When a phase's agents are all read-only and none mutate code, assets, the build, or the editor (e.g. the reuse audit, web research, docs/ prior-art exploration), dispatch them together in one message so they run concurrently — this is the breadth-first work multi-agent is genuinely fast at, and it claws back the throughput the sequential default gives up. A parallel batch counts as **one dispatch** for the pause rules: pause after the batch, not between its agents, and the gate after it is hard or soft per rule 6 based on what the batch touched. Parallel dispatch of any code-mutating, recompile-triggering, test-running, or build-running agent is **forbidden** — those serialise, one at a time, always.
+
+9. **The orchestrator NEVER speculates code-grounded hypotheses.** This is binding and absolute. The orchestrator does not read code (rule 1) — therefore any "candidate mechanism" / "this is probably caused by X" / "likely the issue is Y" the orchestrator produces from its own head is *pattern-matching off vibes*, not synthesis off evidence. Pattern-matched hypotheses look plausible because they're built from training-data priors about how rendering / compilers / networking / etc. usually break — they have no connection to *this* codebase's actual state.
+   - **Forbidden:** writing speculative mechanisms into the orchestrator's chat synthesis, into agent briefs ("the issue is probably X — investigate that first"), into orchestrate documents ("candidate mechanisms: …"), into hard-gate framings ("the most plausible causes are A / B / C"), or anywhere downstream of the orchestrator's role.
+   - **Why it's binding:** orchestrator speculation is a particularly damaging form of role-forcing (see "Suggestive roles, not enforced roles"). It pre-frames the dispatched agent's investigation around the orchestrator's hypothesis list, defeating the freshness the dispatch buys. Every speculation that leaks into a brief contaminates an Opus dispatch with 1M context worth of free investigation, channelling it toward the orchestrator's hunches instead.
+   - **What the orchestrator MAY surface in synthesis blocks, briefs, and documents:**
+     1. **User-verbatim observations.** Quote the symptom exactly. No paraphrasing into mechanism.
+     2. **Sharp diagnostic thresholds the user reported.** "10k present, 9.5k gone" is observation, not speculation. Surface it.
+     3. **Findings already grounded in prior agent logs, orchestrate docs, or canon papers on disk.** Cite the document. If the prior agent wrote a forward-looking note like "this gap may matter for a future symptom X", quoting it forward is grounded because the agent who wrote it DID read code.
+   - **What to do when the user asks a question the orchestrator does not know the answer to:** read a small specific set of files directly (the orchestrate group files inside `docs/orchestrate/<topic>/` plus any narrowly-scoped specific file the question points at) OR dispatch a quick read-only agent to answer. Do NOT answer from pattern-match. Reading two named files to confirm a doc-claim is not the same as wide-roaming code exploration; the rule-1 prohibition is on the orchestrator doing the *investigative reading the dispatched agent is supposed to do*, not on reading a specific file the user pointed at to answer a specific question.
+   - **What to do when synthesising a hard-gate block:** state the symptom, state the threshold, cite the grounded prior finding (if any), then STOP. Dispatch. Trust the dispatched agent to find the actual mechanism. The orchestrator's *speculation about why* is worth less than nothing — it actively biases the agent.
+   - **The exception clause:** if the user explicitly asks "what do you think is causing this?" — even then, do not speculate freely. Either (a) honestly answer "I don't know; the orchestrator doesn't read code", offer to dispatch a diagnostic, OR (b) read the specific files needed to give a code-grounded answer, then answer grounded in what you read (citing file:line).
 
 ## Sub-agent context boundaries
 
@@ -98,17 +130,26 @@ When it returns, read `00-reuse-audit.md` yourself (this is the orchestrator's o
 
 If the `delegate-auditor` agent type is not installed, fall back to a `general-purpose` agent and inline the auditor framing from `~/.claude/agents/delegate-auditor.md` (or its source at `/home/midori/_dev/my-claude-workflow/agents/delegate-auditor.md`). **Do not** use `Explore` — it is read-only and cannot satisfy the "Write the audit to disk" contract.
 
-### Step 2.5 — Select execution mode
-With the audit in hand, run a quick blast-radius analysis and pick the execution mode (see "Two execution modes" above). **Consolidated mode is eligible only when all four hold:**
+### Step 2.5 — Select execution mode (and, if consolidated, the dispatch shape)
+With the audit in hand, run a quick blast-radius analysis and pick the execution mode (see "Two execution modes" above).
+
+**Implement-containing consolidated mode is eligible only when all four hold:**
 
 1. **Context fits with headroom.** The required-reading set + the code surface the task touches + the expected diff is bounded and known — heuristic ceiling ~250–300K tokens of source, leaving working room inside a 1M window. Open-ended codebase exploration disqualifies it.
 2. **Single cohesive scope, one writer.** One coherent change, not N independent workstreams. Genuinely parallel breadth-first work belongs in distributed mode (with parallel fan-out, rule 8).
-3. **Low blast radius, reversible.** A bad outcome is cheap to catch and cheap to revert. This is the load-bearing criterion — it is what makes self-review acceptable in place of a fresh-eyes reviewer.
-4. **Tight design↔implementation coupling.** The design genuinely cannot be frozen before implementation because implementation discoveries feed back into design.
+3. **Low blast radius, reversible.** A bad outcome is cheap to catch and cheap to revert. This is the load-bearing criterion — it is what makes self-review acceptable in place of a fresh-eyes reviewer. (Applies to Implement-containing shapes only — design-only shapes write no code, so this criterion does not gate them.)
+4. **Tight design↔implementation coupling.** The design genuinely cannot be frozen before implementation because implementation discoveries feed back into design. (Applies to Implement-containing shapes only.)
 
-**Consolidated mode is disqualified if any of:** the task needs broad unbounded exploration · the change is high-stakes / hard-to-revert / correctness-critical · the work is genuinely parallel · the user explicitly wants the strict pace-controlled regimen.
+**Implement-containing consolidated mode is disqualified if any of:** the task needs broad unbounded exploration · the change is high-stakes / hard-to-revert / correctness-critical · the work is genuinely parallel · the user explicitly wants the strict pace-controlled regimen.
 
-Default to distributed mode when the call is close — it is the conservative choice and the one the user invoked /delegate to get. Record the chosen mode and a one-line rationale grounded in the "Two execution modes" evidence: it goes into the Step 3 block, becomes a Step 4 Q&A question, and is written into `README.md` and `01-context.md`.
+**Design-only consolidated shapes (Research → Architect, Prompt → Architect, Singular Architect) and Singular Research** are eligible whenever the work matches their use case — they write no code, so the blast-radius / coupling criteria do not gate them. Reach for them when the user explicitly wants a design document, a literature review, a refactor proposal, or new-job greenfield architecture. Compound shapes (Research → Architect) are strongly preferred over singular shapes (Singular Research or Singular Architect alone) — singular forfeits the trace continuity that justifies choosing consolidated at all.
+
+**If consolidated mode is chosen, also pick the dispatch shape** from "Consolidated dispatch shapes":
+- Greenfield work, big refactor, design-doc request → **Research → Architect** (or **Prompt → Architect** if the brief already carries the context — handoff doc, prior orchestration's group files, user-supplied research).
+- One significant debugging task inside a larger set, with tight design↔impl coupling → **Research → Architect → Implement** (freeform brief — explain the problemspace, not a role).
+- Standalone investigation or standalone design with no immediate follow-through → **Singular Research** or **Singular Architect** (rare; prefer compound unless the next phase is genuinely independent).
+
+Default to distributed mode when the call is close — it is the conservative choice and the one the user invoked /delegate to get. Record the chosen mode AND the shape (when consolidated) and a one-line rationale grounded in the "Two execution modes" evidence: it goes into the Step 3 block, becomes a Step 4 Q&A question, and is written into `README.md` and `01-context.md`.
 
 ### Step 3 — Present method to the user
 In chat, write a compact block containing:
@@ -141,8 +182,8 @@ Create under `docs/orchestrate/<topic>/`:
   - Reuse audit summary (table from Step 2).
   - Required reading: file paths + line ranges, with a one-line "why this matters" each.
   - Forbidden moves: known anti-patterns, things prior sessions tried that didn't work.
-- One file per active agent group, e.g. `02-design.md`, `03-impl.md`, `04-review.md`. Created lazily as groups activate.
-- `04-review.md` is **deliberately different**: it is a fresh-eyes review brief, not a context bundle. It contains *only* the success criteria (extracted from the Q&A), a pointer to the artifact under review (diff, files, or group file), and the review deliverable shape. It does **not** contain the design rationale, the required-reading list, or the forbidden-moves list. Review agents read `04-review.md` and **not** `01-context.md` — withholding the rationale is what lets the reviewer catch assumptions the implementer silently baked in (generator–verifier loops work better with fresh context). The orchestrator reconciles the fresh-eyes review against full context in the Step 7 synthesis.
+- One file per active agent group, e.g. `02-design.md`, `03-impl.md`. Created lazily as groups activate.
+- `04-review.md` is **only created if a reviewer dispatch is opt-in invoked** (see Step 6). Reviewer is NOT a default phase. When invoked it is **deliberately different**: a fresh-eyes review brief, not a context bundle. Contains *only* success criteria + artifact pointer + review deliverable shape. NOT design rationale, NOT required reading, NOT forbidden moves. Review agents read `04-review.md` only — withholding the rationale lets them catch silent assumptions. Orchestrator reconciles the review against full context in Step 7 synthesis.
 
 Each file is **self-contained**: code refs not paraphrases, no dangling tags, no "see other file X" without inlining the relevant fact. Follow the handoff skill conventions if available.
 
@@ -173,19 +214,21 @@ Wait for it to return, then proceed with the substantive dispatch. The checkpoin
 Then dispatch the substantive agent. Each Agent brief MUST contain, verbatim:
 
 1. The full restated goal (not a summary).
-2. **Required first action:** read `docs/orchestrate/<topic>/01-context.md` and the agent's group file in full before doing anything else — **except review agents, which read only `04-review.md`** (see Step 5). For a design or implementation agent, the required reading MUST also name, by file, the prior agent's `## Decisions & rejected alternatives` and `## Assumptions made` sections — those are the load-bearing trace, and the polished design alone does not carry the implicit decisions behind it.
-3. **Required last action:** use the `Write` or `Edit` tool to append findings, decisions, and code refs to the agent's group file before returning. Specify the section heading the agent should append under (e.g. `## delegate-architect findings (<ISO date>)`). The deliverable MUST land on disk — agent return text is for status only, never for content. (`delegate-architect` and `delegate-auditor` already enforce this in their system prompts; for `general-purpose` you must spell it out in the brief.)
+2. **Required first action:** read `docs/orchestrate/<topic>/01-context.md` and the agent's group file in full before doing anything else — **except review agents (opt-in only), which read only `04-review.md`** (see Step 5). For a design or implementation agent, the required reading MUST also name, by file, the prior agent's `## Decisions & rejected alternatives` and `## Assumptions made` sections — those are the load-bearing trace, and the polished design alone does not carry the implicit decisions behind it.
+3. **Required last action:** use the `Write` or `Edit` tool to append findings, decisions, and code refs to the agent's group file before returning. Specify the section heading the agent should append under (e.g. `## delegate-architect findings (<ISO date>)`). **Every deliverable MUST include a `## Side notes / observations / complaints` section** — see the "Side-notes deliverable contract" section below for what goes in there. The deliverable MUST land on disk — agent return text is for status only, never for content. (`delegate-architect` and `delegate-auditor` already enforce this in their system prompts; for `general-purpose` you must spell it out in the brief.)
 4. The specific question(s) to answer or action(s) to take, with file paths and constraints inlined.
-5. Required deliverable shape (table / diff / checklist / numbered findings).
+5. Required deliverable shape (table / diff / checklist / numbered findings) PLUS the mandatory side-notes section.
 
 Pick the right `subagent_type`:
 
 - **Audit / re-implementation reuse search** → `delegate-auditor` (writes its table + `## Borderline calls` to `00-reuse-audit.md` directly).
-- **Design / architecture plan** → `delegate-architect` (writes the design to its group file directly, including the mandatory `## Decisions & rejected alternatives` and `## Assumptions made` sub-sections).
-- **Fresh-eyes review / verification** → `delegate-reviewer` (reads `04-review.md` only — never `01-context.md` — and writes its review to the review group file directly).
-- **Consolidated single-pass design→review→implement** → `delegate-consolidated` (consolidated mode only — designs, self-reviews, implements, and logs in one uninterrupted 1M-context run; see "Consolidated mode — the single-pass dispatch").
-- **Implementation, multi-step research, anything that runs builds/tests** → `general-purpose`.
+- **Design / architecture pass (distributed mode)** → `delegate-architect` (writes the design to its group file directly, including the mandatory `## Decisions & rejected alternatives` and `## Assumptions made` sub-sections).
+- **Fresh-eyes review / verification** → `delegate-reviewer` — **OPT-IN ONLY, NOT a default phase.** Reviewer dispatches are bureaucratic overhead disguised as rigor when the probe-gate (tests + e2e + user-visual) already does conformance verification. Only invoke when there's a concrete reason: high-stakes hard-to-revert change, user explicitly requested it, design crosses a critical boundary you genuinely want a second pair of eyes on. The default distributed-mode flow is architect → impl with the probe-gate as verification — NO reviewer between them. (Reads `04-review.md` only — never `01-context.md` — and writes its review to the review group file directly.)
+- **Consolidated single-pass dispatch (any shape from "Consolidated dispatch shapes")** → `delegate-consolidated`. The agent runs in a 1M-context Opus window; the **shape is conveyed via the brief, not via subagent_type**. The brief tells the agent which phases to compound (Research → Architect, Prompt → Architect, Research → Architect → Implement, Singular Research, Singular Architect) and explains the problemspace; the agent decides how to phase. See "Consolidated mode — the single-pass dispatch".
+- **Implementation, multi-step research, anything that runs builds/tests, standalone investigation** → `general-purpose`.
 - **Specialized agents (code-reviewer, etc.)** where they exist and have Write tools.
+
+**Frame the role as suggestive, not commanded.** When writing the brief, lead with the **problemspace** (what the work is, what the artefact at the end looks like) and let the role be a SUGGESTION of how to approach it. Avoid "you are an architect; your only job is X". Prefer "this is a debugging task — here is the symptom, here is the pipeline; you'll likely want to investigate first, then design, then land the fix; surface anything that doesn't fit". The structural contracts (required reading, deliverable on disk, side-notes section) are non-negotiable; the role label is decorative. See "Suggestive roles, not enforced roles". This is binding for every dispatch — `general-purpose`, `delegate-consolidated`, even the named specialised agents whose system prompts already carry a framing (you can still soften the BRIEF you give them).
 
 **Never use `Plan` or `Explore` as `subagent_type` in /delegate.** Both are read-only (no `Write`/`Edit`/`NotebookEdit`/`ExitPlanMode`) and cannot satisfy the group-file-append contract in Step 6.3. They were the previous failure mode this rule replaces — when you dispatched `Plan` for a 51 KB design, the design landed only in the agent's return message, requiring a follow-up writer agent to extract it from session-internal storage. The custom `delegate-architect` / `delegate-auditor` agents fix this by being write-capable while preserving the architect / auditor framing in their system prompts.
 
@@ -198,7 +241,7 @@ After each agent returns:
 
 #### When the gate is SOFT (the common case)
 
-The orchestrator dispatches the next agent with a one-line announcement in chat ("architect done → dispatching reviewer"). No paragraph synthesis. No Q&A. The user can interject if they want, but the orchestrator does not solicit it — silence is go.
+The orchestrator dispatches the next agent with a one-line announcement in chat ("architect done → dispatching impl"). No paragraph synthesis. No Q&A. The user can interject if they want, but the orchestrator does not solicit it — silence is go.
 
 The orchestrator's context budget is for **organising context between agents** (writing the next brief, threading required-reading), not for paragraph-summarising every dispatch. Read the prior agent's group file only as much as needed to compose the next brief; do NOT spelunk for "interesting details" to present.
 
@@ -211,13 +254,15 @@ Structure:
 - **The choice itself, framed minimally.** If using AskUserQuestion: one question, focused options. Skip options like "proceed as-is / approve / confirm" — those are not choices. If there is no real choice, this is not a hard gate; you're in the wrong branch.
 - Skip the paragraph-summary-then-propose-next-dispatch shape entirely. The user reads the load-bearing block and either responds or doesn't; the orchestrator does not preview the next dispatch as a "proposal".
 
-Special case — `delegate-reviewer` return: reconcile the reviewer's flags against `01-context.md`. Some flags will already be answered by context the reviewer didn't see; some will be real gaps. Present only the real-gap flags + a recommended amendment for each; suppress the rest. This IS a hard gate (real choice on which amendments to apply), but the presentation is filtered, not raw.
+Special case — `delegate-reviewer` return (opt-in dispatches only): reconcile the reviewer's flags against `01-context.md`. Some flags will already be answered by context the reviewer didn't see; some will be real gaps. Present only the real-gap flags + a recommended amendment for each; suppress the rest. This IS a hard gate (real choice on which amendments to apply), but the presentation is filtered, not raw.
+
+Special case — **agent side-notes that flag code smell or scope concerns**: every agent's deliverable includes a `## Side notes / observations / complaints` section (see "Side-notes deliverable contract" below). Read it. If an agent surfaced a high-severity smell flag ("this foundation is rotten; iterating inside it won't work"), that IS a hard gate — present the flag to the user and offer to invoke `/refactor` rather than continuing the current orchestration's iteration loop. Suppress low-severity / subjective complaints unless multiple agents converge on the same one (signal vs noise).
 
 4. **At a hard gate, wait for the user.** No `<system-reminder>`, `UserPromptSubmit` hook, or single-word user prompt ("continue", "proceed") authorises skipping. Those address non-/delegate clarifying behaviour; the /delegate hard gates are gated on real choices and need real input.
 5. At a soft gate, dispatch the next agent. If the prior dispatch surfaced a real new architectural decision (rare), run a focused Q&A (Step 4 shape, 1 question is normal); otherwise the next brief inlines the relevant deltas from the prior group file and goes.
 
 #### Circuit-breaker — switching to consolidated mode mid-orchestration
-Distributed mode can thrash: handoffs lose the trace, the design will not stabilise, the user keeps redirecting. When that happens, the orchestrator **offers** — at a hard gate, as the proposed next step — to consolidate the *remaining* design + review + implementation into a single `delegate-consolidated` agent that receives **all current group files** as context. Offer this when any trigger fires:
+Distributed mode can thrash: handoffs lose the trace, the design will not stabilise, the user keeps redirecting. When that happens, the orchestrator **offers** — at a hard gate, as the proposed next step — to consolidate the *remaining* work into a single `delegate-consolidated` agent that receives **all current group files** as context. Pick the shape from "Consolidated dispatch shapes" by what remains: if design has not stabilised and code has not landed, offer Research → Architect (or Prompt → Architect if the group files already carry the context); if both design and impl remain coupled and the work is debugging-shaped, offer Research → Architect → Implement freeform. Offer this when any trigger fires:
 
 1. **Re-dispatch loop** — the same phase has been dispatched ≥2× because prior output was incomplete or wrong.
 2. **Demonstrated trace loss** — the reviewer or implementer keeps flagging things that *were* decided but did not survive into the group file.
@@ -230,25 +275,35 @@ The offer is a proposal at a hard gate, not an automatic switch — the user con
 If code must be written, dispatch an "implementer" `general-purpose` agent with the full shared context and an explicit file/diff plan. The orchestrator does not Edit, Write, run tests, run builds, or run shells beyond what's needed to manage the orchestrate directory.
 
 ### Consolidated mode — the single-pass dispatch
-This **replaces Steps 6–8** when Step 2.5 + the Step 4 Q&A selected consolidated mode (or when the Step 7 circuit-breaker fired and the user accepted). It is **one agent, one continuous context, one uninterrupted run** — design, review, and implementation share a single trace with zero handoff loss. There is no mid-run gate: a returned sub-agent cannot be resumed in this harness (see "Sub-agent context boundaries"), so any "checkpoint" between design and implementation would mean a fresh implementer reading the design cold off disk — which is just distributed mode with the trace thrown away. If the work needs a design-approval gate before code is written, it does not belong in consolidated mode — that is distributed mode's job.
+This **replaces Steps 6–8** when Step 2.5 + the Step 4 Q&A selected consolidated mode (or when the Step 7 circuit-breaker fired and the user accepted). It is **one agent, one continuous context, one uninterrupted run** — the compounded phases share a single trace with zero handoff loss. There is no mid-run gate: a returned sub-agent cannot be resumed in this harness (see "Sub-agent context boundaries"), so any "checkpoint" between phases would mean a fresh agent reading the prior phase cold off disk — which is just distributed mode with the trace thrown away. If the work needs an approval gate between phases, it does not belong in consolidated mode — that is distributed mode's job.
 
-1. **Checkpoint commit first** — exactly as Step 6: a delegated `general-purpose` commit sub-agent on `model: "sonnet"`, commit-only. This is the recovery point — consolidated mode writes code with no pre-implementation gate, so a clean checkpoint immediately before the dispatch is what makes that safe.
-2. **Dispatch one `delegate-consolidated` agent.** It must run in a 1M-context Opus window — inherit the orchestrator's model, do not downgrade; the continuous full-context window is the entire point of the mode. Its brief contains the full restated goal, the required reading (`01-context.md` + `00-reuse-audit.md` + repo files with line ranges), and — if entered via the circuit-breaker — every prior group file, flagged as partial and contested. The agent works four stages in one uninterrupted run, flushing each to its group file before the next:
-   - **Design** — `## Design` + `## Decisions & rejected alternatives` + `## Assumptions made`.
-   - **Independent review** — reviews its own design and the existing code it touches against the success criteria; `## Independent review`. This is *self*-review: the brief tells it to be adversarial about its own design and, for anything it rates high-risk, to **recommend a follow-up fresh-eyes `delegate-reviewer` dispatch** rather than self-certify.
-   - **Implementation** — makes the edits and runs the project's verification gates (those project rules DO apply to the agent making the edit).
-   - **Implementation log** — `## Implementation log`: what changed by file, what was verified and how, and a restatement of anything the self-review escalated.
-3. **Single end hard gate.** The agent returns status only. Because code was mutated, this is a hard gate (rule 6): read the group file, submit the result to the user, surface anything the self-review escalated, and wait. This is where the user reviews the finished work — if the design was wrong, the redirect is a fresh `delegate-consolidated` re-dispatch that reads the now-existing code + the prior `## Decisions` + the correction off disk. For low-blast-radius work — the only work consolidated mode is eligible for — a post-hoc redirect is acceptable; that is exactly what Step 2.5 criterion 3 buys. If high-risk items were escalated, the proposed next dispatch is instead a fresh-eyes `delegate-reviewer` scoped to exactly those items.
+1. **Checkpoint commit first** — exactly as Step 6: a delegated `general-purpose` commit sub-agent on `model: "sonnet"`, commit-only. This is the recovery point. (For design-only shapes the checkpoint is lighter-stakes — no code will be written — but still do it; the agent may still write docs.)
+2. **Dispatch one `delegate-consolidated` agent.** It must run in a 1M-context Opus window — inherit the orchestrator's model, do not downgrade; the continuous full-context window is the entire point of the mode. Brief composition depends on the chosen shape (see "Consolidated dispatch shapes"). Common to all shapes: the full restated goal, the required reading (`01-context.md` + `00-reuse-audit.md` + repo files with line ranges), and — if entered via the circuit-breaker — every prior group file, flagged as partial and contested. **Lead with the problemspace; suggest the phasing.** The brief tells the agent which phases to compound; it does NOT script a role for the agent to perform.
+   - **Research → Architect** / **Prompt → Architect** (design-producing). The agent investigates (Research → Architect only) and designs. Group-file output: `## Investigation` (only for Research → Architect, summarising the findings the agent thought were load-bearing), `## Design`, `## Decisions & rejected alternatives`, `## Assumptions made`, `## Side notes / observations / complaints`. NO code is written. NO `## Implementation log`. The self-review stage is *optional* and lighter here — a one-paragraph `## Self-review of design` is fine; the design will be reviewed at the post-dispatch hard gate by the user.
+   - **Research → Architect → Implement** (full pipeline, debugging-focused). Briefed in **freeform** — explain the symptom, the pipeline geometry, prior diagnoses, hypotheses you have, what the artefact looks like at the end. Do NOT script "stage 1 do X, stage 2 do Y"; let the agent phase its own work. Group-file output: `## Investigation`, `## Design` + `## Decisions & rejected alternatives` + `## Assumptions made`, `## Self-review` (adversarial — anything rated high-risk is escalated to a fresh-eyes `delegate-reviewer`, not self-certified), `## Implementation log` (what changed by file, verification results), `## Side notes / observations / complaints`. The agent runs project verification gates after the edits (project rules apply to whoever is editing).
+   - **Singular Research** (rare). The agent investigates a question and writes findings. Group-file output: `## Investigation` + `## Side notes / observations / complaints`. NO design, NO code.
+   - **Singular Architect** (rare). The agent designs from research already on disk. Group-file output: `## Design` + `## Decisions & rejected alternatives` + `## Assumptions made` + `## Side notes / observations / complaints`. NO code.
 
-Consolidated mode's strength is the unbroken trace — design, review, and implementation share one agent context, so it does not suffer the handoff loss distributed mode does. Its costs are real and named: no design-approval gate before code is written, and the review is self-review rather than fresh-eyes. The Step 2.5 eligibility criteria (bounded context, single cohesive scope, low blast radius / reversible, tight design↔impl coupling) exist precisely to bound those costs, and the escalation valve in the review stage covers the reviewer-independence gap. Everything outside Steps 6–8 — Steps 1 through 5, the README / `01-context.md` artifacts, the Exit rule — applies to consolidated mode unchanged.
+   For all shapes, the agent flushes each section to disk before moving on — if it dies mid-task the trace survives. The structural contract (required reading, deliverable on disk, side-notes) is non-negotiable; the *phasing* inside the dispatch is the agent's call once briefed.
+3. **Single end hard gate.** The agent returns status only. The orchestrator reads the group file, submits the result to the user, surfaces anything the agent escalated, and waits. For Implement-containing shapes this is a hard gate because code mutated — if the design was wrong, the redirect is a fresh `delegate-consolidated` re-dispatch that reads the now-existing code + the prior `## Decisions` + the correction off disk; for low-blast-radius work (the only work Implement-containing consolidated is eligible for) a post-hoc redirect is acceptable. For design-only shapes this is still a hard gate, but the redirect is cheaper — a fresh design dispatch with the correction. If high-risk items were escalated, the proposed next dispatch is instead a fresh-eyes `delegate-reviewer` scoped to exactly those items.
+
+Consolidated mode's strength is the unbroken trace across whichever phases were compounded. Its costs depend on the shape: design-only shapes carry almost no cost (no code, easy redirect); Implement-containing shapes carry the real costs (no pre-impl gate, self-review). The Step 2.5 eligibility criteria + the escalation valve in the self-review stage exist precisely to bound the Implement-containing costs. Everything outside Steps 6–8 — Steps 1 through 5, the README / `01-context.md` artifacts, the Exit rule — applies to consolidated mode unchanged.
 
 ## Agent brief template (copy-paste skeleton)
+
+The template below leads with the **problemspace**, then SUGGESTS the role/phasing, then specifies the structural contract. Do not flip the order. Do not turn the suggestion into a command ("you are an architect; do X, do not touch Y") — that produces tunnel vision. The agent is flagship Opus on equal footing; trust it to phase its own work once it knows what the work is.
 
 ```
 You are working as part of a delegated orchestration. You have no memory of the parent conversation — this brief contains everything you need.
 
+# Problemspace
+<what the work is — symptom / question / artefact-at-the-end, in plain language. NOT a role assignment.>
+
 # Goal
-<full restated goal, verbatim>
+<full restated user goal, verbatim>
+
+# Suggested approach (suggestion — not a script)
+<one short paragraph or 2-3 bullets sketching how you'd phase it: e.g. "you'll likely want to investigate the X pipeline first, then design the fix, then land it. Phase however makes the most sense once you see the code." For consolidated dispatches, name the compound shape (Research → Architect / Research → Architect → Implement / etc.) as a guideline, not a script.>
 
 # Required reading (in order)
 1. docs/orchestrate/<topic>/01-context.md   (REVIEW AGENTS: read docs/orchestrate/<topic>/04-review.md instead — and ONLY that)
@@ -256,21 +311,21 @@ You are working as part of a delegated orchestration. You have no memory of the 
 3. <prior agent's "## Decisions & rejected alternatives" + "## Assumptions made" sections, by file — for design/impl agents>
 4. <any other repo files with line ranges>
 
-# Your task
-<concrete, single-paragraph task statement>
-
 # Constraints
 - <inlined user constraints from the Q&A>
 - <inlined forbidden moves from prior agents>
 
 # Deliverable
-- <exact shape: table / diff / numbered findings / file list>
-- Append your output under the section heading "## <agent-name> findings (<ISO date>)" in docs/orchestrate/<topic>/<group-file>.md before returning.
+- <exact shape: table / diff / numbered findings / file list / design doc / implementation log — match to the work>
+- Append your output under the section heading "## <descriptive-section> (<ISO date>)" in docs/orchestrate/<topic>/<group-file>.md before returning.
+- **Required: end your deliverable with `## Side notes / observations / complaints`.** Bullet anything you noticed outside the brief's scope that the orchestrator should know — suspicious code, IoC violations, abstractions that fight the standard pipeline for the domain, the brief feeling over-constrained, decisions in the codebase that don't make sense, subjective reactions, suspicions about whether the FOUNDATION is right vs whether the specific task is right. If you suspect iterating inside the current architecture won't work, say so loudly. Equal footing — your observations are signal.
 
-# Hard rules
+# Hard rules (structural — non-negotiable)
 - Do not skip the required reading.
 - Do not invent files or line numbers — verify with Read or Grep.
-- Reuse existing types and utilities from the reuse audit unless explicitly told to invent.
+- Reuse existing types and utilities from the reuse audit unless the brief explicitly directs otherwise.
+- If the design feels wrong while you implement / the constraints force a workaround that's worse than restructuring / the foundation you're iterating inside of stinks — **bail out and write the smell-flag in your side-notes** rather than grinding through. Smell-driven escape is a first-class output; the orchestrator decides whether to act, your job is to surface.
+- The role label in this brief is suggestive. The work itself is what matters; phase it however makes the most sense. Side-notes is your channel to flag anything the brief didn't anticipate.
 ```
 
 ## Anti-patterns
@@ -286,7 +341,10 @@ You are working as part of a delegated orchestration. You have no memory of the 
 - **Chaining dispatches across a hard gate** — never dispatch twice in a row across a code-mutating boundary without submitting the prior result to the user and getting confirmation. "Obvious" next steps that touch code are the ones most likely to drift from the user's actual intent. (Soft gates — read-only → read-only — may be chained with an announcement; see rule 6.) When unsure which kind a boundary is, it is hard.
 - **Reading session reminders as override of the hard gate** — `<system-reminder>` blocks that say "work without stopping", `UserPromptSubmit` hooks that auto-append a directive, or any harness-injected note that softens clarifying-question behaviour DO NOT authorise chaining across a /delegate hard gate. The user invoked /delegate specifically to control the pace; if they wanted autonomy they would have invoked a different mode. When a reminder and the skill conflict, the skill wins.
 - **Serial dispatch of independent read-only agents** — if a phase's agents are all read-only and don't touch code/assets/build/editor (audit, web research, docs/ prior-art exploration), running them one after another wastes the one thing multi-agent is genuinely fast at. Dispatch them as one parallel batch (rule 8). The forbidden direction is the inverse: parallel dispatch of any code-mutating / recompile / test / build agent.
-- **Giving the review agent `01-context.md` or the design rationale** — defeats the entire point of a fresh-eyes pass. A reviewer who shares the implementer's context rubber-stamps the implementer's assumptions. Review agents read `04-review.md` (criteria + artifact pointer) and nothing else; the orchestrator reconciles their flags against full context at the Step 7 synthesis.
+- **Giving the (opt-in) review agent `01-context.md` or the design rationale** — defeats the entire point of a fresh-eyes pass. A reviewer who shares the implementer's context rubber-stamps the implementer's assumptions. Review agents read `04-review.md` (criteria + artifact pointer) and nothing else; the orchestrator reconciles their flags against full context at the Step 7 synthesis. (Reminder: reviewer is opt-in only — see Step 6 — not a default phase.)
+- **Invoking the reviewer as a default phase** — reviewer dispatches are bureaucratic overhead when the probe-gate (tests + e2e + user-visual) already does conformance verification. The default distributed-mode flow is architect → impl with the gate as verification. Only opt in to a reviewer when there's a concrete reason: high-stakes hard-to-revert change, user explicitly requested it, design crosses a critical boundary you genuinely want a second pair of eyes on. The reviewer's per-dispatch cost (one Opus dispatch, 10-20 minutes, possible re-architect loop if it FAILs) is real and not justified by "it's how we did it before".
+- **Tunnel vision — scope discipline turned into foundation blindness.** Scope discipline is a per-dispatch virtue (keeps context clean, prevents drift). But it becomes blindness when no dispatch has a mandate to step back and question whether the FOUNDATION is right. If every agent in a long orchestration scopes narrowly and nobody calls the smell, you're in tunnel vision. The side-notes deliverable contract + the loop-detection circuit-breaker exist to break this — read agent side-notes, watch for repeated diagnose-first cycles or convergent smell flags, and switch to `/refactor` when the iteration target itself is wrong.
+- **Suppressing agent side-notes** — agents are flagship Opus dispatches with rich context. If an agent surfaces "this code stinks" or "the brief asked the wrong question" in side-notes, READ IT. Don't skip the section because the brief's main deliverable was clean. The expensive thing is running Opus and ignoring 99% of what it observed because the brief didn't ask.
 - **Design agent that persists only the polished design** — the `## Decisions & rejected alternatives` and `## Assumptions made` sub-sections are the load-bearing trace. An implementer who only sees the design re-derives every implicit decision, often differently. If a design agent's group-file output is missing those sub-sections, dispatch a follow-up to add them — do not let the next agent run without them.
 - **Reading user shorthand as a blanket plan-approval** — "continuation", "go", "keep going", "proceed", "do the rest" each authorise ONE next dispatch, not the remainder of the plan. After that one dispatch returns, pause again and ask. Do not infer "continue all phases" from "continuation".
 - **Running the commit yourself** — committing pulls the diff into the orchestrator's context and burns tokens on text the orchestrator doesn't need to read. Always delegate the checkpoint commit, even when it feels faster to just `git commit` directly.
@@ -305,6 +363,12 @@ You are working as part of a delegated orchestration. You have no memory of the 
 - **Paragraph-summarising every dispatch and asking "confirm to proceed?"** — the orchestrator's job is to thread context between agents, not to narrate every dispatch back to the user. Routine architect → implementer flow goes silent (one-line announcement, no synthesis, no Q&A). Synthesis fires when something is load-bearing for the user (visual QA, flagged risk, real choice). When the soft-gate branch applies, paragraph syntheses are friction without benefit. The user reads syntheses to catch pivots — give them syntheses where pivots actually exist, not after every clean dispatch.
 - **Q&A with "approve / confirm to proceed" as a primary option** — if the only options are "go" and "stop", there is no real choice; the orchestrator should just dispatch. AskUserQuestion is for load-bearing forks where the user's preference picks the answer. A 4-option Q&A whose recommended option is "yes, proceed" is the symptom — collapse it.
 - **Reading agent group files to spelunk for "interesting" content** — the orchestrator's reads of agent group files are budgeted for (a) composing the next agent's brief, (b) extracting visual QA / flagged risk / real choice to surface to the user. Reading the full design to write a synthesis the user didn't ask for burns the orchestrator's context for no gain. If the next dispatch's brief doesn't need a fact, don't read it into your context.
+- **Forced-role briefs ("you are an architect; do only X; do not touch Y")** — kills the agent's sense of responsibility outside the labelled scope and guarantees tunnel vision. The brief explains the WORK (problemspace, artefact, constraints); the role is a SUGGESTION the agent can re-phase. The diagnostic agent that won't flag an upstream smell because "that's not what I was asked to look at" is this anti-pattern's signature. Frame roles as suggestive — see "Suggestive roles, not enforced roles".
+- **Defaulting to Singular Research or Singular Architect when Research → Architect would work** — the compound shape preserves the trace continuity from investigation into design (or design into code), which is the entire reason to choose consolidated mode in the first place. Singular shapes throw that away. Reach for singular only when the next phase is genuinely independent (a literature review the user wants to react to before deciding direction; a design pass that will be implemented weeks later by a different orchestration). Otherwise compound.
+- **Scripting the phases of a consolidated dispatch in the brief ("stage 1 do X, stage 2 do Y, stage 3 do Z")** — defeats the point of the freeform Research → Architect → Implement shape. The agent receives the problemspace and decides phasing once it sees the code; orchestrator-imposed scripting fights the agent's own analytical surface and produces the same tunnel vision as forced roles. Brief composition: lead with problemspace, suggest phasing as a guideline, specify the structural contract — let the agent re-phase if its read of the code says the suggested phasing is wrong.
+- **Using Research → Architect → Implement for non-debugging work** — the freeform full-pipeline shape is for one significant task inside a larger debugging set, where impl discoveries feed back into design. Greenfield work, big refactors, and design-doc requests do NOT benefit from compounding implementation in — they belong in Research → Architect (or Prompt → Architect) with the implementation as a separate downstream dispatch (or session). Compounding impl into a design-doc-producing shape produces a fait-accompli the user has no chance to redirect before code lands.
+- **Orchestrator speculating code-grounded hypotheses** (binding — see Hard Rule 9). The orchestrator does not read code, so any "candidate mechanism" / "this is probably caused by X" / "likely the issue is Y" it produces is pattern-match off training-data priors, not synthesis off this codebase's evidence. Speculation in synthesis blocks pre-frames the dispatched agent's investigation; speculation in briefs channels Opus-1M into the orchestrator's hunches instead of fresh investigation; speculation in orchestrate documents pollutes the durable record with wrong-mechanism noise that future agents waste cycles ruling out. The user caught this on workstream A4 (2026-05-20): "did you just pose a hypothesis? why did you do that? did you read any code during this session?" The signature: a bulleted "candidate mechanisms" list in a hard-gate block; a brief that says "the issue is probably X, investigate that first"; an orchestrate doc that lists three hypotheses none of which were cited to any file. Surface user-verbatim observations, sharp thresholds, and grounded prior findings. Then dispatch. Do not "help" the dispatched agent by pre-framing the diagnosis.
+- **Mixing one grounded candidate with speculative ones in a single list** — the speculation contaminates the grounded item by association. If only one bullet in a "candidate mechanisms" list is cited to a doc and the rest are speculation, the list reads as a triage by the orchestrator across multiple hunches, lending false authority to the speculative items. Cite each item to its source or remove it. Bulleted-list-with-only-some-citations is the smell shape — every item gets a citation or the list collapses to the one item that has one.
 
 ## E2e gate authoring discipline (binding)
 
@@ -378,6 +442,132 @@ The diagnostic investigator's brief:
 **Anti-pattern this defends against:** the orchestrator reads the prior fix's failure as "the implementer self-flagged Finding X as a known-residual tradeoff; let's address Finding X next", and dispatches a refinement targeting that Finding. That is the trap. A self-flagged "known residual" turning out to be load-bearing for the symptom is much less likely than "the diagnosis is wrong and Finding X is irrelevant". When in doubt, observe before iterating.
 
 **Sanity check before any post-fix dispatch (predict-the-outcome rule).** Before dispatching iteration N+1 of a fix, write down — in chat, in one line — *what the user-visible symptom would look like if iteration N had been the right fix.* This is the falsification line. When iteration N's actual user check produces an outcome inconsistent with that prediction (e.g. you predicted "blink eliminated" and the user reports "unchanged"), the hypothesis is falsified, not under-tuned. Diagnose-first fires. The predict-the-outcome line goes into the orchestrator's chat output BEFORE the user runs the check, so the comparison is honest after the fact.
+
+## Side-notes deliverable contract (binding — every agent, every dispatch)
+
+Every agent's group-file deliverable MUST end with a `## Side notes / observations / complaints` section (or equivalent heading — "agent notes", "out-of-scope flags", "things I'd improve", "rants"). The orchestrator reads it. It is OPTIONAL content with EXPLICIT permission to surface anything the agent noticed that doesn't fit the deliverable contract.
+
+The framing for the agent (include in every brief):
+
+> Anything you noticed while doing this task that doesn't fit the deliverable but you think the orchestrator should know — write it here. Examples:
+> - Code that looks suspicious or stinky (conflated concerns, IoC violations, accidentally-global state, "dead memory nobody reads", abstractions that fight the standard pipeline for the domain).
+> - The brief felt over-constrained or asked the wrong question — say what you'd have done differently.
+> - Decisions in the codebase that don't make sense to you.
+> - Tools that were missing; context that was missing; signals you wish you'd had.
+> - Even subjective reactions — "this was confusing", "I felt like I was making the same observation as the prior agent", "the brief asked X but Y seemed more relevant", "I think this orchestration is heading in the wrong direction".
+> - If you suspect the FOUNDATION is wrong (not the specific task you were given, but the architecture you'd be iterating inside of), say so loudly. The orchestrator decides whether to act; your job is to surface.
+>
+> Stay terse — bullet points are fine. The orchestrator reads side-notes as signal, not noise; one sharp observation beats five paragraphs of hedging.
+
+**Why this is binding (not optional):** the orchestrator's tunnel-vision failure mode is scoping every dispatch narrowly and ignoring everything that doesn't fit the scope. The side-notes channel is the structural cure. Agents are flagship Opus dispatches with rich context windows full of observations; suppressing those observations because the brief didn't ask for them is the most expensive waste in this skill. Equal footing — every agent (architect, impl, auditor, diagnostic, even reviewer when invoked) writes side-notes; orchestrator reads them.
+
+## Loop-detection circuit-breaker → `/refactor`
+
+A separate trigger from diagnose-first and the consolidated-mode handoff. Fires when the orchestration is stuck iterating inside a broken foundation rather than solving the user's symptom.
+
+**Trigger** — any one of:
+
+1. **3+ consecutive failed fix attempts** on the same user-visible symptom (the user reports "no change" / "still broken" / "same issue" multiple times across distinct fix dispatches).
+2. **Diagnose-first has fired 3+ times** in one orchestration — each diagnosis was code-grounded but the fix didn't move the symptom. Signal: the diagnoses are pointing at real bugs that aren't the load-bearing one; the load-bearing one is foundation-level.
+3. **2+ agents in one orchestration surface "this code is smelly / the foundation is wrong" in their side-notes**, even on distinct dispatches. Multiple independent agents converging on a smell flag is strong signal.
+4. **The orchestrator notices** while organising context that the codebase has obvious architectural rot the prior dispatches walked past (two addressing schemes for one buffer, "dead memory nobody reads", state that doesn't reset, etc.). Trust your own smell-check.
+
+**Mandatory action:** present the trigger to the user at a hard gate and offer to switch from `/delegate` iteration into a `/refactor` session. The framing: "we've iterated N times against this symptom; the foundation looks rotten; the right next step is to refactor toward [the missing pattern] BEFORE more fix attempts, otherwise the next dispatch likely lands on top of the same rot." User confirms; if yes, the current orchestration pauses (docs stay intact) and `/refactor` takes over.
+
+**This is NOT a speculative second fix** — it's a structural acknowledgement that the iteration target is wrong. Diagnose-first prevents speculative same-class fixes; loop-detection prevents speculative-iteration-inside-rot. They're complementary circuit-breakers, not alternatives.
+
+**Do NOT push past this circuit-breaker silently.** When a trigger fires, the orchestrator stops and offers. Continuing without the offer is the tunnel-vision failure mode this rule exists to prevent — same shape as ignoring diagnose-first when a fix didn't help.
+
+## Brute-force protocol (opt-in alternative to diagnose-first)
+
+An opt-in mode that trades orchestrator-context-hygiene for sub-agent autonomy. Where diagnose-first keeps the orchestrator in the loop and dispatches one read-only diagnostic at a time, brute-force dispatches ONE sub-agent that owns the entire hypothesise-test-iterate loop end-to-end, against a deterministic probe-gate, with a private progress file the orchestrator NEVER reads. The orchestrator sees only a final-deliverable summary on success or an architectural-escape-hatch report.
+
+This mode is **legitimate alongside diagnose-first**, not a replacement. They suit different conditions.
+
+### When to use brute-force
+
+All four should hold:
+
+1. **A clean deterministic probe-gate exists.** A passing/failing programmatic signal (SSIM threshold, unit test, CI check, byte-exact oracle) that takes minutes — not hours — to run. The gate must be analytically valid (the e2e-gate authoring discipline still applies — captures must show the artefact; threshold must be calibrated against user-confirmed pre-fix runs).
+2. **Iteration cost is low.** Building + running the gate fits comfortably in one sub-agent's context window (~5–15 mins per round; agent can run 10–30 rounds before context exhaustion).
+3. **Scope is bounded.** The expected change surface is one module or a small set of files. Open-ended "could touch half the codebase" scope disqualifies — the agent would rabbit-hole.
+4. **The orchestrator has either repeatedly failed diagnose-first cycles** (3+ fix attempts didn't help; the search space is broader than the orchestrator's hypotheses keep finding) **OR the user explicitly engages it** ("lets do brute-force protocol"). Don't open with brute-force on a fresh task — diagnose-first's lighter ceremony is the right default.
+
+### When NOT to use brute-force
+
+- No clean probe-gate. The only verification is "user looks at the binary". Use diagnose-first + visual verification gates instead — the user IS the analytical surface and can't be replaced by a gate.
+- Probe-gate takes >15 mins per run. Iteration cost too high; the agent burns its context on waiting.
+- The user wants a design-approval gate before code is written. Brute-force commits code on every hypothesis attempt; the user reviews only the final 3×PASS submission.
+- The orchestrator already knows the right architectural shape and just needs an architect → impl walk (with optional opt-in reviewer if the change is high-stakes). Use distributed mode.
+
+### Protocol shape
+
+1. **Single dispatch, full autonomy.** The orchestrator briefs ONE sub-agent with:
+   - Required reading: the full orchestration context (all the prior diagnoses + impl logs + the probe-gate's recent failure modes + the SSIM scores / unit-test logs / whatever).
+   - The probe-gate command + the success criterion (e.g. "all SSIM checks ≥ 0.9; three consecutive PASS runs to rule out indeterminism").
+   - A pointer to the agent's PRIVATE progress file (e.g. `docs/orchestrate/<topic>/NN-brute-force-log.md`).
+   - The architectural-escape-hatch clause (see #7 below).
+   - Explicit context-hygiene rule: "The orchestrator never reads `<progress-file>`. Do not echo your attempts back via your return text. Only the final summary in `<summary-file>` reaches the orchestrator."
+
+2. **Independent pre-round of investigation.** Before touching code, the agent reads:
+   - All orchestration docs (context, diagnoses, prior fix attempts).
+   - The probe-gate's recent failure modes (verbatim output if available).
+   - Their own progress file from any prior brute-force rounds (if any).
+   - The relevant source files end-to-end (not just the lines the prior diagnoses named).
+
+3. **Agent poses an independent hypothesis set, ordered by probability.** At least three hypotheses, ranked by their own (fresh-eyes) read of the code. The agent does NOT follow the orchestrator's "recommended fix shape" — that recommendation is part of the prior context, not a directive. Independent ranking is the point; if the agent just executes the orchestrator's recommendation, the brute-force protocol has no value over distributed mode.
+
+4. **Agent writes a predict-the-outcome line per hypothesis BEFORE testing.** What the probe-gate would do (PASS/FAIL on which checks) if the hypothesis is the right fix. This is the falsification line (mirror of diagnose-first's predict-the-outcome rule). Without it, brute-force devolves into "tune until something passes".
+
+5. **Test each hypothesis against the probe-gate.** For each:
+   - Implement the change.
+   - Run the probe-gate.
+   - Record outcome (PASS / FAIL + which checks moved + how that compares to the prediction) in the private progress file.
+   - If FAIL: revert the change or keep it as a partial improvement (agent's call, based on whether the change made the gate *worse* or *better-but-not-passing*).
+   - If PASS: proceed to the indeterminism check.
+
+6. **Indeterminism check on first PASS.** Run the probe-gate TWO MORE TIMES on the same code. **All three runs must PASS.** If any of the additional runs FAILs, the first PASS was a fluke (or there's flakiness in the gate) — record + continue iterating against the next hypothesis. Three-consecutive-PASS is the only acceptable submission criterion.
+
+7. **Architectural-escape-hatch (binding).** If at any point the agent's analysis reveals that the right fix requires a LARGE architectural change — e.g., touches multiple modules, introduces a new system, crosses world boundaries, requires API redesign, or otherwise blasts past "bounded scope" — the agent MUST EXIT the brute-force protocol and report this to the orchestrator. The escape signal is a one-paragraph design sketch in the summary doc: "I've identified the load-bearing fix but it requires <architectural change description>; the orchestrator should switch to distributed mode (architect → reviewer → impl) for this." The brute-force protocol is for bounded iteration, not for delegating architectural decisions to a sub-agent.
+
+8. **Submit on three consecutive PASSes.** Write a clean summary in the deliverable doc (e.g. `NN-brute-force-summary.md`) that the orchestrator reads. The private progress log stays separate — the orchestrator should not need to read it to understand the submission.
+
+### What the summary doc contains
+
+- One line: the final-hypothesis that produced the PASS.
+- File:line touch list of the landed change.
+- Verbatim three-run probe-gate output (proving indeterminism is ruled out).
+- One paragraph: what the agent tried that DIDN'T work (compressed, NOT a full progress log).
+- If the architectural-escape-hatch fired: the design sketch instead of a PASS report.
+
+### Context hygiene (binding)
+
+- The agent's progress file is **NEVER** read by the orchestrator. Not for status checks, not for "interesting details", not to populate the next agent's brief. The whole point is that the orchestrator's context stays clean across long iteration loops.
+- The brief must explicitly state: "track your attempts in `<progress-file>`. The orchestrator never reads that file. Do NOT echo attempt details back via your return text — that pollutes the orchestrator's context the same way."
+- The summary file IS read by the orchestrator. Keep it terse; everything verbose goes in the progress log.
+
+### Comparison with diagnose-first
+
+| | Diagnose-first | Brute-force |
+|---|---|---|
+| Trigger | A fix didn't visibly help (mandatory) | Repeated diagnose-first failure + clean gate exists (opt-in) |
+| Per-cycle dispatches | Read-only diagnostic → fix → user check → repeat | One agent owns whole loop |
+| Orchestrator context per cycle | Sees diagnosis findings, presents to user | Sees only final summary or escape report |
+| Verification surface | User's eye + e2e gate after fix | Probe-gate within the agent's loop |
+| Cost | Lower per-dispatch; more dispatches | One dispatch; heavier sub-agent context |
+| Architectural decisions | Orchestrator decides per cycle | Agent escapes back to orchestrator if needed |
+| Bias-resistance | Fresh-eyes per cycle (each diagnostic agent independent) | Agent's pre-round investigation is the fresh-eyes pass |
+
+Either mode satisfies the principle "no speculative fixes" — diagnose-first by forcing a read-only diagnostic between attempts; brute-force by requiring an independent pre-round of investigation + predict-the-outcome per hypothesis + 3×PASS submission criterion.
+
+### Anti-patterns specific to brute-force
+
+- **Orchestrator reading the progress log.** Defeats the entire mode. The progress log is for the agent's own bookkeeping across its own context; it accumulates verbose detail by design. Reading it pollutes the orchestrator with the very context the protocol exists to isolate.
+- **Sub-agent following the orchestrator's "recommended fix shape" verbatim.** The brief usually contains an orchestrator's recommendation from the prior diagnose-first cycles. The brute-force agent treats that recommendation as ONE hypothesis among several, ranked by the agent's own analysis. If the agent just executes the recommendation, brute-force adds no value over a regular impl dispatch.
+- **Submitting on a single PASS.** Indeterminism kills the entire signal. Three consecutive PASSes is the floor; anything less is a fluke.
+- **Skipping the predict-the-outcome line.** Without it, the agent can rationalise any PASS as "the fix" even when the gate moved for unrelated reasons. The prediction must be written BEFORE the gate run, in the progress log.
+- **Pushing through the escape-hatch.** When the agent realises the right fix is architectural, the protocol REQUIRES exit. Pushing through with a hack that "happens to make the gate pass" produces a brittle PASS that regresses on the next change. Escape is not failure — it's the protocol working.
+- **Using brute-force as the default opening mode.** Brute-force is heavy (one sub-agent eats many rounds of context). On a fresh task with no failed diagnose-first cycles, the lighter ceremony of regular dispatching is correct. Brute-force earns its weight when diagnose-first has demonstrably stalled.
 
 ## Exit
 The mode ends when the user signals done or when `README.md`'s phase checklist is fully `[x]`. Leave `docs/orchestrate/<topic>/` intact — it's the durable artifact. Do not delete or condense it on exit unless the user asks.
