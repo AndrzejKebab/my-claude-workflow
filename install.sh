@@ -58,5 +58,3 @@ if [[ -d "$SCRIPT_DIR/bin" ]]; then
         echo ""
     fi
 fi
-echo "Parameterized skills (use \${PROJECT_NAME}):"
-echo "  - merge, worktree, todo, maketodo, picktodo"

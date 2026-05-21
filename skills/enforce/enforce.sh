@@ -2,7 +2,6 @@
 # enforce: Load CLAUDE.md constraints into session context
 
 CLAUDE_MD="${CLAUDE_MD:-./CLAUDE.md}"
-TODO_DIR="${TODO_DIR:-./docs/todo}"
 
 if [[ ! -f "$CLAUDE_MD" ]]; then
     echo "No CLAUDE.md found in current directory"
@@ -37,19 +36,6 @@ echo "║"
 echo "║  SECTIONS:"
 grep "^##\s" "$CLAUDE_MD" 2>/dev/null | \
     sed 's/^##\s*/║  • /' | head -8
-
-# Check for active todos
-if [[ -d "$TODO_DIR" ]]; then
-    active_todos=$(find "$TODO_DIR" -name "*.md" -type f 2>/dev/null | wc -l)
-    if (( active_todos > 0 )); then
-        echo "║"
-        echo "║  ACTIVE TODOS ($active_todos):"
-        find "$TODO_DIR" -name "*.md" -type f | head -5 | while read todo; do
-            name=$(basename "$todo" .md)
-            printf "║  • %s\n" "$name"
-        done
-    fi
-fi
 
 echo "╚════════════════════════════════════════════════════════════╝"
 echo ""

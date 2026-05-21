@@ -1,6 +1,6 @@
 # my-claude-workflow
 
-Personal Claude Code skills and workflow automation.
+Personal Claude Code skills, sub-agents, and workflow automation.
 
 ## Installation
 
@@ -8,92 +8,124 @@ Personal Claude Code skills and workflow automation.
 ./install.sh
 ```
 
-This symlinks `skills/` into `~/.claude/skills`.
+This symlinks `skills/` and `agents/` into `~/.claude/`. Edit the canonicals
+here in the repo — re-run `install.sh` to refresh the symlinks. Launcher scripts
+in `bin/` are made executable; add `bin/` to your `PATH` to use them.
 
 ## Skills
 
+### Git & worktree workflow
+
 | Skill | Description |
 |-------|-------------|
-| `commit` | Commit all changes with conventional commits |
-| `merge` | Merge worktree branch into main, cleanup |
-| `rebase` | Rebase worktree branch onto latest main |
-| `worktree` | Create/switch git worktrees for isolated work |
-| `todo` | Add tasks discovered during work |
-| `maketodo` | Scan docs, populate docs/todo |
-| `picktodo` | Pick a todo task, create worktree, begin work |
-| `refactor` | Review codebase for refactoring opportunities |
-| `refine-docs` | Interactive document refinement Q&A |
-| `rustrover` | Open RustRover in current directory |
-| `docs` | Edit documentation only (no source code) |
-| `claude-status` | Show active Claude sessions across projects |
-| `enforce` | Load CLAUDE.md constraints into session |
+| `commit` | Commit all changes, including untracked files |
+| `worktree` | Create or switch to a git worktree for isolated feature/fix work |
+| `rebase` | Rebase the current worktree branch onto latest main |
+| `merge` | Merge the current worktree branch into main, clean up the worktree |
 
-## Worktree Workflow
+### Orchestration
 
-The worktree skills follow a user-controlled sequence for clean main history:
+| Skill | Description |
+|-------|-------------|
+| `delegate` | Multi-agent orchestration — scope work, audit for reuse, dispatch every step to sub-agents |
+| `refactor` | Three-phase refactoring orchestrator: explore smells → design → apply |
+| `research` | Extract research content from YouTube talks, PDFs, or PPTX into structured markdown |
+| `handoff` | Write a continuation-link handoff prompt for a future session |
+| `diagnose-first` | Debugging methodology that forces observation before action |
 
-```
-/worktree → develop → /rebase → manual verify → /merge
-```
+### Code quality
 
-### Phases
+| Skill | Description |
+|-------|-------------|
+| `deadcode` | Find and delete dead code — zero callers means zero reasons to exist |
+| `dry` | Scan crates for SOLID/DRY/KISS violations, rank the worst, fix them |
+| `sniff` | Find and fix code smells — anonymous tuples, magic numbers, deep nesting, weak types |
+| `tdd` | RED/GREEN TDD — write a failing test first, then fix |
+| `review-agent` | Launch a sub-agent to review the current branch diff against master |
+| `review-plan` | Audit a plan file for completeness before exiting plan mode |
+| `sanitize` | Audit tracked files for leaked references to external proprietary code |
 
-1. **Create & develop** (`/worktree`, `/picktodo`)
-   - Create isolated worktree for the feature
-   - Develop and commit changes
+### Docs & context
 
-2. **Rebase** (`/rebase`)
-   - Replay feature commits on top of latest main
-   - Ensures linear history without merge commits
+| Skill | Description |
+|-------|-------------|
+| `docs` | Edit documentation only — no source code |
+| `refine-docs` | Interactive document refinement, file by file, with Q&A |
+| `claude-status` | Show active Claude sessions across all projects |
+| `enforce` | Pre-load CLAUDE.md constraints into session context |
+| `prune` | Prune context and memories — strip redundancy, preserve sharp rules |
 
-3. **Verify** (manual)
-   - User tests the rebased feature works correctly
-   - This step is intentionally manual—only the user knows when it's ready
+### Project utilities
 
-4. **Merge** (`/merge`)
-   - Fast-forward merge into main (no merge commit due to prior rebase)
-   - Cleanup: remove worktree, delete branch, remove todo file
+| Skill | Description |
+|-------|-------------|
+| `reset-repos` | Preserve in-progress work and reset all p7 repos to latest master |
+| `profile` | Build, run, and analyze Unity profiler data with call-stack attribution |
+| `domain-availability` | Generate domain name ideas and check availability across TLDs |
+| `rustrover` | Open RustRover in the current worktree |
+| `rider` | Open Rider in the current worktree |
+| `webstorm` | Open WebStorm in the current worktree |
 
-### Why rebase-before-merge?
+## Agents
 
-Rebasing produces clean, linear history on main. Each feature appears as a sequential set of commits rather than a branching merge. This makes `git log`, `git bisect`, and rollbacks simpler.
+Sub-agent definitions dispatched by the orchestrator skills. Installed alongside
+skills so `delegate`, `refactor`, and `research` can fan work out to fresh
+context windows.
 
-## Parameterization
-
-Five skills use `${PROJECT_NAME}` for project-specific paths:
-
-- `merge` - worktree paths
-- `worktree` - worktree paths
-- `todo` - worktree path examples
-- `maketodo` - worktree path examples
-- `picktodo` - worktree paths
-
-Claude resolves `${PROJECT_NAME}` at runtime from the current working directory basename.
-
-**Example:** In `/home/midori/_dev/sim2d`, `${PROJECT_NAME}` becomes `sim2d`, so `../${PROJECT_NAME}-feature` becomes `../sim2d-feature`.
+| Agent | Used by | Role |
+|-------|---------|------|
+| `delegate-auditor` | `delegate` | Audits the codebase for existing functionality before any design |
+| `delegate-architect` | `delegate` | Designs the implementation and persists it to the group file |
+| `delegate-consolidated` | `delegate` | Runs compounded phases in one continuous 1M-context run |
+| `delegate-reviewer` | `delegate` | Fresh-eyes verification against success criteria |
+| `refactor-explorer` | `refactor` | Phase 1 — surfaces concrete code smells and architectural problems |
+| `refactor-architect` | `refactor` | Phase 2 — designs the target-state structure |
+| `refactor-implementer` | `refactor` | Phase 3 — applies the migration as real code edits |
+| `research-extractor` | `research` | Pass 1 — runs the extraction pipeline and marks problem areas |
+| `research-vision` | `research` | Vision pass — describes slide/figure images inline |
+| `research-refiner` | `research` | Pass 3 — resolves FIXME marks and cleans up the document |
 
 ## Directory Structure
 
 ```
 my-claude-workflow/
 ├── README.md
-├── install.sh
-└── skills/
-    ├── commit/SKILL.md
-    ├── merge/SKILL.md
-    ├── rebase/SKILL.md
-    ├── worktree/SKILL.md
-    ├── todo/SKILL.md
-    ├── maketodo/SKILL.md
-    ├── picktodo/SKILL.md
-    ├── refactor/SKILL.md
-    ├── refine-docs/SKILL.md
-    ├── rustrover/SKILL.md
-    ├── docs/SKILL.md
-    ├── claude-status/
-    │   ├── SKILL.md
-    │   └── claude-status.sh
-    └── enforce/
-        ├── SKILL.md
-        └── enforce.sh
+├── install.sh                # symlinks skills/ + agents/ into ~/.claude/
+├── skills/                   # one directory per skill, each with a SKILL.md
+│   ├── claude-status/         #   SKILL.md + claude-status.sh
+│   ├── commit/
+│   ├── deadcode/
+│   ├── delegate/
+│   ├── diagnose-first/
+│   ├── docs/
+│   ├── domain-availability/
+│   ├── dry/
+│   ├── enforce/               #   SKILL.md + enforce.sh
+│   ├── handoff/
+│   ├── merge/
+│   ├── profile/               #   SKILL.md + build-zority.sh
+│   ├── prune/
+│   ├── rebase/
+│   ├── refactor/
+│   ├── refine-docs/
+│   ├── research/              #   SKILL.md + tools/ (Python extraction pipeline)
+│   ├── reset-repos/
+│   ├── review-agent/
+│   ├── review-plan/
+│   ├── rider/
+│   ├── rustrover/
+│   ├── sanitize/
+│   ├── sniff/
+│   ├── tdd/
+│   ├── webstorm/
+│   └── worktree/
+├── agents/                   # sub-agent definitions for the orchestrator skills
+│   ├── delegate-*.md
+│   ├── refactor-*.md
+│   └── research-*.md
+└── bin/                      # launcher scripts (add to PATH)
+    ├── killunity
+    ├── unity
+    ├── unity-launch
+    └── unity-recompile
 ```

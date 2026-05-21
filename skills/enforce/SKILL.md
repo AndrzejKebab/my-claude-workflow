@@ -1,6 +1,6 @@
 # Enforce Skill
 
-Pre-loads constraints from CLAUDE.md and active todo files into session context.
+Pre-loads constraints from CLAUDE.md into session context.
 Prevents common failure patterns before they start.
 
 ## Usage
@@ -15,9 +15,8 @@ Prevents common failure patterns before they start.
 
 1. **Reads CLAUDE.md** from project root
 2. **Extracts hard rules** (NEVER, ALWAYS, MUST, etc.)
-3. **Loads active todos** from `docs/todo/` and `docs/_internal/todo/` if they exist
-4. **Injects into context** as system-level constraints
-5. **Sets guardrails** for the session
+3. **Injects into context** as system-level constraints
+4. **Sets guardrails** for the session
 
 ## Example Output
 
@@ -32,10 +31,6 @@ Prevents common failure patterns before they start.
 ║  • NEVER push — user pushes after review                   ║
 ║  • NEVER add Cargo features — this is a game               ║
 ║  • ALWAYS apply #[cfg] at exact point of divergence        ║
-╠════════════════════════════════════════════════════════════╣
-║  ACTIVE TODO: docs/todo/crate-merge.md                     ║
-║  • Merge bevy_pixel_world into game crate                  ║
-║  • Remove physics backend abstraction                      ║
 ╚════════════════════════════════════════════════════════════╝
 ```
 

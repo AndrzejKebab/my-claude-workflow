@@ -77,7 +77,6 @@ Use **absolute paths** so the header survives context compression and fresh sess
 ```markdown
 ## Worktree Context
 - **Slug:** `<slug>`
-- **Todo:** `docs/todo/<slug>.md`
 - **Worktree:** `${REPO_ROOT}/.claude/worktrees/<slug>`
 - **Branch:** `<type>/<slug>`
 
@@ -99,7 +98,6 @@ This is NOT optional. The plan file MUST start with this header.
 | Component | Format | Example |
 |-----------|--------|---------|
 | Slug | kebab-case, 2-3 words | `player-collision` |
-| Todo file | `docs/todo/<slug>.md` or `docs/_internal/todo/<slug>.md` | `docs/todo/player-collision.md` |
 | Worktree | `${REPO_ROOT}/.claude/worktrees/<slug>` | `${REPO_ROOT}/.claude/worktrees/player-collision` |
 | Branch | `<type>/<slug>` | `feat/player-collision` |
 
