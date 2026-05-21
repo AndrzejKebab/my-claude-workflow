@@ -53,6 +53,13 @@ ASSETS_DIR = OUTPUT_DIR / "assets"
 
 SOURCES = [
     {
+        "path": "/home/midori/Downloads/Rundlett-Gustafsson-raytracing-voxels-in-teardown-and-beyond.pdf",
+        "slug": "rundlett-gustafsson-2025-raytracing-voxels-teardown",
+        "type": "pdf",
+        "title": "Raytracing Voxels in Teardown and Beyond — Rundlett & Gustafsson (Graphics Programming Conference 2026)",
+        "slide_deck": True,
+    },
+    {
         "path": "/mnt/archive4/PAPERS/preetham-1999-analytic-daylight.pdf",
         "slug": "preetham-1999-analytic-daylight",
         "type": "pdf",
@@ -93,6 +100,13 @@ SOURCES = [
         "slug": "foster-metaxas-1996-realistic-liquid-animation",
         "type": "pdf",
         "title": "Realistic Animation of Liquids — Foster & Metaxas 1996",
+    },
+    {
+        "path": "/mnt/archive4/PAPERS/montoya-2022-teardown-breakdown.pdf",
+        "slug": "montoya-2022-teardown-breakdown",
+        "type": "pdf",
+        "title": "Teardown Teardown (blog breakdown, 2022) — Juan Diego Montoya",
+        "slide_deck": False,
     },
     # PPTX
     {

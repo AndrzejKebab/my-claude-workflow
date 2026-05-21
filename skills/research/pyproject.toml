@@ -7,11 +7,12 @@ dependencies = [
     "PyMuPDF>=1.27,<2",
     "python-pptx>=1.0,<2",
     "opencv-python-headless>=4.11,<5",
-    "Pillow>=10.4,<11",
+    "pillow>=10.4,<11",
     "openocr-python>=0.1.5,<0.2",
     "lxml>=6,<7",
     "faster-whisper>=1.2,<2",
     "marker-pdf>=1.10,<2",
+    "imagehash>=4.3.2",
 ]
 
 [tool.uv]

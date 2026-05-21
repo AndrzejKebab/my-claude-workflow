@@ -30,6 +30,10 @@ ASSETS_DIR = OUTPUT_DIR / "assets"
 
 # Source files needed for re-rendering pages / extracting videos
 SOURCES_BY_SLUG = {
+    "rundlett-gustafsson-2025-raytracing-voxels-teardown": {
+        "path": "/home/midori/Downloads/Rundlett-Gustafsson-raytracing-voxels-in-teardown-and-beyond.pdf",
+        "type": "pdf",
+    },
     "preetham-1999-analytic-daylight": {
         "path": "/mnt/archive4/PAPERS/preetham-1999-analytic-daylight.pdf",
         "type": "pdf",
@@ -52,6 +56,10 @@ SOURCES_BY_SLUG = {
     },
     "foster-metaxas-1996-realistic-liquid-animation": {
         "path": "/home/midori/Downloads/foster-metaxas-gmip96.pdf",
+        "type": "pdf",
+    },
+    "montoya-2022-teardown-breakdown": {
+        "path": "/mnt/archive4/PAPERS/montoya-2022-teardown-breakdown.pdf",
         "type": "pdf",
     },
     "nubis-cubed-2023": {
