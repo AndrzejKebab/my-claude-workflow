@@ -8,7 +8,14 @@ instead of flat span concatenation.
 Routing (decided in `extract_research.py`):
   - slide-deck PDF  → not used (full-page render path is canonical)
   - text-rich paper → THIS module
-  - scanned PDF     → not used (OpenOCR fallback path is canonical)
+  - scanned PDF     → raises (marker-GPU-only policy; no OpenOCR fallback)
+
+GPU is hard-required: `_require_marker_gpu()` raises if CUDA is unavailable or
+free VRAM is below threshold, instead of silently forcing CPU inference. A
+marker failure in `extract_research.py` likewise raises rather than falling
+through to the PyMuPDF span-walker (user policy, 2026-05-30): marker on GPU +
+Anthropic Sonnet is the only acceptable extraction path, so any degradation is
+a loud error, not a silent quality regression.
 
 Image handling: marker's auto image-description processor is dropped from the
 pipeline because the /research vision pass already produces vision blocks with
@@ -115,21 +122,34 @@ def _resolve_claude_api_key() -> str | None:
 def _split_paginated_markdown(text: str) -> dict[int, str]:
     """Split marker's paginate_output=True markdown into a {page_index: body} dict.
 
-    The boundary `{N}<48-dashes>` appears at the START of each page's content
-    (including page 0). Content before the first boundary is discarded as
-    pre-document chrome.
+    The boundary `{N}<48-dashes>` appears at the START of each page's content.
+    marker's pagination is NOT one-boundary-per-page: it can emit the SAME page
+    index more than once (one PDF page rendered as several layout blocks, each
+    prefixed with the same `{N}` separator). An earlier version keyed the dict by
+    page index and so the last `{N}` segment overwrote the earlier ones, silently
+    dropping body text — exactly the kind of invisible truncation this corpus must
+    not have. So segments sharing a page index are CONCATENATED in document order,
+    and any content before the first boundary is preserved (folded into page 0)
+    rather than discarded.
     """
     matches = list(_PAGE_BOUNDARY_RE.finditer(text))
     if not matches:
         # No boundaries found — single-page or paginate_output disabled.
         return {0: text.strip()}
 
-    pages: dict[int, str] = {}
+    preamble = text[: matches[0].start()].strip()
+    segments: dict[int, list[str]] = {}
     for i, m in enumerate(matches):
         page_idx = int(m.group(1))
         start = m.end()
         end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
-        pages[page_idx] = text[start:end].strip()
+        seg = text[start:end].strip()
+        if seg:
+            segments.setdefault(page_idx, []).append(seg)
+
+    pages = {idx: "\n\n".join(segs) for idx, segs in segments.items()}
+    if preamble:
+        pages[0] = (preamble + "\n\n" + pages.get(0, "")).strip()
     return pages
 
 
@@ -341,14 +361,13 @@ def _convert_pdf_impl(
     redo_inline_math: bool,
     claude_api_key: str | None,
 ) -> MarkerResult:
-    # Force CPU inference when the GPU is too contested for marker's layout
-    # models (surya). The check must happen BEFORE torch is imported, since
-    # CUDA_VISIBLE_DEVICES is read once at torch module init. Without this,
-    # marker OOMs on dev workstations running Unity / Steam shader compilation
-    # / other GPU loads even when nvidia-smi snapshot a moment ago showed
-    # plenty of free memory — VRAM pressure from those processes spikes
-    # unpredictably.
-    _maybe_force_cpu_inference()
+    # marker-GPU-only policy (user, 2026-05-30): require a CUDA GPU with enough
+    # free VRAM before any extraction. The check must happen BEFORE torch is
+    # imported, since CUDA_VISIBLE_DEVICES is read once at torch module init.
+    # Rather than silently forcing CPU inference when the GPU is contested (which
+    # degrades quality invisibly), this raises — marker on GPU is the only
+    # acceptable path, and ~15 GiB VRAM is expected to be free.
+    _require_marker_gpu()
 
     # Imports deferred — marker pulls torch + surya weights on import, which is
     # a multi-second cost we should not pay when the cache hits.
@@ -412,24 +431,29 @@ def _convert_pdf_impl(
     )
 
 
-def _maybe_force_cpu_inference(min_free_mib: int = 2048) -> None:
-    """Set CUDA_VISIBLE_DEVICES='' before torch import when the GPU is too full.
+def _require_marker_gpu(min_free_mib: int = 3072) -> None:
+    """Require a CUDA GPU with enough free VRAM, else raise — never force CPU.
 
-    Marker's surya layout + text-recognition models need ~1-2 GiB of contiguous
-    VRAM. On dev workstations running other GPU loads (Unity editor, Steam
-    fossilize_replay shader compilation, ML training), free VRAM fluctuates
-    rapidly and an OOM at marker import / first-batch-allocation is the typical
-    failure mode.
+    marker-GPU-only policy (user, 2026-05-30): marker on GPU + Anthropic Sonnet
+    is the ONLY acceptable extraction path for this corpus. The previous behaviour
+    silently set CUDA_VISIBLE_DEVICES='' (CPU inference) when the GPU looked
+    contested, which reads downstream as "marker worked but produced poor output".
+    Making it a loud failure is correct: ~15 GiB VRAM is expected to be free, so a
+    shortfall means something is wrong that the operator should see and fix.
 
-    Honour an explicit `CUDA_VISIBLE_DEVICES` set by the caller — they may
-    deliberately have selected a GPU or disabled it.
+    A caller-set CUDA_VISIBLE_DEVICES is honoured only if it is non-empty (lets
+    the operator pin a specific GPU index); an explicitly-empty value (CPU) is
+    rejected because it contradicts the policy.
 
-    `min_free_mib` is the threshold below which CPU is forced. 2 GiB is a
-    conservative choice: it covers the layout model (~600 MB), the recognition
-    model (~600 MB), and a margin for activations / batched inference.
+    `min_free_mib` covers surya's layout (~600 MB) + recognition (~600 MB) models
+    plus headroom for batched activations.
     """
-    if "CUDA_VISIBLE_DEVICES" in os.environ:
-        return
+    cvd = os.environ.get("CUDA_VISIBLE_DEVICES")
+    if cvd is not None and cvd.strip() == "":
+        raise RuntimeError(
+            "CUDA_VISIBLE_DEVICES is empty (CPU inference). marker-GPU-only mode "
+            "forbids CPU extraction; unset it or pin a GPU index."
+        )
     try:
         import subprocess
         out = subprocess.run(
@@ -438,20 +462,28 @@ def _maybe_force_cpu_inference(min_free_mib: int = 2048) -> None:
             text=True,
             timeout=5,
         )
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        return  # no GPU / nvidia-smi missing — let torch decide
-    if out.returncode != 0:
-        return
-    try:
-        free_mib = min(int(line) for line in out.stdout.strip().splitlines() if line.strip())
-    except ValueError:
-        return
-    if free_mib < min_free_mib:
-        os.environ["CUDA_VISIBLE_DEVICES"] = ""
-        print(
-            f"  marker: GPU has only {free_mib} MiB free (< {min_free_mib} MiB threshold); "
-            f"forcing CPU inference"
+    except (FileNotFoundError, subprocess.TimeoutExpired) as e:
+        raise RuntimeError(
+            f"nvidia-smi unavailable ({e!r}); cannot confirm a CUDA GPU. "
+            "marker-GPU-only mode requires a working GPU."
         )
+    if out.returncode != 0:
+        raise RuntimeError(
+            f"nvidia-smi failed (rc={out.returncode}): {out.stderr.strip()}. "
+            "marker-GPU-only mode requires a working GPU."
+        )
+    try:
+        free_mib = min(
+            int(line) for line in out.stdout.strip().splitlines() if line.strip()
+        )
+    except ValueError as e:
+        raise RuntimeError(f"could not parse nvidia-smi free-VRAM output: {e!r}")
+    if free_mib < min_free_mib:
+        raise RuntimeError(
+            f"only {free_mib} MiB VRAM free (< {min_free_mib} MiB required). "
+            f"marker-GPU-only mode refuses to run; free the GPU and retry."
+        )
+    print(f"  marker: GPU OK ({free_mib} MiB free)")
 
 
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*#*\s*$", re.MULTILINE)

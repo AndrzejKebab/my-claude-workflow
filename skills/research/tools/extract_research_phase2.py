@@ -30,6 +30,10 @@ ASSETS_DIR = OUTPUT_DIR / "assets"
 
 # Source files needed for re-rendering pages / extracting videos
 SOURCES_BY_SLUG = {
+    "vattani-2015-cache-stampede": {
+        "path": "/home/midori/Downloads/p886-vattani.pdf",
+        "type": "pdf",
+    },
     "rundlett-gustafsson-2025-raytracing-voxels-teardown": {
         "path": "/home/midori/Downloads/Rundlett-Gustafsson-raytracing-voxels-in-teardown-and-beyond.pdf",
         "type": "pdf",
@@ -72,6 +76,18 @@ SOURCES_BY_SLUG = {
     },
     "bauer-2019-rdr2-atmospherics": {
         "path": "/mnt/archive4/PAPERS/bauer-2019-rdr2-atmospherics.pptx",
+        "type": "pptx",
+    },
+    "bwronski-2014-volumetric-fog": {
+        "path": "/mnt/archive4/PAPERS/wronski-2014-volumetric-fog.pptx",
+        "type": "pptx",
+    },
+    "schneider-2015-hzd-clouds": {
+        "path": "/mnt/archive4/PAPERS/schneider-2015-hzd-clouds.pdf",
+        "type": "pdf",
+    },
+    "hillaire-2015-frostbite-volumetrics": {
+        "path": "/mnt/archive4/PAPERS/hillaire-2015-frostbite-volumetrics.pptx",
         "type": "pptx",
     },
     "frostbite-pb-volumetrics": {
@@ -429,6 +445,15 @@ SOURCES_BY_SLUG = {
     "wang-2026-llm-long-context-degradation": {
         "path": "/tmp/research-arxiv-2601-15300/2601.15300v1.pdf",
         "type": "pdf",
+    },
+    # Re-extractions with canonical slugs (current marker pipeline)
+    "schneider-2017-nubis-decima": {
+        "path": "/mnt/archive4/PAPERS/schneider-2017-nubis-decima.pdf",
+        "type": "pdf",
+    },
+    "de-carpentier-ishiyama-2017-decima-lighting-aa": {
+        "path": "/mnt/archive4/PAPERS/decarpentier-ishiyama-2017-decima-final.pptx",
+        "type": "pptx",
     },
 }
 

@@ -405,7 +405,7 @@ def format_timestamp(seconds: float) -> str:
     return f"{m:02d}:{s:02d}"
 
 
-def process_video(video_path: Path, info: VideoInfo, srt_path: Path) -> str:
+def process_video(video_path: Path, info: VideoInfo, srt_path: Path, scene_threshold: float = 0.35) -> str:
     """Full pipeline: detect scenes, classify, OCR, transcribe, emit markdown."""
     slug = info.slug
     slug_assets = ASSETS_DIR / slug
@@ -416,7 +416,7 @@ def process_video(video_path: Path, info: VideoInfo, srt_path: Path) -> str:
     print(f"  Loaded {len(captions)} caption entries")
 
     # Detect scene transitions
-    scene_intervals = detect_scenes(video_path)
+    scene_intervals = detect_scenes(video_path, threshold=scene_threshold)
 
     # Classify and process each scene
     scenes = []
@@ -547,6 +547,8 @@ def main():
     url = sys.argv[1]
     extra_title = next((a.split("=", 1)[1] for a in sys.argv[2:] if a.startswith("--title=")), None)
     extra_slug = next((a.split("=", 1)[1] for a in sys.argv[2:] if a.startswith("--slug=")), None)
+    threshold_arg = next((a.split("=", 1)[1] for a in sys.argv[2:] if a.startswith("--threshold=")), None)
+    scene_threshold = float(threshold_arg) if threshold_arg else 0.35
     work_dir = Path(tempfile.mkdtemp(prefix="research-"))
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -577,7 +579,7 @@ def main():
         srt_path = work_dir / f"{info.slug}.en.srt"
 
     print(f"Processing: {info.title} ({format_timestamp(info.duration)})")
-    md_path = process_video(video_path, info, srt_path)
+    md_path = process_video(video_path, info, srt_path, scene_threshold=scene_threshold)
 
     print(f"\nDone: {md_path}")
 
