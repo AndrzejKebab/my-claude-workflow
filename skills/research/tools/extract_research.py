@@ -723,6 +723,12 @@ SOURCES = [
         "title": "Improved Culling for Tiled and Clustered Rendering (Drobot — SIGGRAPH 2017 Advances in Real-Time Rendering)",
     },
     {
+        "path": "/mnt/archive4/PAPERS/hasselgren-2016-masked-occlusion-culling.pdf",
+        "slug": "hasselgren-2016-masked-occlusion-culling",
+        "type": "pdf",
+        "title": "Masked Software Occlusion Culling (Hasselgren, Andersson & Akenine-Möller — Intel, High Performance Graphics 2016)",
+    },
+    {
         "path": "/home/midori/Downloads/cuntz07gpudt.pdf",
         "slug": "cuntz-kolb-2007-hierarchical-3d-distance-transform",
         "type": "pdf",
@@ -1282,6 +1288,16 @@ SOURCES = [
         "slug": "de-carpentier-ishiyama-2017-decima-lighting-aa",
         "type": "pptx",
         "title": "Decima Engine: Advances in Lighting and Anti-Aliasing — De Carpentier & Ishiyama (SIGGRAPH 2017 Advances in Real-Time Rendering)",
+    },
+    # ============================================================================
+    {
+        "path": "/mnt/archive4/PAPERS/persson-2012-graphics-gems-games.pdf",
+        "slug": "persson-2012-graphics-gems-games",
+        "type": "pdf",
+        "title": "Graphics Gems for Games — Findings from Avalanche Studios — Emil Persson (SIGGRAPH 2012)",
+        # PDF export of a PowerPoint 2007 deck. Portrait-aspect pages (0.75 ratio)
+        # mean the landscape heuristic will NOT auto-detect slide_deck=True; force it.
+        "slide_deck": True,
     },
 ]
 

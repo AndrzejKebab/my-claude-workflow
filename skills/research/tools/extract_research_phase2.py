@@ -274,6 +274,10 @@ SOURCES_BY_SLUG = {
         "path": "/mnt/archive4/Downloads/2017_Sig_Improved_Culling_final.pptx",
         "type": "pptx",
     },
+    "hasselgren-2016-masked-occlusion-culling": {
+        "path": "/mnt/archive4/PAPERS/hasselgren-2016-masked-occlusion-culling.pdf",
+        "type": "pdf",
+    },
     "peters-2017-improved-moment-shadow-maps": {
         "path": "/home/midori/Downloads/Improved Moment Shadow Maps for Translucent_Occluders, Soft Shadows and Single Scattering.pdf",
         "type": "pdf",
@@ -454,6 +458,10 @@ SOURCES_BY_SLUG = {
     "de-carpentier-ishiyama-2017-decima-lighting-aa": {
         "path": "/mnt/archive4/PAPERS/decarpentier-ishiyama-2017-decima-final.pptx",
         "type": "pptx",
+    },
+    "persson-2012-graphics-gems-games": {
+        "path": "/mnt/archive4/PAPERS/persson-2012-graphics-gems-games.pdf",
+        "type": "pdf",
     },
 }
 
