@@ -420,6 +420,12 @@ SOURCES = [
         "title": "Exploiting Temporal Coherence in Real-Time Rendering (Scherzer, Yang, Mattausch — SIGGRAPH Asia 2010 Course)",
     },
     {
+        "path": "/mnt/archive4/PAPERS/scherzer-2012-temporal-coherence-survey.pdf",
+        "slug": "scherzer-2012-temporal-coherence-survey",
+        "type": "pdf",
+        "title": "Temporal Coherence Methods in Real-Time Rendering — Scherzer, Yang, Mattausch, Nehab, Sander, Wimmer, Eisemann (Computer Graphics Forum 31:8, 2012)",
+    },
+    {
         "path": "/home/midori/Downloads/svgf_preprint.pdf",
         "slug": "schied-2017-svgf",
         "type": "pdf",
@@ -1298,6 +1304,50 @@ SOURCES = [
         # PDF export of a PowerPoint 2007 deck. Portrait-aspect pages (0.75 ratio)
         # mean the landscape heuristic will NOT auto-detect slide_deck=True; force it.
         "slide_deck": True,
+    },
+    # ============================================================================
+    # Yang et al. 2009 — Amortized Supersampling
+    # ACM Transactions on Graphics / SIGGRAPH Asia 2009.
+    # Jiawen Chen Yang, Diego Nehab, Pedro V. Sander, Pitchaya Sitthi-amorn,
+    # Jason Lawrence, Hugues Hoppe.
+    # Seminal paper for N-stored-frame temporal accumulation with per-frame VP
+    # matrix reprojection. Maintains 4 separate subpixel buffers updated round-robin,
+    # each reprojected using its stored VP matrix. Referenced by Enshrouded
+    # (Krause 2025) and NAADF (Ulschmid 2026).
+    # ============================================================================
+    {
+        "path": "/mnt/archive4/PAPERS/yang-2009-amortized-supersampling.pdf",
+        "slug": "yang-2009-amortized-supersampling",
+        "type": "pdf",
+        "title": "Amortized Supersampling — Yang, Nehab, Sander, Sitthi-amorn, Lawrence, Hoppe (ACM Transactions on Graphics / SIGGRAPH Asia 2009)",
+        # Text-layer ACM TOG paper. Let is_slide_deck_pdf auto-detect (expected: False).
+        # Math content: subpixel jitter patterns, reprojection via stored VP matrices,
+        # temporal accumulation blend weights, antialiasing error analysis.
+        "slide_deck": False,
+    },
+    # ============================================================================
+    # Nehab et al. 2007 — Accelerating Real-Time Shading with Reverse Reprojection Caching
+    # Graphics Hardware 2007. Diego Nehab, Pedro V. Sander, Jason Lawrence,
+    # Natalya Tatarchuk, John R. Isidoro.
+    # Foundational paper for reverse reprojection caching: stores shading payloads
+    # in screen-space buffers and reprojection via stored VP matrices with
+    # depth-based cache validation. Introduces the "reverse reprojection" formulation
+    # (current-frame pixel → previous-frame screen coords) and the disocclusion /
+    # depth-mismatch validity test. Directly cited by yang-2009-amortized-supersampling
+    # and scherzer-2012-temporal-coherence-survey.
+    # ============================================================================
+    {
+        "path": "/mnt/archive4/PAPERS/nehab-2007-reverse-reprojection-caching.pdf",
+        "slug": "nehab-2007-reverse-reprojection-caching",
+        "type": "pdf",
+        "title": "Accelerating Real-Time Shading with Reverse Reprojection Caching — Nehab, Sander, Lawrence, Tatarchuk, Isidoro (Graphics Hardware 2007)",
+        # Text-layer ACM paper (~1.3 MB, ~8 pages). Let is_slide_deck_pdf auto-detect
+        # (expected: False — portrait two-column ACM layout).
+        # Math content: reprojection matrix M = VP_prev * VP_curr^{-1}, depth
+        # validity test epsilon threshold, cache hit rate formula.
+        # Moderate equation-substitution risk: M (matrix), epsilon (depth threshold),
+        # p_prev / p_curr (projected screen coordinates).
+        "slide_deck": False,
     },
 ]
 

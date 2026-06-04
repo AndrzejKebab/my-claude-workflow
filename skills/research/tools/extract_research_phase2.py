@@ -30,6 +30,10 @@ ASSETS_DIR = OUTPUT_DIR / "assets"
 
 # Source files needed for re-rendering pages / extracting videos
 SOURCES_BY_SLUG = {
+    "scherzer-2012-temporal-coherence-survey": {
+        "path": "/mnt/archive4/PAPERS/scherzer-2012-temporal-coherence-survey.pdf",
+        "type": "pdf",
+    },
     "vattani-2015-cache-stampede": {
         "path": "/home/midori/Downloads/p886-vattani.pdf",
         "type": "pdf",
@@ -461,6 +465,14 @@ SOURCES_BY_SLUG = {
     },
     "persson-2012-graphics-gems-games": {
         "path": "/mnt/archive4/PAPERS/persson-2012-graphics-gems-games.pdf",
+        "type": "pdf",
+    },
+    "yang-2009-amortized-supersampling": {
+        "path": "/mnt/archive4/PAPERS/yang-2009-amortized-supersampling.pdf",
+        "type": "pdf",
+    },
+    "nehab-2007-reverse-reprojection-caching": {
+        "path": "/mnt/archive4/PAPERS/nehab-2007-reverse-reprojection-caching.pdf",
         "type": "pdf",
     },
 }
