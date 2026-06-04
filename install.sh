@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install.sh: Symlink skills and agents into ~/.claude/
+# install.sh: Symlink skills, agents, and global config (CLAUDE.md + @imports) into ~/.claude/
 
 set -euo pipefail
 
@@ -27,8 +27,34 @@ link_dir() {
     ln -s "$target" "$link"
 }
 
+link_file() {
+    local name="$1"
+    local target="$SCRIPT_DIR/$name"
+    local link="$CLAUDE_DIR/$name"
+
+    if [[ -e "$link" && ! -L "$link" ]]; then
+        local backup_name="${name}.bak.$(date +%Y%m%d-%H%M%S)"
+        echo "Backing up existing $name to $CLAUDE_DIR/$backup_name"
+        mv "$link" "$CLAUDE_DIR/$backup_name"
+    elif [[ -L "$link" ]]; then
+        echo "Removing existing symlink at $link"
+        rm "$link"
+    fi
+
+    echo "Creating symlink: $link -> $target"
+    ln -s "$target" "$link"
+}
+
 link_dir skills
 link_dir agents
+
+# Global config files — symlinked into ~/.claude so they travel with this repo.
+# RTK.md is intentionally excluded: it is private (mode 600) and this repo is public,
+# so it stays machine-local and its @import in CLAUDE.md resolves only where it exists.
+link_file CLAUDE.md
+link_file negative-space-expanded.md
+link_file FFF.md
+link_file HARNESS.md
 
 # Make shell scripts executable
 chmod +x "$SCRIPT_DIR/skills/claude-status/claude-status.sh"

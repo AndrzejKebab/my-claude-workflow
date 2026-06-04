@@ -3,3 +3,7 @@
 *.pyc
 .uv-cache/
 **/node_modules/
+
+# This repo is the portable HOME for the global config, so it intentionally tracks
+# CLAUDE.md despite the global ~/.gitignore rule that excludes CLAUDE.md everywhere else.
+!CLAUDE.md
