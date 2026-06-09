@@ -11,13 +11,26 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import fitz  # PyMuPDF
-from PIL import Image
-from pptx import Presentation
-from pptx.enum.shapes import MSO_SHAPE_TYPE
+# Heavy extraction deps (PyMuPDF / Pillow / python-pptx / OpenOCR / marker).
+# These live in the extraction venv. The PPTX render worker
+# (`--render-pptx-worker`, see _render_pptx_slides_uno) instead runs under a
+# uno-capable system interpreter that does NOT have these — it only needs the
+# UNO bridge + the three render helpers below. So the heavy imports are guarded:
+# when they are missing the module still imports far enough to run the render
+# worker, and any other code path that actually touches them raises a clear
+# error. Under the normal extraction interpreter all of these import fine and
+# nothing changes.
+_IMPORT_ERROR: Exception | None = None
+try:
+    import fitz  # PyMuPDF
+    from PIL import Image
+    from pptx import Presentation
+    from pptx.enum.shapes import MSO_SHAPE_TYPE
 
-from openocr_engine import ocr_image as _ocr_image_path
-import marker_extract
+    from openocr_engine import ocr_image as _ocr_image_path
+    import marker_extract
+except ImportError as _exc:  # pragma: no cover — only on the bare render-worker
+    _IMPORT_ERROR = _exc
 
 # Marker prepass routing (decided in main()).
 # Paper-PDFs that classify as text-rich go through marker for body text +
@@ -315,17 +328,17 @@ SOURCES = [
         "title": "Frostbite PB and Unified Volumetrics",
     },
     {
-        "path": "/mnt/archive4/Downloads/TemporalAA.pptx",
+        "path": "/mnt/archive4/PAPERS/karis-2014-temporal-aa.pptx",
         "slug": "karis-2014-temporal-aa",
         "type": "pptx",
         "title": "High-Quality Temporal Supersampling — Karis 2014",
     },
-    # PDF
+    # PPTX
     {
-        "path": "/home/midori/Downloads/Nubis Cubed (Advances 2023).pdf",
-        "slug": "nubis-cubed-2023",
-        "type": "pdf",
-        "title": "Nubis Cubed (Advances 2023)",
+        "path": "/mnt/archive4/PAPERS/schneider-2023-nubis-cubed.pptx",
+        "slug": "schneider-2023-nubis-cubed",
+        "type": "pptx",
+        "title": "Nubis Cubed — Schneider (Advances in Real-Time Rendering 2023)",
     },
     {
         "path": "/home/midori/Downloads/Nubis - Authoring Realtime Volumetric Cloudscapes with the Decima Engine - Final .pdf",
@@ -447,6 +460,7 @@ SOURCES = [
         "path": "/mnt/archive4/PAPERS/jimenez-2017-cod-taa-upsampling.pdf",
         "slug": "jimenez-2017-cod-taa-upsampling",
         "type": "pdf",
+        "slide_deck": True,
         "title": "Dynamic Temporal Antialiasing and Upsampling in Call of Duty (Jimenez — SIGGRAPH 2017 Advances / Digital Dragons 2018)",
     },
     {
@@ -1004,10 +1018,9 @@ SOURCES = [
         "title": "Pyramidal Parametrics (Lance Williams — Computer Graphics 17:3, July 1983 / SIGGRAPH 1983)",
     },
     {
-        "path": "/home/midori/Downloads/SIGGRAPH2022-Advances-NubisEvolved-NoVideos.pdf",
+        "path": "/mnt/archive4/PAPERS/schneider-2022-nubis-evolved.pptx",
         "slug": "schneider-2022-nubis-evolved",
-        "type": "pdf",
-        "slide_deck": True,
+        "type": "pptx",
         "title": "Nubis, Evolved: Real-time Volumetric Clouds for Skies, Environments, and VFX — Andrew Schneider (SIGGRAPH 2022 Advances in Real-Time Rendering in Games)",
     },
     {
@@ -1348,6 +1361,22 @@ SOURCES = [
         # Moderate equation-substitution risk: M (matrix), epsilon (depth threshold),
         # p_prev / p_curr (projected screen coordinates).
         "slide_deck": False,
+    },
+    # ============================================================================
+    # Schneider 2018 — Nubis: Realtime Volumetric Cloudscapes In A Nutshell
+    # Eurographics 2018 (Advances in Real-Time Rendering / Education sessions).
+    # 36-slide PPTX, ~298 MB. A "nutshell" recap of the Nubis cloud system
+    # (HZD 2015 / nubis-evolved 2022) with written speaker notes across all slides.
+    # Companion to schneider-2015-hzd-clouds, schneider-2022-nubis-evolved, and
+    # schneider-2023-nubis-cubed. Minimal math; emphasis on visual intuition and
+    # noise function composition. Video narration captured separately:
+    # schneider-2018-nubis-nutshell (YouTube youtu.be/-d8qT5-1LOI).
+    # ============================================================================
+    {
+        "path": "/mnt/archive4/PAPERS/schneider-2018-nubis-nutshell.pptx",
+        "slug": "schneider-2018-nubis-nutshell",
+        "type": "pptx",
+        "title": "Nubis: Realtime Volumetric Cloudscapes In A Nutshell — Andrew Schneider (Eurographics 2018)",
     },
 ]
 
@@ -1712,52 +1741,323 @@ def _find_libreoffice() -> str | None:
     return None
 
 
-def _pptx_to_pdf(pptx_path: str, out_dir: str) -> str:
-    """Convert PPTX to PDF via LibreOffice headless. Returns path to the PDF.
+def _find_uno_python() -> str | None:
+    """Locate a python interpreter that can `import uno`.
 
-    Raises RuntimeError if LibreOffice is unavailable. Install via:
-        Arch:    pacman -S libreoffice-fresh
-        Debian:  apt install libreoffice
-        macOS:   brew install --cask libreoffice
+    The UNO Python bridge (`pyuno`) is a compiled extension tied to one CPython
+    ABI — typically the system interpreter LibreOffice was built against, NOT
+    the extraction venv. The extraction venv (with pptx / fitz / PIL / cv2)
+    usually cannot import uno, so the per-slide render runs as a subprocess
+    under whichever interpreter owns the bridge. Returns the interpreter path,
+    or None if none can import uno.
     """
+    import shutil
     import subprocess
 
+    candidates = []
+    # Prefer a LibreOffice-bundled python if one exists (guaranteed ABI match).
+    for c in (
+        "/usr/lib/libreoffice/program/python",
+        "/opt/libreoffice/program/python",
+        "/Applications/LibreOffice.app/Contents/Resources/python",
+    ):
+        if os.path.exists(c):
+            candidates.append(c)
+    # Then the system interpreters on PATH.
+    for name in ("python3", "python"):
+        which = shutil.which(name)
+        if which:
+            candidates.append(which)
+    candidates.append("/usr/bin/python3")
+
+    seen = set()
+    for py in candidates:
+        rp = os.path.realpath(py)
+        if rp in seen:
+            continue
+        seen.add(rp)
+        try:
+            r = subprocess.run(
+                [py, "-c", "import uno"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=30,
+            )
+            if r.returncode == 0:
+                return py
+        except Exception:  # noqa: BLE001
+            continue
+    return None
+
+
+# Pixel size from a 1/100-mm slide dimension at the given render scale.
+# 1/100 mm → pt: (mm/100) * (72/25.4). At scale 2.0 a 960×540 pt 16:9 slide
+# → 1920×1080, matching the old fitz.Matrix(scale, scale) render; non-16:9
+# decks keep their own aspect rather than being forced to 16:9.
+def _hmm_to_px(hundredth_mm: float, scale: float) -> int:
+    return max(1, round(hundredth_mm / 100.0 / 25.4 * 72.0 * scale))
+
+
+def _render_pptx_slides_uno_inproc(pptx_path: str, out_dir: str, scale: float) -> int:
+    """The actual UNO per-slide render. MUST run under a uno-capable interpreter.
+
+    Starts a private headless soffice listener, connects over the UNO socket,
+    iterates `DrawPages`, and exports each page through `impress_png_Export` to
+    `out_dir/sNNN-slide.png`. The PNG index equals the slide index BY
+    CONSTRUCTION (each page is addressed by its own draw-page index), so the
+    cumulative-offset failure of the old PPTX → PDF → PyMuPDF path — where a
+    dropped video slide or a crashed PDF write shifted every later render — is
+    structurally impossible here. Returns the number of pages rendered.
+
+    Drives one soffice instance for the whole document and shuts it down in a
+    finally block. The listener uses an isolated UserInstallation profile and a
+    private socket so it never collides with or locks a GUI LibreOffice the user
+    may have open.
+    """
+    import subprocess
+    import time
+
+    import uno
+    from com.sun.star.beans import PropertyValue
+
+    soffice = _find_libreoffice()
+    if not soffice:
+        raise RuntimeError("LibreOffice (soffice) not found — see _find_libreoffice.")
+
+    def pv(name, value):
+        p = PropertyValue()
+        p.Name = name
+        p.Value = value
+        return p
+
+    profile_dir = os.path.join(out_dir, "_louno_profile")
+    os.makedirs(profile_dir, exist_ok=True)
+    port = "2002"
+    accept = f"socket,host=localhost,port={port};urp;StarOffice.ServiceManager"
+    proc = subprocess.Popen(
+        [
+            soffice,
+            "--headless",
+            "--invisible",
+            "--norestore",
+            "--nologo",
+            "--nofirststartwizard",
+            f"-env:UserInstallation=file://{profile_dir}",
+            f"--accept={accept}",
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+    doc = None
+    desktop = None
+    try:
+        local_ctx = uno.getComponentContext()
+        resolver = local_ctx.ServiceManager.createInstanceWithContext(
+            "com.sun.star.bridge.UnoUrlResolver", local_ctx
+        )
+        connect_url = (
+            f"uno:socket,host=localhost,port={port};urp;StarOffice.ComponentContext"
+        )
+        ctx = None
+        last_exc = None
+        for _ in range(60):  # up to ~60s for the listener to come up
+            if proc.poll() is not None:
+                raise RuntimeError(
+                    f"soffice listener exited (code {proc.returncode}) before the "
+                    f"UNO bridge accepted a connection."
+                )
+            try:
+                ctx = resolver.resolve(connect_url)
+                break
+            except Exception as exc:  # noqa: BLE001  (NoConnectException etc.)
+                last_exc = exc
+                time.sleep(1)
+        if ctx is None:
+            raise RuntimeError(
+                f"could not connect to the soffice UNO bridge on port {port}: "
+                f"{last_exc!r}"
+            )
+
+        smgr = ctx.ServiceManager
+        desktop = smgr.createInstanceWithContext("com.sun.star.frame.Desktop", ctx)
+
+        url = uno.systemPathToFileUrl(os.path.abspath(pptx_path))
+        load_props = (pv("Hidden", True), pv("ReadOnly", True))
+        doc = desktop.loadComponentFromURL(url, "_blank", 0, load_props)
+        if doc is None or not hasattr(doc, "DrawPages"):
+            raise RuntimeError(
+                f"LibreOffice loaded {pptx_path!r} but it is not a draw/impress "
+                f"document (no DrawPages). Check that the file is a valid PPTX."
+            )
+
+        pages = doc.DrawPages
+        n = pages.Count
+
+        # Per-slide pixel size from the deck's own geometry. A draw page exposes
+        # Width / Height in 1/100 mm (verified: a 960×540 pt slide reports
+        # 33867 × 19050). Fall back to a 16:9 960×540 pt slide if unreadable.
+        try:
+            first_page = pages.getByIndex(0)
+            px_w = _hmm_to_px(first_page.Width, scale)
+            px_h = _hmm_to_px(first_page.Height, scale)
+        except Exception:  # noqa: BLE001
+            px_w = round(960.0 * scale)
+            px_h = round(540.0 * scale)
+
+        controller = doc.getCurrentController()
+        filter_data = uno.Any(
+            "[]com.sun.star.beans.PropertyValue",
+            (pv("PixelWidth", px_w), pv("PixelHeight", px_h)),
+        )
+
+        for i in range(n):
+            page = pages.getByIndex(i)
+            # Select the page so the PNG filter exports THIS page, not page 0.
+            controller.setCurrentPage(page)
+            out_name = f"s{i + 1:03d}-slide.png"
+            out_url = uno.systemPathToFileUrl(os.path.join(out_dir, out_name))
+            store_props = (
+                pv("FilterName", "impress_png_Export"),
+                pv("FilterData", filter_data),
+            )
+            doc.storeToURL(out_url, store_props)
+
+        return n
+    finally:
+        # Best-effort clean shutdown: close the doc, terminate the desktop,
+        # then make sure the listener process is gone.
+        if doc is not None:
+            try:
+                doc.close(False)
+            except Exception:  # noqa: BLE001
+                pass
+        if desktop is not None:
+            try:
+                desktop.terminate()
+            except Exception:  # noqa: BLE001
+                pass
+        try:
+            proc.wait(timeout=30)
+        except Exception:  # noqa: BLE001
+            try:
+                proc.kill()
+            except Exception:  # noqa: BLE001
+                pass
+
+
+def _render_pptx_slides_uno(pptx_path: str, out_dir: str, scale: float = 2.0) -> int:
+    """Render every PPTX slide to `out_dir/sNNN-slide.png` (index == slide).
+
+    Replaces the former PPTX → PDF → PyMuPDF rasterisation. That path silently
+    dropped slides carrying embedded video (LibreOffice omits the page from the
+    PDF) and crashed the PDF writer on some code-heavy slides; every drop
+    shifted all later slides onto the wrong render. Per-slide
+    `impress_png_Export` has neither failure mode — a video slide exports its
+    poster frame, and there is no PDF intermediate to crash.
+
+    The actual render needs both the UNO bridge AND, for the caller, the
+    extraction deps. `pyuno` rarely imports in the extraction venv (it is built
+    against the system interpreter's ABI), so when the current interpreter
+    cannot `import uno` this dispatches the render to a uno-capable interpreter
+    as a subprocess (re-invoking this module with `--render-pptx-worker`) and
+    reads the PNGs back from `out_dir`. When the current interpreter already has
+    uno, it renders in-process. Either way the output contract is identical:
+    `out_dir/sNNN-slide.png` for each slide, return value = page count.
+
+    Raises RuntimeError if LibreOffice is unavailable, no uno-capable
+    interpreter exists, or the render produces no pages.
+    """
     soffice = _find_libreoffice()
     if not soffice:
         raise RuntimeError(
             "LibreOffice not found on PATH. PPTX → slide-image rendering "
-            "requires `soffice` / `libreoffice` (headless conversion to PDF). "
-            "Install: pacman -S libreoffice-fresh (Arch) / "
+            "requires `soffice` / `libreoffice` (headless UNO per-slide PNG "
+            "export). Install: pacman -S libreoffice-fresh (Arch) / "
             "apt install libreoffice (Debian) / "
             "brew install --cask libreoffice (macOS). "
             "See SKILL.md → 'PPTX rendering dependency' section."
         )
-    pptx_name = Path(pptx_path).stem
-    out_pdf = os.path.join(out_dir, f"{pptx_name}.pdf")
-    if os.path.exists(out_pdf):
-        return out_pdf
-    subprocess.run(
-        [soffice, "--headless", "--convert-to", "pdf", "--outdir", out_dir, pptx_path],
-        check=True,
-        capture_output=True,
-    )
-    if not os.path.exists(out_pdf):
+
+    # In-process when this interpreter owns the bridge.
+    try:
+        import uno  # noqa: F401
+        return _render_pptx_slides_uno_inproc(pptx_path, out_dir, scale)
+    except ImportError:
+        pass
+
+    # Otherwise dispatch to a uno-capable interpreter as a subprocess.
+    import subprocess
+
+    uno_py = _find_uno_python()
+    if not uno_py:
         raise RuntimeError(
-            f"LibreOffice ran but did not produce {out_pdf}. "
-            f"Check that `{pptx_path}` is a valid PPTX file."
+            "PPTX per-slide rendering needs an interpreter that can `import uno` "
+            "(the LibreOffice UNO Python bridge), but none was found. The bridge "
+            "ships with LibreOffice and is tied to the system interpreter's ABI, "
+            "so the extraction venv usually cannot import it. Install the uno "
+            "bindings for a system python (Arch: `libreoffice-fresh` provides "
+            "`/usr/lib/python*/site-packages/uno.py`; Debian: `python3-uno`), or "
+            "run extraction under an interpreter that has both uno and the "
+            "extraction deps."
         )
-    return out_pdf
+
+    this_module = os.path.abspath(__file__)
+    r = subprocess.run(
+        [
+            uno_py,
+            this_module,
+            "--render-pptx-worker",
+            pptx_path,
+            out_dir,
+            str(scale),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=1800,  # large decks (hundreds of slides, GB of video) are slow
+    )
+    if r.returncode != 0:
+        raise RuntimeError(
+            f"PPTX render worker ({uno_py}) failed (exit {r.returncode}).\n"
+            f"stdout: {r.stdout.strip()}\nstderr: {r.stderr.strip()}"
+        )
+    # The worker prints the page count on its last stdout line.
+    count = 0
+    for line in r.stdout.splitlines():
+        line = line.strip()
+        if line.startswith("RENDERED "):
+            try:
+                count = int(line.split()[1])
+            except (IndexError, ValueError):
+                pass
+    if count <= 0:
+        # Fall back to counting PNGs on disk if the worker's line was lost.
+        count = len(
+            [f for f in os.listdir(out_dir) if f.endswith("-slide.png")]
+        )
+    if count <= 0:
+        raise RuntimeError(
+            f"PPTX render worker produced no slides in {out_dir!r}."
+        )
+    return count
 
 
 def extract_pptx(source: dict, scale: float = 2.0) -> Document:
     """Extract PPTX as a slide deck.
 
     PPTX is always treated as a slide deck — every slide rendered as a single
-    PNG via LibreOffice → PDF → PyMuPDF rasterisation. Per-shape image
-    extraction is NEVER used: it cuts visual elements into useless fragments
-    (chart chrome split from plot, photo split from frame, etc.) and the
-    relative geometry is lost. Speaker notes and slide title are still pulled
-    from python-pptx for text content.
+    PNG via LibreOffice UNO per-slide `impress_png_Export` (one PNG per
+    `DrawPage`, index == slide). Per-shape image extraction is NEVER used: it
+    cuts visual elements into useless fragments (chart chrome split from plot,
+    photo split from frame, etc.) and the relative geometry is lost. Speaker
+    notes and slide title are still pulled from python-pptx for text content.
+
+    The render goes through `_render_pptx_slides_uno`, which exports each draw
+    page directly. The former PPTX → PDF → PyMuPDF path was removed: LibreOffice
+    silently dropped video slides from the PDF and crashed the PDF writer on
+    some code-heavy slides, and every drop shifted all later slides onto the
+    wrong render — a cumulative-offset bug the per-slide export cannot have
+    because slide N is addressed by its own draw-page index.
     """
     path = source["path"]
     file_size = os.path.getsize(path) / (1024 * 1024)
@@ -1773,10 +2073,19 @@ def extract_pptx(source: dict, scale: float = 2.0) -> Document:
         is_slide_deck=True,
     )
 
-    # Render each slide via LibreOffice → PDF → PyMuPDF
+    # Render every slide once, up front, to a throwaway temp dir. The PNG index
+    # equals the slide index by construction, so we read sNNN-slide.png back per
+    # slide below. (Renders go to a temp dir, NOT the assets dir, so a render
+    # never silently picks up a stale image — write_markdown is the single place
+    # that writes the canonical assets/<slug>/sNNN-slide.png.)
     tmp_dir = tempfile.mkdtemp(prefix="research-pptx-render-")
-    pdf_path = _pptx_to_pdf(path, tmp_dir)
-    pdf_doc = fitz.open(pdf_path)
+    n_rendered = _render_pptx_slides_uno(path, tmp_dir, scale=scale)
+    if n_rendered != len(prs.slides):
+        raise RuntimeError(
+            f"{source['slug']!r}: UNO rendered {n_rendered} slides but python-pptx "
+            f"reports {len(prs.slides)} — render/slide count mismatch, refusing to "
+            f"emit misaligned assets."
+        )
 
     for slide_idx, slide in enumerate(prs.slides):
         page_data = PageData(number=slide_idx + 1)
@@ -1812,14 +2121,13 @@ def extract_pptx(source: dict, scale: float = 2.0) -> Document:
         except Exception:
             pass
 
-        # Render the corresponding PDF page (PPTX → PDF preserves slide order 1:1)
-        if slide_idx < len(pdf_doc):
-            pix = pdf_doc[slide_idx].get_pixmap(matrix=fitz.Matrix(scale, scale))
-            page_data.slide_image = ImageData(data=pix.tobytes("png"), ext="png")
+        render_path = os.path.join(tmp_dir, f"s{slide_idx + 1:03d}-slide.png")
+        if os.path.exists(render_path):
+            with open(render_path, "rb") as fh:
+                page_data.slide_image = ImageData(data=fh.read(), ext="png")
 
         document.pages.append(page_data)
 
-    pdf_doc.close()
     return document
 
 
@@ -1923,7 +2231,37 @@ def write_markdown(doc: Document):
     return total_images
 
 
+def _render_pptx_worker_main(argv: list[str]) -> int:
+    """Subprocess entry point: `--render-pptx-worker <pptx> <out_dir> <scale>`.
+
+    Runs the in-process UNO render under a uno-capable interpreter and prints
+    `RENDERED <n>` on success. Used by _render_pptx_slides_uno when the parent
+    interpreter cannot import uno. Touches only uno + the render helpers — never
+    the heavy extraction deps — so it works under the bare system python.
+    """
+    if len(argv) != 3:
+        print("usage: --render-pptx-worker <pptx> <out_dir> <scale>", file=sys.stderr)
+        return 2
+    pptx_path, out_dir, scale_s = argv
+    try:
+        scale = float(scale_s)
+    except ValueError:
+        print(f"bad scale {scale_s!r}", file=sys.stderr)
+        return 2
+    os.makedirs(out_dir, exist_ok=True)
+    n = _render_pptx_slides_uno_inproc(pptx_path, out_dir, scale)
+    print(f"RENDERED {n}")
+    return 0
+
+
 def main():
+    if _IMPORT_ERROR is not None:
+        raise RuntimeError(
+            "extraction dependencies failed to import (PyMuPDF / Pillow / "
+            "python-pptx / OpenOCR / marker). Run under the extraction venv "
+            f"that has them. Original error: {_IMPORT_ERROR!r}"
+        )
+
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     force = "--force" in sys.argv
@@ -1975,4 +2313,9 @@ def main():
 
 
 if __name__ == "__main__":
+    # The PPTX render worker runs under a bare uno-capable interpreter that
+    # lacks the heavy extraction deps, so intercept it BEFORE main() (which
+    # requires them).
+    if len(sys.argv) >= 2 and sys.argv[1] == "--render-pptx-worker":
+        sys.exit(_render_pptx_worker_main(sys.argv[2:]))
     main()

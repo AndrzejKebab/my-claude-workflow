@@ -60,6 +60,15 @@ Binding:
 - ALWAYS investigate test failures — no "pre-existing failures" excuse.
 - Begin work by running the relevant test suite; follow project test discipline.
 
+## Unity — editor-state check before every invocation (binding)
+
+Unity locks each project to a single editor instance, so every Unity invocation (compile check, test run, `-executeMethod`, profiler) has exactly one correct transport, decided by whether an editor currently has that project open. That state MUST be checked at the moment of invocation — never assumed, never inherited from a brief, an earlier turn, or another agent's report.
+
+- Check first, every time: a process check scoped to the project path (e.g. `pgrep -af '[U]nity' | grep <projectPath>` — the bracket pattern, or the check's own shell wrapper self-matches and reports a phantom editor). Lockfiles and connector heartbeats are unreliable witnesses — `Temp/UnityLockfile` survives crashes, and a `unity-cli` connector heartbeat can be hours stale while no editor process exists.
+- Editor running → `unity-cli` (batchmode fails against the instance lock).
+- Editor not running → batchmode via the `unity` wrapper; never drive `unity-cli` at an editor that is not there.
+- Briefs and dispatched prompts include "check whether the editor is running" as a step; they never assert the editor's state as a fact.
+
 ## Worktrees
 - Branch from local `main` (not HEAD, not `origin/main`).
 - Inside `.claude/worktrees/`: absolute paths for ALL operations.

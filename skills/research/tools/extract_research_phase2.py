@@ -70,9 +70,13 @@ SOURCES_BY_SLUG = {
         "path": "/mnt/archive4/PAPERS/montoya-2022-teardown-breakdown.pdf",
         "type": "pdf",
     },
-    "nubis-cubed-2023": {
-        "path": "/home/midori/Downloads/Nubis Cubed (Advances 2023).pdf",
-        "type": "pdf",
+    "schneider-2023-nubis-cubed": {
+        "path": "/mnt/archive4/PAPERS/schneider-2023-nubis-cubed.pptx",
+        "type": "pptx",
+    },
+    "schneider-2018-nubis-nutshell": {
+        "path": "/mnt/archive4/PAPERS/schneider-2018-nubis-nutshell.pptx",
+        "type": "pptx",
     },
     "horizon-zd-clouds": {
         "path": "/home/midori/Downloads/The Real-time Volumetric Cloudscapes of Horizon - Zero Dawn - ARTR.pdf",
@@ -99,7 +103,7 @@ SOURCES_BY_SLUG = {
         "type": "pptx",
     },
     "karis-2014-temporal-aa": {
-        "path": "/mnt/archive4/Downloads/TemporalAA.pptx",
+        "path": "/mnt/archive4/PAPERS/karis-2014-temporal-aa.pptx",
         "type": "pptx",
     },
     "egsr2020": {
@@ -113,6 +117,10 @@ SOURCES_BY_SLUG = {
     "nubis-decima": {
         "path": "/home/midori/Downloads/Nubis - Authoring Realtime Volumetric Cloudscapes with the Decima Engine - Final .pdf",
         "type": "pdf",
+    },
+    "schneider-2022-nubis-evolved": {
+        "path": "/mnt/archive4/PAPERS/schneider-2022-nubis-evolved.pptx",
+        "type": "pptx",
     },
     "kuhi-2018": {
         "path": "/home/midori/Downloads/Kuhi_informaatika_2018.pdf",
