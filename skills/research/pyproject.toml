@@ -11,6 +11,12 @@ dependencies = [
     "openocr-python>=0.1.5,<0.2",
     "lxml>=6,<7",
     "faster-whisper>=1.2,<2",
+    # ctranslate2 (faster-whisper's backend) dlopens libcublas.so.12, but torch
+    # pulls a CUDA-13 nvidia stack into the venv. Pin the CUDA-12 cublas wheel so
+    # the GPU STT path works; transcribe_to_srt.py preloads it by absolute path.
+    # Linux-only: nvidia ships these wheels for linux-x86_64 only (macOS STT runs
+    # on CPU). Without this pin, `uv sync` would prune it and break STT every time.
+    "nvidia-cublas-cu12>=12.9,<13 ; sys_platform == 'linux'",
     "marker-pdf>=1.10,<2",
     "imagehash>=4.3.2",
 ]

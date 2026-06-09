@@ -32,6 +32,39 @@ import cv2
 ASSETS_ROOT = Path("/mnt/archive4/PAPERS/Prepared/assets")
 
 
+def ensure_cv2_decodable(video: Path) -> Path:
+    """Return a video OpenCV can decode, transcoding to H.264 if needed.
+
+    cv2's FFmpeg backend yields all-black frames for AV1 (and often VP9), so the
+    histogram diff sees no change and detection collapses to a single scene —
+    the exact under-detection this tool exists to fix. Probe the codec and
+    transcode to a scratch `<stem>-h264.mp4` when it is not H.264. Detection runs
+    on the copy; ffmpeg frame extraction still uses the original (best quality,
+    and ffmpeg decodes AV1 fine). Kept inline rather than imported from
+    research_video.py, whose module import would load the OpenOCR engine.
+    """
+    try:
+        probe = subprocess.run(
+            ["ffprobe", "-v", "error", "-select_streams", "v:0",
+             "-show_entries", "stream=codec_name", "-of", "csv=p=0", str(video)],
+            capture_output=True, text=True, timeout=30,
+        )
+        codec = probe.stdout.strip().lower()
+    except Exception:
+        codec = ""
+    if codec in ("", "h264"):
+        return video
+    h264 = video.with_name(video.stem + "-h264.mp4")
+    if not h264.exists():
+        print(f"Transcoding {codec} -> h264 for cv2 detection...", file=sys.stderr)
+        subprocess.run(
+            ["ffmpeg", "-y", "-loglevel", "error", "-i", str(video),
+             "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-an", str(h264)],
+            check=True,
+        )
+    return h264
+
+
 def detect_scenes(video: Path, threshold: float, interval: float, min_gap: float):
     cap = cv2.VideoCapture(str(video))
     fps = cap.get(cv2.CAP_PROP_FPS)
@@ -94,7 +127,10 @@ def main():
     out_dir = ASSETS_ROOT / args.slug
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    scenes = detect_scenes(args.video, args.threshold, args.interval, args.min_gap)
+    # Detect on an H.264-decodable copy (cv2 can't read AV1/VP9); extract frames
+    # below from the original for best quality.
+    cv_video = ensure_cv2_decodable(args.video)
+    scenes = detect_scenes(cv_video, args.threshold, args.interval, args.min_gap)
     print(f"Found {len(scenes)} scenes", file=sys.stderr)
 
     tsv_path = Path(f"/tmp/scenes_{args.slug}.tsv")

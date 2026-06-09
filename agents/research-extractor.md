@@ -49,8 +49,10 @@ If `~/.claude/skills/research/.venv/` does not exist (fresh install), bootstrap 
 
 ### YouTube / HLS / local video
 
-1. For YouTube: `~/.claude/skills/research/.venv/bin/python ~/.claude/skills/research/tools/research_video.py "URL"`.
-2. For HLS: download via ffmpeg per the skill spec (m3u8 master → quality sub-playlist → ffmpeg with appropriate headers), then transcribe via `~/.claude/skills/research/tools/transcribe_to_srt.py`, then run `~/.claude/skills/research/.venv/bin/python ~/.claude/skills/research/tools/research_video.py /tmp/research-SLUG/SLUG.mp4 "--title=..." "--slug=<slug>"`.
+The transcript always comes from the SOTA STT pass (faster-whisper `large-v3`), never YouTube auto-captions. `research_video.py` re-transcribes the audio itself when no SRT sits next to the mp4, and `transcribe_to_srt.py` self-bootstraps its CUDA libraries — no `LD_LIBRARY_PATH` is needed at any call site.
+
+1. For YouTube: `~/.claude/skills/research/.venv/bin/python ~/.claude/skills/research/tools/research_video.py "URL" "--title=..." "--slug=<slug>"`. This downloads the video and transcribes it via the STT pass automatically.
+2. For HLS: download via ffmpeg per the skill spec (m3u8 master → quality sub-playlist → ffmpeg with appropriate headers), then run `~/.claude/skills/research/.venv/bin/python ~/.claude/skills/research/tools/research_video.py /tmp/research-SLUG/SLUG.mp4 "--title=..." "--slug=<slug>"` (it transcribes the downloaded mp4 itself). Pre-stage the SRT with `transcribe_to_srt.py` only if you want to override the model.
 3. For local video: same as the HLS step 2 onwards.
 4. Archive the mp4 + srt to `/mnt/archive4/PAPERS/<year>-<slug-tail>/<slug>.{mp4,en.srt}`.
 

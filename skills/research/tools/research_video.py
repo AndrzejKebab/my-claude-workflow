@@ -74,30 +74,25 @@ def download_video(url: str, output_dir: Path) -> tuple[Path, VideoInfo]:
     slug = re.sub(r'[^a-z0-9]+', '-', title.lower()).strip('-')[:60]
 
     video_path = output_dir / f"{slug}.mp4"
-    srt_path = output_dir / f"{slug}.en.srt"
 
-    # Download video (720p max for speed)
+    # Download video (720p max for speed). The transcript is produced by the
+    # SOTA STT pass in main() (faster-whisper), never scraped from YouTube
+    # auto-captions — see transcribe_to_srt.transcribe().
     if not video_path.exists():
         print(f"  Downloading video...")
         dl_cmd = [
             "yt-dlp",
-            "-f", "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720]",
+            # Prefer H.264 (avc1): OpenCV's FFmpeg backend cannot decode YouTube's
+            # default AV1/VP9 (it yields all-black frames, collapsing scene
+            # detection). Fall back to any mp4, then best — _ensure_cv2_decodable
+            # transcodes whatever lands if it still isn't H.264.
+            "-f", ("bestvideo[height<=720][ext=mp4][vcodec^=avc1]+bestaudio[ext=m4a]/"
+                   "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720]"),
             "--merge-output-format", "mp4",
             "-o", str(video_path),
             url,
         ]
         subprocess.run(dl_cmd, capture_output=True, timeout=600)
-
-    # Download auto-captions
-    if not srt_path.exists():
-        print(f"  Downloading captions...")
-        sub_cmd = [
-            "yt-dlp", "--write-auto-sub", "--sub-lang", "en",
-            "--sub-format", "srt", "--skip-download",
-            "-o", str(output_dir / slug),
-            url,
-        ]
-        subprocess.run(sub_cmd, capture_output=True, timeout=60)
 
     info = VideoInfo(
         title=title, duration=duration, video_id=video_id,
@@ -132,6 +127,39 @@ def parse_srt(srt_path: Path) -> list[tuple[float, float, str]]:
             continue
         entries.append((start, end, text))
     return entries
+
+
+def _ensure_cv2_decodable(video_path: Path) -> Path:
+    """Return a path to a video OpenCV can decode, transcoding to H.264 if needed.
+
+    OpenCV's FFmpeg backend cannot decode AV1 (and frequently VP9): it silently
+    yields all-black frames, which collapses scene detection to a single scene —
+    a failure that looks like "the detector found nothing" rather than a codec
+    error. YouTube serves AV1/VP9 by default, so probe the video codec and, when
+    it is not H.264, transcode to a scratch `<stem>-h264.mp4` beside the source.
+    The original (the canonical archive copy) is never modified. ffmpeg/whisper
+    handle AV1 audio fine, so only the cv2 image path needs this.
+    """
+    try:
+        probe = subprocess.run(
+            ["ffprobe", "-v", "error", "-select_streams", "v:0",
+             "-show_entries", "stream=codec_name", "-of", "csv=p=0", str(video_path)],
+            capture_output=True, text=True, timeout=30,
+        )
+        codec = probe.stdout.strip().lower()
+    except Exception:
+        codec = ""  # probe failed; let cv2 try the original
+    if codec in ("", "h264"):
+        return video_path
+    h264_path = video_path.with_name(video_path.stem + "-h264.mp4")
+    if not h264_path.exists():
+        print(f"  Transcoding {codec} -> h264 for scene detection (cv2 cannot decode {codec})...")
+        subprocess.run(
+            ["ffmpeg", "-y", "-i", str(video_path), "-c:v", "libx264",
+             "-preset", "veryfast", "-crf", "23", "-an", str(h264_path)],
+            capture_output=True, check=True,
+        )
+    return h264_path
 
 
 def detect_scenes(video_path: Path, sample_interval: float = 1.0,
@@ -405,11 +433,24 @@ def format_timestamp(seconds: float) -> str:
     return f"{m:02d}:{s:02d}"
 
 
-def process_video(video_path: Path, info: VideoInfo, srt_path: Path, scene_threshold: float = 0.35) -> str:
-    """Full pipeline: detect scenes, classify, OCR, transcribe, emit markdown."""
+def process_video(video_path: Path, info: VideoInfo, srt_path: Path,
+                  scene_threshold: float = 0.35, merge: bool = True) -> str:
+    """Full pipeline: detect scenes, classify, OCR, transcribe, emit markdown.
+
+    `merge=False` skips the consecutive-scene merge pass. The merge heuristic
+    ("always merge same-type speaker/demo runs, plus any scene <3s") suits a
+    talking-head talk but over-collapses a slide/gameplay-dense deck — e.g. it
+    merges a 31-min talk's 190 redetected scenes down to ~6. For those, run with
+    --no-merge (typically alongside a tighter --threshold) to keep one section
+    per detected slide.
+    """
     slug = info.slug
     slug_assets = ASSETS_DIR / slug
     slug_assets.mkdir(parents=True, exist_ok=True)
+
+    # All cv2 reads below (detect_scenes, classify_scene, extract_frame) need an
+    # H.264-decodable source — transcode once here if the download was AV1/VP9.
+    video_path = _ensure_cv2_decodable(video_path)
 
     # Parse captions
     captions = parse_srt(srt_path)
@@ -453,9 +494,12 @@ def process_video(video_path: Path, info: VideoInfo, srt_path: Path, scene_thres
 
     cap.release()
 
-    # Merge similar consecutive scenes
-    scenes = merge_similar_scenes(scenes, video_path)
-    print(f"  {len(scenes)} scenes after merging")
+    # Merge similar consecutive scenes (skip for slide/demo-dense talks)
+    if merge:
+        scenes = merge_similar_scenes(scenes, video_path)
+        print(f"  {len(scenes)} scenes after merging")
+    else:
+        print(f"  {len(scenes)} scenes (merge disabled)")
 
     # Generate markdown
     md_lines = [
@@ -541,7 +585,8 @@ def process_video(video_path: Path, info: VideoInfo, srt_path: Path, scene_thres
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: research_video.py <url-or-local-path> [--title='...'] [--slug='...']")
+        print("Usage: research_video.py <url-or-local-path> [--title='...'] [--slug='...'] "
+              "[--threshold=0.35] [--no-merge]")
         sys.exit(1)
 
     url = sys.argv[1]
@@ -549,6 +594,7 @@ def main():
     extra_slug = next((a.split("=", 1)[1] for a in sys.argv[2:] if a.startswith("--slug=")), None)
     threshold_arg = next((a.split("=", 1)[1] for a in sys.argv[2:] if a.startswith("--threshold=")), None)
     scene_threshold = float(threshold_arg) if threshold_arg else 0.35
+    merge = "--no-merge" not in sys.argv[2:]
     work_dir = Path(tempfile.mkdtemp(prefix="research-"))
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -578,8 +624,16 @@ def main():
             info.slug = extra_slug
         srt_path = work_dir / f"{info.slug}.en.srt"
 
+    # Transcript source is always SOTA STT (faster-whisper), never YouTube
+    # auto-captions. A pre-existing SRT next to a local video is reused as-is
+    # (presumed an earlier STT run); otherwise we transcribe the audio now.
+    if not srt_path.exists():
+        from transcribe_to_srt import transcribe
+        print("  Transcribing audio with faster-whisper (SOTA STT)...")
+        transcribe(str(video_path), str(srt_path))
+
     print(f"Processing: {info.title} ({format_timestamp(info.duration)})")
-    md_path = process_video(video_path, info, srt_path, scene_threshold=scene_threshold)
+    md_path = process_video(video_path, info, srt_path, scene_threshold=scene_threshold, merge=merge)
 
     print(f"\nDone: {md_path}")
 

@@ -297,7 +297,7 @@ cp "/tmp/research-XXXX/<scaffolding>.en.srt" "/mnt/archive4/PAPERS/<year>-<slug-
 
 The argument is a URL or file path:
 
-- YouTube URL → download video, detect slides, OCR + transcribe, output markdown
+- YouTube URL → download video, detect slides, OCR, re-transcribe the audio with the SOTA STT pass (faster-whisper `large-v3`), output markdown. The pipeline never uses YouTube auto-captions — they are lower quality and mis-segment technical vocabulary, so `research_video.py` always re-transcribes via `transcribe_to_srt.transcribe()`.
 - HLS stream (m3u8 URL) → download via ffmpeg, transcribe with faster-whisper, then video pipeline
 - `.pdf` path → extract text via marker (paper-PDFs with text-layer) or PyMuPDF (slide-deck PDFs and scanned PDFs) + full-page rendering (every page for both slide decks and papers; paper-mode pure-prose pages render as `pNNN-text.png` and are out of vision-pass scope — see render-policy table below). Marker uses Anthropic Claude `claude-sonnet-4-6` for structural cleanup (headings, tables, equations) with `redo_inline_math` enabled; requires `CLAUDE_API_KEY` (or `ANTHROPIC_API_KEY`) in env. Cached per-document at `assets/<slug>/marker.md` so re-runs are free; cache invalidates on PDF mtime change OR provider/model change OR `redo_inline_math` flag flip.
 - `.pptx` path → render every slide via LibreOffice → PDF → PNG, plus python-pptx text + speaker notes
@@ -412,17 +412,15 @@ ffmpeg -y \
   -c copy /tmp/research-SLUG/SLUG.mp4
 ```
 
-Step 3 — transcribe with faster-whisper (CUDA). If no auto-captions are available (non-YouTube source), generate SRT from audio using the tracked helper `tools/transcribe_to_srt.py`:
+Step 3 — transcribe with the SOTA STT pass (faster-whisper `large-v3`, CUDA). This is optional for the HLS/local path: `research_video.py` (Step 4) auto-transcribes when no SRT sits next to the mp4, so you only run this explicitly when you want to pre-stage the SRT or override the model:
 ```bash
-# Requires libcublas on PATH — set LD_LIBRARY_PATH for this machine:
-LD_LIBRARY_PATH=/usr/local/lib/ollama/cuda_v12:$LD_LIBRARY_PATH \
-  ~/.claude/skills/research/.venv/bin/python ~/.claude/skills/research/tools/transcribe_to_srt.py \
+~/.claude/skills/research/.venv/bin/python ~/.claude/skills/research/tools/transcribe_to_srt.py \
   /tmp/research-SLUG/SLUG.mp4 \
-  /tmp/research-SLUG/SLUG.en.srt \
-  medium
+  /tmp/research-SLUG/SLUG.en.srt
+  # optional 3rd positional arg overrides the model (default large-v3), e.g. `medium` for speed
 ```
 
-`tools/transcribe_to_srt.py` is the canonical tracked version of the old inline `/tmp/transcribe_to_srt.py` snippet — **do not recreate it inline**. If you need to extend it (different language, larger model, word-level timestamps), edit the tracked file in `tools/` and commit the change so the next /research run benefits.
+`tools/transcribe_to_srt.py` self-bootstraps the CUDA libraries it needs — no `LD_LIBRARY_PATH` is required at the call site. ctranslate2 (faster-whisper's backend) `dlopen`s `libcublas.so.12`, while torch pulls a CUDA-13 nvidia stack into the venv; the CUDA-12 cublas wheel (`nvidia-cublas-cu12`, pinned in `pyproject.toml`, linux-only) is preloaded by absolute path before the model is built. CUDA-less machines fall back to CPU int8 automatically. It is the canonical tracked version of the old inline `/tmp/transcribe_to_srt.py` snippet — **do not recreate it inline**. If you need to extend it (different language, larger model, word-level timestamps), edit the tracked file in `tools/` and commit the change so the next /research run benefits.
 
 Step 4 — run video pipeline on local file:
 ```bash
@@ -432,7 +430,7 @@ Step 4 — run video pipeline on local file:
   "--slug=my-slug"
 ```
 
-The script finds the SRT automatically next to the mp4 file (same stem, `.en.srt` suffix).
+`research_video.py` reuses an SRT already next to the mp4 (same stem, `.en.srt` suffix); when none exists it re-transcribes the audio via the SOTA STT pass before scene processing. YouTube auto-captions are never used.
 
 **PDF/PPTX file:** Add to `SOURCES` in `tools/extract_research.py`, then:
 ```bash
@@ -453,7 +451,7 @@ This produces a rough markdown with native-text-extracted body, screenshots, and
 Phase 1's OCR fallback fires for:
 - **Scanned PDFs** (Adobe Acrobat / scanner-software output, no text layer): each page is one big embedded image; phase 1 OCRs the image and uses the result as page body.
 - **Slide-deck PDFs / PPTXs whose slides are rasterised** (presentation exported as flattened images): the per-page render goes through OCR; vision pass still describes the rendered slide.
-- **Video frame OCR** for recorded talks (handled by `research_video.py`, not phase 2): captions cover speaker audio but miss slide content shown only visually, so OCR on each detected scene's representative frame supplies the missing slide text.
+- **Video frame OCR** for recorded talks (handled by `research_video.py`, not phase 2): the STT transcript covers speaker audio but misses slide content shown only visually, so OCR on each detected scene's representative frame supplies the missing slide text.
 
 `extract_research.py` no longer emits any `OCR-PENDING` markers — the OCR fallback runs inline during phase 1 and the result lands directly in the page body.
 
@@ -461,7 +459,14 @@ Phase 1's OCR fallback fires for:
 
 `research_video.py` uses a 0.35 Bhattacharyya histogram threshold tuned for typical recorded-talk video. For slide-heavy talks where consecutive slides share a template (same chrome, only text changes), it under-detects badly — e.g. a 40-min, 64-slide deck can collapse to 5–7 detected scenes. **Symptom**: pass 1 finishes with a number of `frame-XXXX-NNNN.jpg` files much smaller than the slide count visible in the deck.
 
-When this happens, use the tracked helpers (do **not** re-create them inline in `/tmp`):
+Two distinct causes produce that symptom, and they have different fixes:
+
+- **Codec (handled automatically).** OpenCV's FFmpeg backend cannot decode AV1 (YouTube's default codec) or, often, VP9 — it returns all-black frames, so the histogram diff sees no change and detection collapses to a *single* scene. `research_video.py` now prefers an H.264 (`avc1`) download and, via `_ensure_cv2_decodable`, transcodes any non-H.264 source to a scratch `<stem>-h264.mp4` before scene detection; `redetect_scenes.py` does the same. A "1 scene detected" result is the fingerprint of this case and should no longer occur — if it does, check the codec with `ffprobe -show_entries stream=codec_name`.
+- **Genuinely similar slides.** Consecutive slides differ only by a text line, so the 0.35 threshold misses the transition. This is the case the redetect helpers below address.
+
+There is also a *merge* over-collapse independent of detection: `process_video`'s `merge_similar_scenes` always merges consecutive same-type speaker/demo runs (and any scene < 3 s), which is right for a talking-head talk but wrong for a slide/gameplay-dense deck — it can fold 190 detected scenes back down to ~6. For those talks pass **`--no-merge`** to `research_video.py` (usually with a tighter `--threshold`), e.g. `research_video.py "URL" --slug=… --title=… --threshold=0.18 --no-merge`, to keep one markdown section per detected slide. This replaces the older manual "bypass `process_video`, build markdown from the TSV by hand" workaround.
+
+When the threshold itself is the problem, use the tracked helpers (do **not** re-create them inline in `/tmp`):
 
 ```bash
 # Cut down to ~60 scenes (or whatever the deck has) at threshold 0.18
@@ -592,11 +597,11 @@ All scripts live in `tools/` and use the venv at `tools/.venv/`. None of them si
 
 | Script | Purpose | Destructive? |
 |--------|---------|---------------|
-| `tools/research_video.py` | YouTube or local video → scene detection, OCR, transcript alignment. Accepts `--title=` `--slug=` flags. SRT is found automatically next to the mp4 (same stem, `.en.srt`). | Refuses to overwrite existing `<slug>.md` — writes `<slug>.regen-<YYYYMMDD-HHMMSS>-<6hex>.md` next to it instead (randomised so concurrent agents don't clobber each other). Pass `--force` to overwrite in place. |
+| `tools/research_video.py` | YouTube or local video → scene detection, OCR, transcript alignment. Accepts `--title=` `--slug=` flags. Transcript comes from the SOTA STT pass: an SRT already next to the mp4 (same stem, `.en.srt`) is reused, otherwise the audio is re-transcribed via `transcribe_to_srt.transcribe()`. YouTube auto-captions are never used. | Refuses to overwrite existing `<slug>.md` — writes `<slug>.regen-<YYYYMMDD-HHMMSS>-<6hex>.md` next to it instead (randomised so concurrent agents don't clobber each other). Pass `--force` to overwrite in place. |
 | `tools/redetect_scenes.py` | Aggressive scene re-detection for slide-heavy talks (low histogram threshold, finer interval). Writes `scene-NNN-*.jpg` to the asset dir + a TSV to `/tmp`. | Append-only. Manually clear stale `scene-*.jpg` first if you re-run with different parameters. |
 | `tools/subsample_long_scenes.py` | Reads the `redetect_scenes` TSV and writes additional `sub-NNN-MM-*.jpg` frames inside any scene longer than `--min-len`. | Append-only. |
 | `tools/srt_to_windows.py` | Groups an SRT into per-slide transcript windows from a `slide_starts.txt`. Output to a chosen path (defaults to `/tmp`). | Writes only to the explicit `--out` path. |
-| `tools/transcribe_to_srt.py` | faster-whisper SRT generation for non-YouTube videos (HLS, local mp4 with no captions). | Refuses to overwrite an existing SRT — writes `<srt-stem>.regen-<YYYYMMDD-HHMMSS>-<6hex>.srt` sidecar instead. Pass `--force` to overwrite in place. |
+| `tools/transcribe_to_srt.py` | SOTA STT (faster-whisper `large-v3`, CUDA→CPU fallback) SRT generation — the canonical transcript source for every recorded-talk video (YouTube, HLS, local mp4). Self-bootstraps the CUDA-12 cublas stack (no `LD_LIBRARY_PATH` needed) and import-exposes `transcribe()` for `research_video.py`. VAD-filtered to avoid hallucinated loops over non-speech audio. | Refuses to overwrite an existing SRT — writes `<srt-stem>.regen-<YYYYMMDD-HHMMSS>-<6hex>.srt` sidecar instead. Pass `--force` to overwrite in place. |
 | `tools/extract_research.py` | PDF/PPTX → text + image extraction. Supports `--only=SLUG` and `--force`. | Refuses to overwrite an existing per-slug `.md` even under `--only` — writes a `<slug>.regen-<YYYYMMDD-HHMMSS>-<6hex>.md` sidecar instead. Pass `--force` to overwrite in place. Sidecar suffixes are randomised so concurrent agents don't clobber each other. |
 | `tools/extract_research_phase2.py` | Extract videos embedded in PPTX decks and transcribe them with faster-whisper. (Body-text OCR fallback for image-only PDFs / slides moved into phase 1; per-image OCR was removed entirely — the vision pass owns image description.) Supports `--only=SLUG[,SLUG2]`. | Per-slug `.md` only. |
 | `tools/cleanup_research.py` | Strip watermarks, duplicate headings, garbage OCR. Supports `--only=SLUG`. | Per-slug `.md` only. |
@@ -608,8 +613,8 @@ All scripts live in `tools/` and use the venv at `tools/.venv/`. None of them si
 
 ## Determining Input Type
 
-- Starts with `http` or `https` and contains `m3u8` → HLS stream pipeline (ffmpeg download + whisper)
-- Starts with `http` or `https` → YouTube pipeline (yt-dlp)
+- Starts with `http` or `https` and contains `m3u8` → HLS stream pipeline (ffmpeg download + SOTA STT)
+- Starts with `http` or `https` → YouTube pipeline (yt-dlp download + SOTA STT; never auto-captions)
 - Ends with `.pdf` → PDF extraction
 - Ends with `.pptx` → PPTX extraction
 - Ends with `.mp4`, `.mkv`, `.webm` → local video (research_video.py with `--title` and `--slug`)
