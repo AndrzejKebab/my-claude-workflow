@@ -58,6 +58,14 @@ SOURCES_BY_SLUG = {
         "path": "/home/midori/Downloads/2602.19452v1.pdf",
         "type": "pdf",
     },
+    "freeman-2025-holographic-radiance-cascades": {
+        "path": "/tmp/freeman-2025-holographic-radiance-cascades.pdf",
+        "type": "pdf",
+    },
+    "osborne-sannikov-2024-radiance-cascades-non-lte": {
+        "path": "/tmp/osborne-sannikov-2024-radiance-cascades-non-lte.pdf",
+        "type": "pdf",
+    },
     "thall-2009-extended-precision-gpu": {
         "path": "/home/midori/Downloads/df64_qf128.pdf",
         "type": "pdf",

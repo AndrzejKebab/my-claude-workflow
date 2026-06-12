@@ -134,6 +134,12 @@ SOURCES = [
         "title": "Robust Monte Carlo Methods for Light Transport Simulation — Eric Veach 1997 (PhD thesis, Stanford)",
     },
     {
+        "path": "/tmp/freeman-2025-holographic-radiance-cascades.pdf",
+        "slug": "freeman-2025-holographic-radiance-cascades",
+        "type": "pdf",
+        "title": "Holographic Radiance Cascades for 2D Global Illumination — Freeman, Sannikov, Margel (arXiv 2505.02041, 2025)",
+    },
+    {
         "path": "/mnt/archive4/PAPERS/goto-vandegeijn-2008-matrix-multiplication.pdf",
         "slug": "goto-vandegeijn-2008-matrix-multiplication",
         "type": "pdf",
@@ -1377,6 +1383,36 @@ SOURCES = [
         "slug": "schneider-2018-nubis-nutshell",
         "type": "pptx",
         "title": "Nubis: Realtime Volumetric Cloudscapes In A Nutshell — Andrew Schneider (Eurographics 2018)",
+    },
+    # ============================================================================
+    # Osborne & Sannikov 2024 — Radiance Cascades: A Novel High-Resolution Formal
+    # Solution for Multidimensional Non-LTE Radiative Transfer
+    # arXiv 2408.14425, submitted 26 August 2024.
+    # John A. Osborne, Ivan Sannikov.
+    # The astrophysics-origin radiance-cascades paper: formal solution of the
+    # non-LTE radiative transfer equation in 2D/3D using a cascade of spatial
+    # intervals and angular resolution levels. Introduces the radiance-cascades
+    # algorithm as a solution method for stellar-atmosphere/nebula RT problems
+    # (NOT a real-time rendering technique per se, but the conceptual origin of
+    # the 2D GI technique used in RC2D). 21-page arXiv preprint, native LaTeX
+    # text layer.
+    # Extreme equation density: RTE integrals, formal solution operator, level
+    # populations, NLTE iteration (Lambda iteration, ALI), angular/spatial
+    # discretisation, probe distributions, multi-frequency quadrature, atomic
+    # line/continuum terms. High substitution risk for: kappa (opacity), chi
+    # (total extinction), eta (emissivity), J (mean intensity), I (specific
+    # intensity), S (source function), tau (optical depth), mu (direction cosine),
+    # Lambda (formal solution operator), epsilon (photon-destruction probability).
+    # ============================================================================
+    {
+        "path": "/tmp/osborne-sannikov-2024-radiance-cascades-non-lte.pdf",
+        "slug": "osborne-sannikov-2024-radiance-cascades-non-lte",
+        "type": "pdf",
+        "title": "Radiance Cascades: A Novel High-Resolution Formal Solution for Multidimensional Non-LTE Radiative Transfer — John A. Osborne & Ivan Sannikov (arXiv 2408.14425, August 2024)",
+        # 21-page arXiv paper (native LaTeX text layer). Not a slide deck.
+        # slide_deck=False: portrait single-column arXiv layout.
+        # Extreme math density — redo_inline_math=True (default) is essential.
+        "slide_deck": False,
     },
 ]
 

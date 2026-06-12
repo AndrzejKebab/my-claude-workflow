@@ -10,8 +10,6 @@ Rust file-search toolkit exposed as a user-scoped MCP server (`fff-mcp`, registe
 
 ## When to reach for it
 
-Prefer the `fff` MCP tools over the built-in `Glob`/`Grep` for file-name and content search — they are faster on large trees and frecency-rank recently-touched files first. Built-in tools remain fine for one-off greps where fff isn't loaded yet.
+Prefer the `fff` MCP tools over built-in `Glob`/`Grep` — faster on large trees, frecency-ranks recently-touched files first. Built-ins remain fine for one-off greps where fff isn't loaded yet. Unlike `rtk` (hook-installed, automatic), `fff` is opt-in — it only helps when its tools are actually called.
 
-Unlike `rtk` (a transparent CLI proxy installed via hook — zero-token, auto-rewrites commands), `fff` is opt-in: it only helps when I actually call its tools instead of the defaults.
-
-Update the binary by re-running the installer: `curl -fsSL https://dmtrkovalenko.dev/install-fff-mcp.sh | bash`.
+Update the binary: `curl -fsSL https://dmtrkovalenko.dev/install-fff-mcp.sh | bash`.

@@ -1,6 +1,6 @@
 ---
 name: recipe-spec
-description: Author a language- and stack-agnostic, recipe-grade technical specification of an existing system, written for an implementor (human or agent) who will rebuild it in another language. Orchestrates one compound sub-agent per minimally-scoped document, each reading the source code (the authority) plus any reference paper/talk (context only) and writing its own doc to disk. Enforces one abstract form (never per-language examples, never us-vs-them comparisons), explicit step-by-step recipes (no black boxes), and Markdown/Mermaid hygiene. Use when asked to document a messy or convoluted codebase as a clean spec, to write a rewrite/porting spec, or to produce implementor-grade technical docs from working code.
+description: Author a language- and stack-agnostic, recipe-grade technical specification of an existing system, for an implementor (human or agent) who will rebuild it in another language — one sub-agent per minimally-scoped document, source code as the authority. Use when asked to document a messy or convoluted codebase as a clean spec, to write a rewrite/porting spec, or to produce implementor-grade technical docs from working code.
 ---
 
 # Write the spec as a recipe book an implementor can build from, not a tour of the code.

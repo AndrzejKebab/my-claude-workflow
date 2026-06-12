@@ -1,6 +1,6 @@
 ---
 name: refactor
-description: Three-phase refactoring orchestrator. Dispatches an exploration agent to surface concrete smells and architectural problems, then an architecture agent to design better structure, then an implementation agent to apply the changes. The orchestrator never reads, edits, or runs builds itself — it scopes the target, holds the phase boundaries, and synthesizes between agents through shared-context files at `docs/orchestrate/refactor-<slug>/`. Use when invoked via /refactor, when the user asks to refactor a module/crate/package, or when the work explicitly calls for a structured smell-find-then-redesign-then-apply loop.
+description: Three-phase refactoring orchestrator — an exploration agent surfaces smells, an architecture agent designs the target structure, an implementation agent applies it; the orchestrator only scopes, briefs, and synthesizes via `docs/orchestrate/refactor-<slug>/`. Use when invoked via /refactor, when the user asks to refactor a module/crate/package, or for a structured smell-find-then-redesign-then-apply loop.
 ---
 
 # refactor

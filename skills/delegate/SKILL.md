@@ -39,11 +39,11 @@ The user reports the symptom didn't move → next dispatch is a **read-only diag
 
 ## Structural contracts
 
-1. **Never work alone.** Every read, edit, build, test is dispatched.
+1. **Never work alone.** Every source read, edit, build, test, format, compile-fix is dispatched. Orchestrator reads only canon/spec and the group files. "Too small to dispatch" is the trap — a one-liner, config tweak, package install, "just run the build" all still dispatch. The test is *touches repo code/build?*, not *how small?*.
 2. **Checkpoint commit before every code-mutating dispatch.** Sonnet commit agent.
 3. **Shared-context files on disk** (`docs/orchestrate/<topic>/`). One file per group. Agents read on entry, append on exit.
 4. **Every deliverable ends with `## Side notes`.** Agent's channel to flag anything the brief missed.
-5. **Compilation proves nothing.** Verify end-to-end. Visual work = user's eye = hard gate.
+5. **Verification is a dispatch — the validating agent.** Compilation proves nothing; verify end-to-end (visual = user's eye = hard gate). After the (often parallel) implementation dispatches, one validating agent owns the gate: runs build + tests, fixes what they surface (impl vs test bug, decided from spec/design), iterates to green, writes a log. Orchestrator relays build/test output as symptom, reads back green/red — never runs the gate or hand-fixes errors itself.
 6. **Subagents are one-shot.** Context crosses between agents only via files on disk.
 
 ---
@@ -56,7 +56,7 @@ The user reports the symptom didn't move → next dispatch is a **read-only diag
 4. **Brief** — present method to user. State recommendations and commit.
 5. **Context files** — `README.md` + `01-context.md` (problemspace, constraints, audit summary, required reading, open questions, forbidden moves with hard provenance).
 6. **Dispatch** — checkpoint commit → substantive agent. Brief leads with problemspace, suggests approach. Agent is Opus on equal footing.
-7. **Synthesize** — verify group file written. Hard gate on visual QA / real choice / circuit-breaker. Soft gate otherwise.
+7. **Verify & synthesize** — dispatch the validating agent (contract 5) to drive the build/test gate to green; confirm the group files were written. Hard gate on visual QA / real choice / circuit-breaker; soft gate otherwise.
 
 ---
 
