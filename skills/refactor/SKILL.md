@@ -224,4 +224,5 @@ You are working as part of a delegated refactor orchestration. You have no memor
 | `/deadcode` | Zero-caller items. One-shot delete. |
 | `/enforce` | Crate boundaries, dead public APIs, layer contracts. |
 | `/delegate` | General multi-agent orchestration with re-implementation audit + open-ended phases. Use when the work isn't specifically a refactor. |
+| `/shipshape` | Whole-package publish-grade pass: metric baseline → prioritized queue → many small gated loops → before/after scorecard, with style canon and LLM-tell removal. Use for "refactor this codebase/package" at package scale. |
 | **`/refactor`** | **Three-phase orchestrated refactor: exploration → architecture → implementation, with user-gated phase boundaries.** Use when the change is structural and benefits from explicit smell-list → design → applied-edits separation. |
