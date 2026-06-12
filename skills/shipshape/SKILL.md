@@ -26,6 +26,16 @@ The architecture follows the published production systems for LLM-assisted migra
 6. **Unity transport is checked at the moment of each invocation** (process scan per the project's CLAUDE.md); briefs say "check whether the editor is running", never assert editor state.
 7. **Git:** branch from local `main`; never push; submodule changes commit in the submodule first. A dirty target repo blocks the run — surface it, don't stash.
 
+## Models and token economy
+
+Refactoring runs are long; the model tier and the reading discipline are chosen for cost, not prestige.
+
+- The shipshape agents are pinned to **Opus** in their definitions — judgment-grade work (survey, structural edits, adversarial review) at the economical tier. Never bump a dispatch to a more expensive tier by default; the top-tier model is for the orchestrator's own synthesis only when the session already runs on it.
+- **M-class (mechanical) items run on Sonnet** via the Agent tool's per-dispatch `model` override — formatter runs, enforcement-file commits, and deterministic sweeps need no judgment premium.
+- The orchestrator stays thin: it reads one-line agent statuses and the group files' summary tables, never source code, never full deliverable bodies it can summarize from headings. Deliverables travel via disk, not return text.
+- Briefs scope the agent's reading to the item: the implementer reads its item's files end to end and nothing else; the surveyor reads the baseline's offender list plus a bounded sample, not the whole tree. Instrument output is generated once into `00-baseline.md` and referenced, not regenerated per dispatch (`--count-only` mode for repeat tell runs).
+- One item per dispatch is the token bound as much as the safety bound — a failed gate wastes one item's context, not an afternoon's.
+
 ## Protocol
 
 ### Step 0 — Preflight
