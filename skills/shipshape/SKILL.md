@@ -72,6 +72,10 @@ The survey is bottlenecked by judgment, not reading — the deterministic layer 
 - Within a territory, sample stratified by authorship era (per-folder metric fingerprints and git authorship mark the boundaries): smells cluster, so a stratum's character is establishable from a dozen representative files plus its offenders.
 - Completeness comes from campaign rounds, not one heroic survey: each MR cycle ends with a fresh baseline, the next survey starts from the new offender list, and convergence is the battery trending flat (loop-until-dry), never a claim of full coverage.
 
+Partitioning: collapse the module graph's SCCs first (a cycle is one territory by definition), cut at thin seams — a good territory is characterizable without reading its neighbors. The shared foundation (Core/Common layers) is its own territory and goes **first**, so downstream surveyors read its findings instead of re-discovering them N times. Size territories by the surveyor's one-dispatch reading budget (~50–150k tokens of offenders + stratified sample), not by equal LOC, and keep each territory's test assemblies inside it so gate strength is judged per lane.
+
+Orchestration: contention decides parallelism. The survey wave is read-only and fans out maximally; execution lanes are parallel across repos and serial within one (git index; for Unity, the editor instance lock makes the *gate* the bottleneck). Gate granularity matches risk class — S items gate individually, a run of M/C items may commit individually and share one gate at batch end, bisecting by commit on failure. Past a handful of territories go depth-2 (orchestrator → territory leads → implementers) so no context accumulates the campaign; schedule the longest lane first (makespan is bound by it); adversary runs per lane batch, not per item.
+
 ## The metric battery
 
 HARD gates (any failure rejects the item or the run):
