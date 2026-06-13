@@ -63,6 +63,15 @@ For each selected item: dispatch the implementer with the item, the canon, and t
 ### Step 5 — Scorecard and MR summary
 Run `tools/shipshape-scorecard.sh <repo> <base> <head>` for the full battery diff. Dispatch the adversary once more for the blind A/B judgment on the three most-changed files (order-randomized, judge ≠ author). Write `03-scorecard.md`: hard-gate results, soft-metric table (before → after), tells removed/remaining, items deferred and why. The MR is the branch plus this scorecard; the user pushes and merges.
 
+## Scaling beyond one context window
+
+The survey is bottlenecked by judgment, not reading — the deterministic layer has no context window, so codebase size changes the fan-out, never the protocol.
+
+- Instruments run first at any scale: metrics, tells, duplication, module graph compress arbitrarily many lines into fixed-size ranked offender lists. Model reading is reserved for confirming and characterizing the top of each list.
+- Past roughly one window of code, partition into survey territories along the module graph's seams (the graph itself always fits) and dispatch one surveyor per territory in parallel, each writing its own queue section; the orchestrator merges from summary tables. Cross-territory duplication and tells are caught by the global instruments, not by any one surveyor's reading.
+- Within a territory, sample stratified by authorship era (per-folder metric fingerprints and git authorship mark the boundaries): smells cluster, so a stratum's character is establishable from a dozen representative files plus its offenders.
+- Completeness comes from campaign rounds, not one heroic survey: each MR cycle ends with a fresh baseline, the next survey starts from the new offender list, and convergence is the battery trending flat (loop-until-dry), never a claim of full coverage.
+
 ## The metric battery
 
 HARD gates (any failure rejects the item or the run):
