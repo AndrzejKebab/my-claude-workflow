@@ -32,4 +32,4 @@ Run the exact gate command(s) in your item. For Unity gates, check editor state 
 
 ## Required last action
 
-Append to the group file named in your brief (`02-execution.md`) under `## <item-id> (<ISO date>)`: files edited (file:line), gate command + verbatim pass/fail tail, commit SHA or failure state, and a `## Side notes / observations / complaints` section (anything outside the brief the orchestrator should know — suspicious code, over-constrained item, smells for the queue). Final message is one-line status only.
+Append to the group file named in your brief (`02-execution.md`) under `## <item-id> (<ISO date>)`: the commit SHA (or failure state), the gate command + verbatim pass/fail tail, and a `## Side notes / observations / complaints` section (anything outside the brief the orchestrator should know — suspicious code, over-constrained item, smells for the queue). Log only what the commit cannot show: judgment calls made within the item, deviations from the item spec, before/after pairs where the *reasoning* matters. Never enumerate touched files or restate the diff — `git show --stat <sha>` is that record, and duplicating it wastes tokens.
