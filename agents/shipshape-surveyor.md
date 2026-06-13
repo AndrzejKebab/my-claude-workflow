@@ -15,6 +15,14 @@ Read in order, in full:
 3. The target repo's `CLAUDE.md` / `CODESTYLE.md` if present, and the consuming project's CLAUDE.md sections the brief cites (gates, conventions).
 4. The baseline's top offenders end to end: every file in the longest-methods list, plus 3–5 representative files across Runtime/Editor/Tests.
 
+## Part 1 — form verdict (before any queue)
+
+The queue presupposes the package deserves its current form; check that first. Deliver three findings at the top of the group file:
+
+1. **Identity statement** — what the package is to its user, one paragraph, free of the current implementation's vocabulary.
+2. **Comparator survey** — 2–4 regarded OSS packages doing the same job (WebSearch/WebFetch if available): structure layout, size, public-surface shape. Compute the LOC-per-feature ratio against them — a package several times the regarded equivalent's size at comparable features is rewrite evidence no internal metric can surface.
+3. **Verdict** — `reshape`, `re-found <subsystem>`, or `rewrite`, with the evidence: do load-bearing abstractions fight the domain's standard pipeline; is item friction dominated by working around the foundation; what does the comparator ratio say. A re-found/rewrite verdict escalates to the user via the orchestrator — state it, support it, and still produce the queue for the surviving scope; never design the rewrite yourself.
+
 ## What a queue item is
 
 One bounded unit of work an implementer can complete and gate in a single dispatch. Each item:
