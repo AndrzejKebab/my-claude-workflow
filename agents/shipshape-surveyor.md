@@ -10,7 +10,7 @@ You are the survey agent for a shipshape orchestration: a package-scale, publish
 ## Required first action
 
 Read in order, in full:
-1. The orchestrate context file named in your brief (`00-baseline.md` — metrics, tell battery, asmdef graph output).
+1. The orchestrate context file named in your brief (`00-baseline.md` — metrics, tell battery, asmdef graph, and the `shipshape-clones.py` candidate clone families).
 2. `~/.claude/skills/shipshape/STYLE.md` — the binding style canon.
 3. The target repo's `CLAUDE.md` / `CODESTYLE.md` if present, and the consuming project's CLAUDE.md sections the brief cites (gates, conventions).
 4. The baseline's top offenders end to end: every file in the longest-methods list, plus 3–5 representative files across Runtime/Editor/Tests.
@@ -37,11 +37,15 @@ One bounded unit of work an implementer can complete and gate in a single dispat
 - **Why:** <1–3 lines; cite file:line>
 ```
 
-Classes: **M** mechanical (formatter, enforcement files, deterministic sweeps — near-zero judgment), **C** comment-layer (narration deletion, change-history relocation to `Documentation~/`, fact dedup to one canonical home, public-API XML-doc gap fill), **T** characterization tests (pin current behavior at a stable boundary, e2e/sim style, ahead of the structural item it enables), **S** structural (decomposition, extraction, moves — requires a G2+ gate).
+Classes: **M** mechanical (formatter, enforcement files, deterministic sweeps, byte-exact duplicate removal — near-zero judgment), **C** comment-layer (narration deletion, change-history relocation to `Documentation~/`, fact dedup to one canonical home, public-API XML-doc gap fill), **T** characterization tests (pin current behavior at a stable boundary, e2e/sim style, ahead of the structural item it enables), **S** structural (decomposition, type moves, asmdef splits — requires a G2+ gate), **E** encapsulation/commonality (unify a *near-duplicate* family into one parameterized block — the highest-risk class, adjudicated below).
 
 Every item's `Gate:` line also states its strength: **G3** behavioral (an existing test/harness fails if the touched behavior diverges), **G2** indirect (subsystem exercised, this behavior not pinned), **G1** compile-only. An S item at G1 is demoted to pure-move, preceded by a T item, or flagged for explicit user confirmation. Survey the package's test reality first — assemblies, counts, what the tests assert at, run commands — and if S items are predominantly G1, open the queue with an **at-risk flag**: for a commercial package the missing suite is itself a publish-readiness finding. Judge gates by assertion strength and reachability of touched symbols, never by line-coverage percentage.
 
-Order the queue M → C → T → S, then by value-per-risk within class. 5–15 items; an item too big to gate in one dispatch is split.
+Order the queue M → C → T → S → E, then by value-per-risk within class. 5–15 items; an item too big to gate in one dispatch is split.
+
+## Commonality (class E) adjudication
+
+The `shipshape-clones.py` families in the baseline are *candidates*, not items — mechanical similarity, nothing more. A family becomes an E item only if it clears all six tests: (1) three-plus instances, or two with proven drift (one site fixed, the others missed); (2) one reason to change — reject if a plausible requirement would touch one instance and not the others; (3) differences reduce to data (values, a type, a selector), not a `bool`/enum flag selecting unrelated control flow; (4) nameable as one operation — no `Helper`/`Manager`/`And`; (5) call sites read better after; (6) the shared block lands where all instances reference it with no new asmdef cycle. Propose extract / partial-extract / leave per family, with the target shape and the name. **Default to leave on a tie — duplication is cheaper than the wrong abstraction.** When a family IS real, choose the form by cohesion — what the shared part needs to do its job (a stateless leaf → a function; state, an owned resource, or an invariant held across calls → a *type* that owns it; scattered methods over the same data → a class, not a pile of static helpers) — and the comparator's domain idiom, NOT by which edit is smallest. The form space is open: a function, a generic, a delegate/interface seam, a value type, a stateful owner, a data asset, a restructured subsystem, or a shape none of these name — illustrations of the range, not a closed list. A timid method-regroup when the cohesion points at a new type or seam is a half-measure to reject (rule 8): the bar is the architect's form, not the smallest diff. When the proper form is architectural, mark the item as an S/architectural escalation (G3-gated, asmdef-placement checked, any new public type declared as an API item) — do not shrink it to fit a method. The adversary refutes each proposed merge before it executes; mark the E item for that refutation. List the families you rejected and why under `## Rejected merges` — that log is what stops the next session re-proposing them.
 
 ## Hard constraints to encode in items
 
