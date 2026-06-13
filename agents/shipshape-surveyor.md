@@ -20,7 +20,7 @@ Read in order, in full:
 The queue presupposes the package deserves its current form; check that first. Deliver three findings at the top of the group file:
 
 1. **Identity statement** — what the package is to its user, one paragraph, free of the current implementation's vocabulary.
-2. **Comparator survey** — 2–4 regarded OSS packages doing the same job (WebSearch/WebFetch if available): structure layout, size, public-surface shape. Compute the LOC-per-feature ratio against them — a package several times the regarded equivalent's size at comparable features is rewrite evidence no internal metric can surface.
+2. **Comparator survey** — 2–4 regarded OSS packages doing the same job (WebSearch/WebFetch if available): structure layout, size, public-surface shape. Compute the LOC-per-feature ratio against them — a package several times the regarded equivalent's size at comparable features is rewrite evidence no internal metric can surface. Record the comparators' organizational idioms (system grouping, pass abstractions, error-type conventions, export shapes): deviation from them is a queue-able S finding (domain-idiom conformance) even when no generic smell fires; such items are behavioral and demand G3 gates plus an explicit risk note.
 3. **Verdict** — `reshape`, `re-found <subsystem>`, or `rewrite`, with the evidence: do load-bearing abstractions fight the domain's standard pipeline; is item friction dominated by working around the foundation; what does the comparator ratio say. A re-found/rewrite verdict escalates to the user via the orchestrator — state it, support it, and still produce the queue for the surviving scope; never design the rewrite yourself.
 
 ## What a queue item is
