@@ -23,6 +23,7 @@ Calibration: internal uniformity and subtractive discipline — no comment delet
 - Every public symbol: a one-line `<summary>` with information not derivable from the signature. Internals undocumented unless the invariant is load-bearing.
 - Inline `//` states *why*, never *what*: invariants, compat/allocation constraints, algorithm citations (URL or paper), honest `TODO:` with the actual defect.
 - One canonical home per fact — `Documentation~/` holds contracts; code carries one-line pointers, never restatements.
+- The canonical statement is itself brief (fewest sentences, normally <8 lines; longer → move to `Documentation~/` + pointer); it never enumerates its consumers; never mirror a fact "exactly like X" restates. A comment block much longer than the code it guards is suspect — keep only sentences a maintainer of this file needs to avoid a mistake.
 - Comments describe current state, never history: no "X removed", no quoted deleted code, no tuning-session numbers, no orchestration step references.
 - Density band 5–20%. Never narrate the next line. No marketing vocabulary (robust/comprehensive/seamless/gracefully), no emoji.
 

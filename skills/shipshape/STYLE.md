@@ -25,6 +25,10 @@ The calibration target is the cross-cutting property of the regarded C# codebase
 - One canonical home per fact. A contract stated in `Documentation~/` is referenced from code with a one-line pointer, not restated; a fact needed at four sites lives at one and is pointed to from three.
 - Comments describe the current state of the code, never its history. "X removed", "the old code did Y", quoted deleted code, tuning-session numbers, and orchestration step references belong in git history or `Documentation~/` design notes — their presence in source is a tell.
 - Target density band: 5–20% comment lines (XML docs on public API count toward the healthy side; in-body narration toward the pathological side).
+- **Consolidation must compress, not relocate.** The canonical statement of a fact is itself subject to brevity: the fewest sentences that state the constraint, normally well under 8 lines — longer means the content is a contract that belongs in `Documentation~/` behind a one-line pointer.
+- A canonical comment never enumerates its consumers or downstream effects — the pointer comments at the consumer sites encode that relation, and an enumeration drifts stale with the first new consumer.
+- One fact, one paragraph: never write "exactly like X" and then restate X's content anyway. Cross-reference, don't mirror.
+- Proportionality check: a comment block substantially longer than the code it guards is suspect by default (22 lines over three one-line predicates is the canonical counter-example). The audience test for every sentence: would a maintainer of *this file* make a mistake without it? Drop everything that only proves the author understood the system.
 
 ## Unity-specific
 
