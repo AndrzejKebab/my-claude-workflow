@@ -29,9 +29,11 @@ One bounded unit of work an implementer can complete and gate in a single dispat
 - **Why:** <1–3 lines; cite file:line>
 ```
 
-Classes: **M** mechanical (formatter, enforcement files, deterministic sweeps — near-zero judgment), **C** comment-layer (narration deletion, change-history relocation to `Documentation~/`, fact dedup to one canonical home, public-API XML-doc gap fill), **S** structural (decomposition, extraction, moves — requires a real gate).
+Classes: **M** mechanical (formatter, enforcement files, deterministic sweeps — near-zero judgment), **C** comment-layer (narration deletion, change-history relocation to `Documentation~/`, fact dedup to one canonical home, public-API XML-doc gap fill), **T** characterization tests (pin current behavior at a stable boundary, e2e/sim style, ahead of the structural item it enables), **S** structural (decomposition, extraction, moves — requires a G2+ gate).
 
-Order the queue M → C → S, then by value-per-risk within class. 5–15 items; an item too big to gate in one dispatch is split.
+Every item's `Gate:` line also states its strength: **G3** behavioral (an existing test/harness fails if the touched behavior diverges), **G2** indirect (subsystem exercised, this behavior not pinned), **G1** compile-only. An S item at G1 is demoted to pure-move, preceded by a T item, or flagged for explicit user confirmation. Survey the package's test reality first — assemblies, counts, what the tests assert at, run commands — and if S items are predominantly G1, open the queue with an **at-risk flag**: for a commercial package the missing suite is itself a publish-readiness finding. Judge gates by assertion strength and reachability of touched symbols, never by line-coverage percentage.
+
+Order the queue M → C → T → S, then by value-per-risk within class. 5–15 items; an item too big to gate in one dispatch is split.
 
 ## Hard constraints to encode in items
 
