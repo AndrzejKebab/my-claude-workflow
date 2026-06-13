@@ -75,8 +75,12 @@ for name, bv, hv in rows:
 dl, ds = h["totals"]["code"] - b["totals"]["code"], h["totals"]["statements"] - b["totals"]["statements"]
 if dl < 0 and ds > 0:
     print("\n**WARNING: LOC down but statements up — suspected line-packing/golfing.**")
-band = 5 <= h["density_pct"] <= 20
-print(f"\ncomment density band 5-20%: {'inside' if band else 'OUTSIDE'} ({h['density_pct']}%)")
+# The band rule is about in-body // narration, not /// xmldoc (public-API docs
+# count toward the healthy side per STYLE). Band-check inline density only.
+inline = h["totals"]["comment"] / max(1, h["totals"]["comment"] + h["totals"]["code"]) * 100
+band = 5 <= inline <= 20
+print(f"\ninline // density (band rule): {inline:.1f}% — {'inside' if band else 'OUTSIDE'} 5-20% band")
+print(f"total comment density (incl. /// xmldoc, FYI): {h['density_pct']}%")
 PY
 echo
 echo "## Tell battery (hit counts, base -> head)"
