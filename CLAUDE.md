@@ -99,18 +99,6 @@ There is no memory tier — reaching for memory is choosing the one location tha
 - Every deliverable doc includes a `## Side notes / observations / complaints` section: anything outside the brief the orchestrator should know — suspicious code, over-constrained briefs, missing tools, even subjective reactions.
 - Reviewer dispatches are NOT default. Conformance = probe-gate (tests + e2e + user visual). Code quality = `/refactor` sessions. Invoke a reviewer only for explicit reason (hard-to-revert, user requested, critical boundary).
 
-## Negative space (binding)
-
-From Fabian Giesen, ["Negative space in programming"](https://fgiesen.wordpress.com/2015/01/16/negative-space-in-programming/) (full text: `/mnt/archive4/PAPERS/Articles/negative-space-in-programming.md`). A program's shape comes from what is left out — rejected alternatives, omitted features, dependencies not taken, errors made impossible by design. Working guidance, not just aesthetics:
-
-1. **Quality is doing almost nothing else.** An elegant solution solves the actual problem concisely and does almost nothing besides; picking the right problem is the hard part. Prefer the smallest design that solves the real problem over the one that ticks the most boxes; when "just quickly add that one feature" breaks the camel's back, reverting is usually right.
-2. **Document what does not work, not only what does.** When an approach fails, record what was tried and why — a code comment if the failure is local to a design choice, docs/handoff if architectural. What works is well-known; what doesn't is the brick wall no one sees until they hit it. (Same instinct as the `## Side notes` section and the observe-first delegation rule.)
-3. **A rewrite is about unspoken assumptions, not line counts.** The hard part of replacing code is the implicit contract around it: API calls it deliberately avoids, unspecified behaviour other code relies on, problems designed out. Map that negative space before rewriting, or the replacement reintroduces every avoided problem.
-
-When reading code, what a program *doesn't* do (and why) is as instructive as what it does. Four further points extend this to the brief, the measurement, the verification, and the postmortem:
-
-@negative-space-expanded.md
-
 @RTK.md
 @FFF.md
 @HARNESS.md
