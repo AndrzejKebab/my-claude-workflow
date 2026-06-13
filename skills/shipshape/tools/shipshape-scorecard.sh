@@ -19,6 +19,14 @@ trap 'git -C "$REPO" worktree remove --force "$WORK/base" 2>/dev/null; git -C "$
 git -C "$REPO" worktree add --detach "$WORK/base" "$BASE" >/dev/null
 git -C "$REPO" worktree add --detach "$WORK/head" "$HEAD_REF" >/dev/null
 
+# Normalize both revisions with the SAME csharpier config, else a base lacking
+# a .csharpierrc reflows at a different print width than a config-bearing head
+# and the LOC delta becomes a formatter artifact (observed: a phantom -3089).
+# The head revision's config is authoritative; copy it over the base.
+for cfg in .csharpierrc .csharpierrc.yaml .csharpierrc.json .editorconfig; do
+    [ -f "$WORK/head/$cfg" ] && cp "$WORK/head/$cfg" "$WORK/base/$cfg"
+done
+
 normalize() {
     if command -v csharpier >/dev/null 2>&1; then
         (cd "$1" && csharpier format . >/dev/null 2>&1) || echo "warn: csharpier failed in $1" >&2
