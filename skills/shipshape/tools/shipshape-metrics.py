@@ -110,9 +110,11 @@ def classify_file(path):
                         stats["narration"].append((lineno, ctext[:100]))
             pending_comments = []
 
-        # method detection (before brace tracking so the signature line counts)
+        # method detection (before brace tracking so the signature line counts).
+        # Expression-bodied members never enter the stack — counting them to the
+        # class-closing brace was a phantom-offender bug (846-"line" 2-line helpers).
         m = METHOD_RE.match(code_part)
-        if m and m.group(1) not in CONTROL_KEYWORDS and "=>" not in code_part.split("(")[0]:
+        if m and m.group(1) not in CONTROL_KEYWORDS and "=>" not in code_part:
             if "{" in code_part or not code_part.rstrip().endswith(";"):
                 method_stack.append({"name": m.group(1), "start": i, "depth0": depth, "maxrel": 0})
 
