@@ -36,6 +36,20 @@ The calibration target is the cross-cutting property of the regarded C# codebase
 - Unity message methods and `[SerializeField]` fields are engine-referenced: never delete as "unused", never rename serialized fields without `[FormerlySerializedAs]`.
 - HLSL: `#pragma once`, not `#ifndef` guards.
 - csharpier is the formatter; a trailing `//` preserves a hand-authored break — use it only where the break carries meaning csharpier would destroy, never as a reflex on every line.
+- csharpier has no model of the *logical* grouping inside a multi-argument literal, so it flattens a structured constructor to either one long line or one-argument-per-line, both of which hide the structure a reader needs. Restore the grouping with the trailing-`//` idiom at logical-group boundaries: a `floatNxN` matrix is one row per line, a color is RGBA on one line, a vector's components stay together. The `//` makes the layout survive every later csharpier pass. The regrouping must be token-identical to what csharpier produced — only whitespace and the trailing markers change; a matrix transposed or an element dropped during regrouping is a correctness bug, so it is verified token-equal (`git diff --ignore-all-space` shows only `//` additions) and behind the test gate.
+
+```csharp
+// csharpier output (flattened — row structure lost):
+Value = new float4x4(c, -s, 0f, p.x, s, c, 0f, p.y, 0f, 0f, 1f, 0f, 0f, 0f, 0f, 1f),
+
+// repaired (one matrix row per line, survives future csharpier passes):
+Value = new float4x4(
+    c, -s, 0f, p.x, //
+    s, c, 0f, p.y, //
+    0f, 0f, 1f, 0f, //
+    0f, 0f, 0f, 1f //
+),
+```
 
 ## The tell blacklist (zero tolerance in new/edited code)
 

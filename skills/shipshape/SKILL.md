@@ -13,7 +13,7 @@ The architecture follows the published production systems for LLM-assisted migra
 
 - `STYLE.md` (this skill's directory) — the binding style canon agents calibrate against.
 - `CODESTYLE.md` template (this skill's directory, `CODESTYLE-INCLUSION.md`) — committed into each target repo and referenced from the project's CLAUDE.md as `@CODESTYLE.md`.
-- `tools/` — self-contained instrumentation (no project files, no network): `shipshape-metrics.py`, `shipshape-tells.sh`, `shipshape-scorecard.sh`, `shipshape-asmdef-graph.py`. Duplication detection uses `npx -y jscpd` when node is available.
+- `tools/` — self-contained instrumentation (no project files, no network): `shipshape-metrics.py`, `shipshape-tells.sh`, `shipshape-scorecard.sh`, `shipshape-asmdef-graph.py`, `shipshape-fmt-suspects.py` (csharpier-flattened structured literals). Duplication detection uses `npx -y jscpd` when node is available.
 - `templates/` — `.editorconfig` and `.csharpierrc.yaml` to commit into target repos.
 
 ## Hard rules
@@ -71,6 +71,13 @@ Present the queue with per-item gates and risk. The user selects the slice (an "
 
 ### Step 4 — Execution loop (dispatch `shipshape-implementer` per item)
 For each selected item: dispatch the implementer with the item, the canon, and the gates; the implementer edits, runs the gate, commits on green, and logs to `02-execution.md`. After each S item (and after the full C batch), dispatch `shipshape-adversary` on the accumulated diff; adversary findings become new queue items or revert decisions.
+
+### Step 4.5 — Formatting-repair pass (class F)
+After every M/C/S item has landed and one final `csharpier format .` has run, repair what the formatter mangled — **before** the final gate, so the repaired layout is what gets verified. csharpier flattens structured literals (matrix constructors, colors, component lists) into one long line or one-argument-per-line, destroying the logical grouping; the fix is the trailing-`//` idiom at group boundaries (STYLE: one matrix row per line). `tools/shipshape-fmt-suspects.py` locates the candidates deterministically.
+
+- Dispatch the implementer on **Sonnet** — the regrouping is mechanical pattern application, not design.
+- Scope is the csharpier-touched diff only: the pass evaluates the quality of the auto-formatting, it does not re-open refactoring decisions.
+- The repair is **token-identical** by construction — only whitespace and trailing `//` change. Verify with `git diff --ignore-all-space` showing only `//` additions, and gate it (a regrouped matrix that transposed a row is a correctness bug the test suite must catch). The adversary's token-equality check covers it.
 
 ### Step 5 — Scorecard and MR summary
 Run `tools/shipshape-scorecard.sh <repo> <base> <head>` for the full battery diff. Dispatch the adversary once more for the blind A/B judgment on the three most-changed files (order-randomized, judge ≠ author). Write `03-scorecard.md`: hard-gate results, soft-metric table (before → after), tells removed/remaining, items deferred and why. The MR is the branch plus this scorecard; the user pushes and merges.
