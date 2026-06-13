@@ -24,6 +24,7 @@ The calibration target is the cross-cutting property of the regarded C# codebase
 - Inline `//` comments state *why*, never *what*: compat constraints, allocation warnings, invariants, known defects (`TODO:` carries the actual defect), and algorithm citations by source URL or paper.
 - One canonical home per fact. A contract stated in `Documentation~/` is referenced from code with a one-line pointer, not restated; a fact needed at four sites lives at one and is pointed to from three.
 - Comments describe the current state of the code, never its history. "X removed", "the old code did Y", quoted deleted code, tuning-session numbers, and orchestration step references belong in git history or `Documentation~/` design notes — their presence in source is a tell.
+- A citation is legitimate only when the reader of the *shipped* artifact can reach what it points at: upstream source they can fetch (`REF/<file>:<line>`, an upstream commit SHA), a paper, a URL, or a `Documentation~/` page that ships. A reference that resolves only against the producing process — an orchestration journal, a design document that does not ship, a chunk or phase plan (`chunk C3`, `design D4`, `design §6`, "the C4a core solve chain") — is a dangling pointer the moment it leaves the session that wrote it, so it is stripped to the self-contained fact it stood for, not preserved as provenance. This is the line a port-fidelity rule must not blur: faithful-port provenance keeps the reachable upstream citations and drops the process bookkeeping, never both as one undifferentiated mass.
 - Target density band: 5–20% comment lines (XML docs on public API count toward the healthy side; in-body narration toward the pathological side).
 - **Consolidation must compress, not relocate.** The canonical statement of a fact is itself subject to brevity: the fewest sentences that state the constraint, normally well under 8 lines — longer means the content is a contract that belongs in `Documentation~/` behind a one-line pointer.
 - A canonical comment never enumerates its consumers or downstream effects — the pointer comments at the consumer sites encode that relation, and an enumeration drifts stale with the first new consumer.
@@ -63,7 +64,7 @@ Value = new float4x4(
 8. Dead parameters, unused usings, "for backward compatibility" remarks without an external consumer.
 9. Enumerated boilerplate where a computation or existing API expresses it directly; redundant `else` after `return`.
 10. Idiom inconsistency with the host file (mixed `var`/explicit, `Mathf` beside `Unity.Mathematics`).
-11. Change-history narration in comments (see Comments section).
+11. Change-history narration in comments, and references to a non-shipping process artifact — chunk/phase labels (`chunk C3`), design-decision tags (`design D4`, `motion-drive D6`), design-section pointers (`design §6`, `design section 5`) — that a reader of the shipped package cannot resolve (see Comments section).
 
 ## Calibration excerpts
 

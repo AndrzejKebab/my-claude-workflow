@@ -43,3 +43,12 @@ run_cat 8 "change-history comments" \
     -e '//.*(Step [0-9]+ (of|in) |orchestration|session)'
 run_cat 9 "redundant else-after-return" -U -e 'return [^;]*;\s*\n\s*\}\s*\n\s*else\b'
 run_cat 10 "bare trailing // markers" -e ';\s*//\s*$'
+# T11: references that resolve only against a non-shipping design/process artifact
+# (chunk/phase labels, design-decision tags, design-section pointers). High-precision
+# patterns — they do NOT match the legitimate upstream `REF/<file>:<line>` citations,
+# nor a package abbreviation that merely contains "C<n>" (e.g. CC2D).
+run_cat 11 "non-shipping design-doc references" \
+    -e '\b(design (D[0-9]|§[0-9]|section [0-9])|chunk C[0-9]|motion-drive D[0-9])\b' \
+    -e '\bC[0-9]-? ?contract\b' \
+    -e '///?.*\([CD][0-9]\)' \
+    -e '//.*\b[CD][0-9][ab]?\b (core|solve|chain|gate|seam|verdict|resolution|deliverable)'
