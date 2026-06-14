@@ -31,6 +31,7 @@ Adapted from caveman (juliusbrussee/caveman): take its savings, reject its gramm
 - Unreal voxel plugin (reference): `/mnt/archive4/UNREAL/UE_5.7/Engine/Plugins/VoxelPlugin`
 - Personal workflow repo: `/home/midori/_dev/my-claude-workflow` — `~/.claude/{skills,agents}` symlink in; edit canonicals in repo (`install.sh` reinstalls symlinks); launchers in `bin/` on PATH via fish config.
 - Research corpus (cross-project, MegaSync, not git-tracked): `/mnt/archive4/PAPERS/Prepared` (extracted `<slug>.md` + `assets/<slug>/` + `index*.md`); raw sources in `/mnt/archive4/PAPERS/`.
+- Unity API canon (engine reference: RenderGraph/Jobs/Burst/Entities/authoring): `~/_dev/my-claude-workflow/docs/unity` — the shared canonical home, merged from copies that had diverged across sibling Unity projects.
 
 ## Work ethic
 After a significant task, submit and end the session — don't accept further requests.
