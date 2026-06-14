@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# unity-cli-recompile — live-editor recompile helper (unity-cli / editor-open path).
+#
+# Sequence:
+#   1. Focus Unity window (Hyprland) so the editor processes the refresh request.
+#      Without focus, the IPC signal stalls and unity-cli returns immediately
+#      (or backgrounds), leaving the editor un-recompiled.
+#   2. Trigger Unity asset refresh + force compile (waits until compilation finishes).
+#   3. Sleep 30 s — covers Unity's post-recompile freeze (domain reload,
+#      assembly reload, deferred initialisation).
+#   4. Print up to 5 console error/warning lines.
+#
+# This script targets the editor that is already open; it MUST NOT be used
+# when no editor is running (use batchmode instead).  It MUST NOT launch
+# batchmode, pass -nographics, or delete any lockfile.
+#
+# DO NOT decompose this into raw `unity-cli editor refresh ...` calls.
+# All live-editor recompile triggers must go through this script.
+#
+# Long compiles: if a Bash invocation of this script runs in background mode,
+# wait for its completion notification — DO NOT set up polling / monitoring.
+
+set -uo pipefail
+
+hyprctl dispatch focuswindow "class:Unity" >/dev/null 2>&1 || true
+
+unity-cli editor refresh --compile
+refresh_status=$?
+
+sleep 5
+
+unity-cli console --type error,warning --lines 5
+
+exit "$refresh_status"

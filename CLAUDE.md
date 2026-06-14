@@ -74,6 +74,7 @@ Unity locks each project to a single editor instance, so every Unity invocation 
 
 - Check via process scan, e.g. `pgrep -af '[U]nity' | grep <projectPath>` (bracket pattern, or the check's own shell self-matches and reports a phantom editor).
 - Editor running → `unity-cli` (batchmode fails against the instance lock). Editor not running → batchmode via the `unity` wrapper; never drive `unity-cli` at an editor that is not there.
+- To recompile: editor running → `unity-cli-recompile` (focuses the editor via `hyprctl` and recompiles through the unity-cli connector); editor not running → batchmode via the `unity` wrapper. Never hand-poke `unity-cli editor refresh` — `unity-cli-recompile` wraps the live-editor recompile.
 - Briefs include "check whether the editor is running" as a step; they never assert editor state as a fact.
 
 ## Worktrees
