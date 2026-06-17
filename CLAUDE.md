@@ -73,6 +73,10 @@ Source-of-truth order for any load-bearing claim:
 - ALWAYS investigate test failures — no "pre-existing failures" excuse.
 - Begin work by running the relevant test suite; follow project test discipline.
 
+## Testing — full-circle only, unit tests strictly prohibited (binding)
+
+No unit tests of any kind are allowed — not isolated function tests, not mocked-dependency tests, not pure-helper tests, not a "host-testable seam" extracted from production code so a unit can be asserted. The only permitted tests are end-to-end / integration tests that boot the real servers and drive the full API pathway the way a real client hits the system. Do not refactor production code for the sole purpose of exposing a unit seam, and never add a unit layer as a fallback when the full-circle test cannot run in the current environment — fix the environment instead (e.g. disable the sandbox that blocks it) rather than substituting a narrower test. If full-circle coverage is genuinely impossible, say so plainly.
+
 ## Unity — editor-state check before every invocation (binding)
 
 Unity locks each project to a single editor instance, so every Unity invocation (compile check, test run, `-executeMethod`, profiler) has exactly one correct transport, decided by whether an editor has that project open right now. Check at the moment of invocation — never assume, never inherit from a brief, an earlier turn, or another agent's report. Lockfiles and connector heartbeats are unreliable witnesses: `Temp/UnityLockfile` survives crashes, and a `unity-cli` heartbeat can be hours stale with no editor process.
