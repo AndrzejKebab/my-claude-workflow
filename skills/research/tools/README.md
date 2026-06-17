@@ -6,8 +6,8 @@ Canonical Python scripts for the `/research` skill. Self-contained: ships its ow
 
 | Script | Purpose |
 |---|---|
-| `extract_research.py` | PDF/PPTX → text + images. Auto-detects slide-deck vs paper; PPTX rendered via LibreOffice → PDF → PyMuPDF. **OCR fallback** built in: when a page has no native text layer (scanned PDFs, image-only slide exports), the page's image asset is OCR'd via `openocr_engine` and the result becomes the page body. |
-| `extract_research_phase2.py` | Extract videos embedded in PPTX decks and transcribe them with faster-whisper. (No per-image OCR — that was removed; the vision pass owns image description, and body-text OCR fallback moved into phase 1.) |
+| `extract_research.py` | One PDF/PPTX → text + images. Invoked `extract_research.py <source-path> [--slug SLUG] [--title TITLE] [--slide-deck\|--no-slide-deck] [--force] [--no-marker] [--no-llm]` — the source path is the argument, no hardcoded source list. Auto-detects slide-deck vs paper; PPTX rendered via LibreOffice UNO per-slide PNG. **OCR fallback** built in: when a page has no native text layer (scanned PDFs, image-only slide exports), the page's image asset is OCR'd via `openocr_engine` and the result becomes the page body. |
+| `extract_research_phase2.py` | Extract videos embedded in one PPTX deck and transcribe them with faster-whisper. Invoked `extract_research_phase2.py <source-path> [--slug SLUG]`; a non-PPTX path is a no-op. (No per-image OCR — that was removed; the vision pass owns image description, and body-text OCR fallback moved into phase 1.) |
 | `openocr_engine.py` | Singleton wrapper around `openocr-python` (mobile/ONNX). Shared by phase 1 (body-text fallback) and `research_video.py` (per-frame OCR for recorded talks). |
 | `cleanup_research.py` | Strip footer/watermark lines, remove duplicate slide-title duplicates, scrub garbage OCR. |
 | `research_video.py` | YouTube / local video → scene detection + OCR + transcript alignment. |
@@ -52,16 +52,16 @@ LibreOffice is needed for PPTX → PNG rendering (see SKILL.md "PPTX rendering d
 
 ## Invocation
 
-Run scripts via the skill venv directly:
+Run scripts via the skill venv directly. The extraction scripts take the source path as the first argument:
 
 ```bash
-~/.claude/skills/research/.venv/bin/python ~/.claude/skills/research/tools/extract_research.py --only=<slug>
+~/.claude/skills/research/.venv/bin/python ~/.claude/skills/research/tools/extract_research.py <source-path> --slug=<slug>
 ```
 
 Or via `uv run` (auto-syncs if `pyproject.toml` changed):
 
 ```bash
-uv run --project ~/.claude/skills/research python ~/.claude/skills/research/tools/extract_research.py --only=<slug>
+uv run --project ~/.claude/skills/research python ~/.claude/skills/research/tools/extract_research.py <source-path> --slug=<slug>
 ```
 
 The explicit-path form is faster (skips uv sync check); the `uv run` form is safer if you suspect dependencies drifted.

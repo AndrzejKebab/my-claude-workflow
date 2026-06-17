@@ -1,6 +1,6 @@
 ---
 name: research-extractor
-description: Pass-1 extractor for the /research skill. Adds a source to `~/.claude/skills/research/tools/extract_research.py` SOURCES, runs the extraction pipeline against the skill-local venv, archives the source to `/mnt/archive4/PAPERS/`, then reads the produced markdown and marks problematic areas inline with `<!-- FIXME(extract): … -->` comments. Operates in its own context window so the orchestrator stays clean.
+description: Pass-1 extractor for the /research skill. Runs `extract_research.py <source-path> --slug=<slug>` (and phase2 for PPTX) against the skill-local venv, archives the source to `/mnt/archive4/PAPERS/`, then reads the produced markdown and marks problematic areas inline with `<!-- FIXME(extract): … -->` comments. Operates in its own context window so the orchestrator stays clean.
 tools: ["*"]
 model: claude-sonnet-4-6
 ---
@@ -32,19 +32,19 @@ If `~/.claude/skills/research/.venv/` does not exist (fresh install), bootstrap 
 
 ### PDF / PPTX
 
-1. Add an entry to the `SOURCES` list in `~/.claude/skills/research/tools/extract_research.py`. For PDFs, the `is_slide_deck_pdf` heuristic auto-detects slide decks; force the mode with `"slide_deck": True/False` only if the heuristic gets it wrong (rare; only override after vision-confirming the source).
-2. For PPTX, also add the entry to `SOURCES_BY_SLUG` in `~/.claude/skills/research/tools/extract_research_phase2.py`.
-3. Run extraction:
+Pass the source path as the first argument and the canonical `--slug` (decided up front per "REQUIRED: Citable Canonical Naming" — the script writes `<slug>.md` directly, so there is normally no rename step).
+
+1. Run extraction. `extract_research_phase2.py` is a no-op for PDFs (only PPTX decks carry embedded video), so it's safe to run unconditionally:
    ```bash
-   ~/.claude/skills/research/.venv/bin/python ~/.claude/skills/research/tools/extract_research.py --only=<slug>
-   ~/.claude/skills/research/.venv/bin/python ~/.claude/skills/research/tools/extract_research_phase2.py --only=<slug>
+   ~/.claude/skills/research/.venv/bin/python ~/.claude/skills/research/tools/extract_research.py "<source-path>" --slug=<slug>
+   ~/.claude/skills/research/.venv/bin/python ~/.claude/skills/research/tools/extract_research_phase2.py "<source-path>" --slug=<slug>
    ~/.claude/skills/research/.venv/bin/python ~/.claude/skills/research/tools/cleanup_research.py --only=<slug>
    ```
-   Wait for completion before chaining. PPTX extraction takes ~30-60 s for the LibreOffice convert step. Long PDFs render at ~5-10 s per 50 pages.
-4. Verify: `wc -l docs/research/<slug>.md` (should be > 50), `find docs/research/assets/<slug> | wc -l` (should match page count for slide decks, or be larger for papers).
-5. Archive the source:
+   For PDFs, the `is_slide_deck_pdf` heuristic auto-detects slide decks; force the mode with `--slide-deck` / `--no-slide-deck` only if the heuristic gets it wrong (rare; only override after vision-confirming the source). Wait for completion before chaining. PPTX extraction takes ~30-60 s for the LibreOffice render step. Long PDFs render at ~5-10 s per 50 pages.
+2. Verify: `wc -l /mnt/archive4/PAPERS/Prepared/<slug>.md` (should be > 50), `find /mnt/archive4/PAPERS/Prepared/assets/<slug> | wc -l` (should match page count for slide decks, or be larger for papers). If `extract_research.py` wrote a `<slug>.regen-*.md` sidecar instead of `<slug>.md`, the live extraction already existed — surface the sidecar in your report rather than `--force`-overwriting it blindly.
+3. Archive the source:
    ```bash
-   cp <source-path> /mnt/archive4/PAPERS/<slug>.<ext>
+   cp "<source-path>" /mnt/archive4/PAPERS/<slug>.<ext>
    ```
 
 ### YouTube / HLS / local video

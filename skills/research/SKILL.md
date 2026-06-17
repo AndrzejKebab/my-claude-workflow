@@ -64,19 +64,23 @@ LibreOffice is needed for PPTX → PNG rendering. yt-dlp + ffmpeg are needed for
 
 ### Invocation
 
-The agents invoke scripts using the skill venv directly:
+The agents invoke scripts using the skill venv directly. The two extraction scripts take the **source path** as their first argument; the canonical slug is passed with `--slug`:
 
 ```bash
-~/.claude/skills/research/.venv/bin/python ~/.claude/skills/research/tools/<script>.py --only=<slug>
+~/.claude/skills/research/.venv/bin/python ~/.claude/skills/research/tools/extract_research.py <source-path> --slug=<slug>
 ```
 
-Or via `uv run` (which auto-syncs if `pyproject.toml` changed):
+The per-slug post-processing scripts (`cleanup_research.py`, `validate_research.py`) operate on the already-written `/mnt/archive4/PAPERS/Prepared/<slug>.md` and take `--only=<slug>` instead:
 
 ```bash
-uv run --project ~/.claude/skills/research python ~/.claude/skills/research/tools/<script>.py --only=<slug>
+~/.claude/skills/research/.venv/bin/python ~/.claude/skills/research/tools/validate_research.py --only=<slug>
 ```
 
-Both forms work; the explicit-path form is faster because it skips the uv sync check.
+Either can also run via `uv run` (which auto-syncs if `pyproject.toml` changed); the explicit-path form is faster because it skips the uv sync check:
+
+```bash
+uv run --project ~/.claude/skills/research python ~/.claude/skills/research/tools/extract_research.py <source-path> --slug=<slug>
+```
 
 ### Per-document helpers
 
@@ -92,7 +96,7 @@ You are the orchestrator for the /research skill. You do **not** read 268-slide 
 
 | Pass | Agent | Purpose |
 |---|---|---|
-| 1 — extract & mark | `research-extractor` | Add the source to `tools/extract_research.py` SOURCES, run scripts, archive source to `/mnt/archive4/PAPERS/`. **Then read the produced markdown and mark every problematic area inline with a `<!-- FIXME(extract): … -->` comment** — garbled equations, suspect OCR, and (critically) each page that needs a vision-pass description. Report the slug, asset counts, and the count of pages flagged for vision. |
+| 1 — extract & mark | `research-extractor` | Run `extract_research.py <source-path> --slug=<slug>` (and `extract_research_phase2.py` for PPTX), archive source to `/mnt/archive4/PAPERS/`. **Then read the produced markdown and mark every problematic area inline with a `<!-- FIXME(extract): … -->` comment** — garbled equations, suspect OCR, and (critically) each page that needs a vision-pass description. Report the slug, asset counts, and the count of pages flagged for vision. |
 | 2 — vision _(conditional)_ | `research-vision` | Read slide / figure images and write `**Diagram (LLM vision pass):**` blocks via Edit. **Dispatched ONLY when more than 5 pages need a vision pass** (per the extractor's `FIXME(extract): … needs vision` marks). When 5 or fewer pages need vision, skip this pass entirely — Pass 3 folds the handful of descriptions in. Batches well — dispatch one agent per ~30 slides to keep individual context lean. |
 | 2.5 — validate | _(orchestrator runs inline)_ | Run `tools/validate_research.py --only=<slug>`: every LaTeX block (`$…$`, `$$…$$`) is parsed by KaTeX and every Mermaid fenced block by `mermaid.parse()`. Errors are written to `findings-pass2.5-validate.md` for the refiner to fix, and to stderr for the orchestrator. Optional `--html` produces a browser-openable preview. |
 | 3 — refine _(+ inline vision)_ | `research-refiner` | Heading fixes, broken-Unicode equation re-transcription, speaker-notes typo cleanup, optional top-of-doc summary. **Resolves every `FIXME(extract)` and `FIXME(vision)` mark left in the document and deletes the comment once handled.** When Pass 2 was skipped (≤5 vision pages), the refiner also writes the `**X (LLM vision pass):**` blocks for those pages itself. Brief MUST cite the Pass-2.5 sidecar so the refiner has a concrete error list to address. |
@@ -106,7 +110,7 @@ The `model:` field in each agent's frontmatter is **advisory only and is NOT rel
 
 | Agent | **Pass `model:` =** | Rationale |
 |---|---|---|
-| `research-extractor` | **`"sonnet"`** | Pass 1 is mostly script orchestration (edit SOURCES, run scripts, archive) — Sonnet handles it cheaply. |
+| `research-extractor` | **`"sonnet"`** | Pass 1 is mostly script orchestration (run the extraction scripts on the source path, archive) — Sonnet handles it cheaply. |
 | `research-vision` | **`"sonnet"`** | Cost-dominant workload — hundreds of images per deck in ~30-image batches. Sonnet 4.6 vision quality is strong at meaningfully lower per-token cost than Opus. |
 | `research-refiner` | **`"opus"`** | **Quality-control gate, and — when Pass 2 is skipped — the inline vision pass.** Refiner is where math correctness is verified, OCR-corrupted equations are reconstructed, and scientifically-load-bearing formulas (HG, Rayleigh, Mie, transport equations) get their final form before the document becomes citable. A wrong-but-plausible LaTeX equation that ships through is harder to detect than a missing one — for example, marker once produced `(1 + cos a)` for the Rayleigh phase function where the canonical form is `(1 + cos²a)`; a Sonnet refiner missed the dropped exponent because the broken form is syntactically valid LaTeX, but the surrounding paragraph ("forward = backward scatter") only makes sense for the squared form. Opus's stronger cross-source reasoning catches that class of error. The refiner is the ONLY pass that runs on Opus — and it must be the 1M-context Opus build (`claude-opus-4-7[1m]`); the Agent tool's `model` enum is coarse, so pass `model: "opus"` and state the 1M-context requirement in the brief. |
 
@@ -208,7 +212,7 @@ Any slide with a real visual gets a per-slide block.
 
 ## REQUIRED: Citable Canonical Naming
 
-Every extracted document MUST be renamed (and its asset directory MUST be renamed) to a **citable canonical slug** before you finish the run. The Pass 1 script emits a slug derived from the source title (e.g. `intro-to-gpu-occlusion`) — this is **scaffolding only** and is never the final filename.
+Every extracted document MUST be filed under a **citable canonical slug**. Decide the slug **before** running Pass 1 and pass it as `extract_research.py <source-path> --slug=<canonical>`; the script writes `<canonical>.md` directly, so there is normally no rename step. A title-derived slug like `intro-to-gpu-occlusion` is **scaffolding only** — it appears solely in the fallback where a script ran without `--slug` (it then slugifies the filename stem), and that file MUST be renamed to the canonical slug before the run finishes.
 
 **Pattern:** `<author-surname(-coauthor)?>-<year>-<short-topic>.md`
 
@@ -231,12 +235,13 @@ Every extracted document MUST be renamed (and its asset directory MUST be rename
 
 **Why this matters:** the corpus is cross-referenced from `docs/`, memory files, and other research notes by slug. Title-derived slugs (`intro-to-gpu-occlusion`, `volumetric-fog-in-enshrouded`) are not citation-stable — two unrelated talks could share a generic title — and they break the corpus convention. Anything filed under a non-canonical slug must be renamed before commit; deferring this creates dangling references.
 
-**Required actions before you finish the run:**
+**Required actions:**
 
-1. Pick the canonical slug per the rules above (cross-check the existing `*.md` files in `/mnt/archive4/PAPERS/Prepared/` for adjacent precedent if unsure — match the surrounding pattern).
-2. `mv /mnt/archive4/PAPERS/Prepared/<scaffolding>.md /mnt/archive4/PAPERS/Prepared/<canonical>.md`
-3. `mv /mnt/archive4/PAPERS/Prepared/assets/<scaffolding>/ /mnt/archive4/PAPERS/Prepared/assets/<canonical>/`
-4. Update inside the markdown: `slug:` frontmatter field, every `assets/<scaffolding>/` image path.
+1. Pick the canonical slug per the rules above (cross-check the existing `*.md` files in `/mnt/archive4/PAPERS/Prepared/` for adjacent precedent if unsure — match the surrounding pattern) and pass it as `--slug=<canonical>` to Pass 1. This is the normal path — `<canonical>.md` and `assets/<canonical>/` are written directly.
+2. **Only if a scaffolding slug slipped through** (a script ran without `--slug`), rename before the run finishes:
+   - `mv /mnt/archive4/PAPERS/Prepared/<scaffolding>.md /mnt/archive4/PAPERS/Prepared/<canonical>.md`
+   - `mv /mnt/archive4/PAPERS/Prepared/assets/<scaffolding>/ /mnt/archive4/PAPERS/Prepared/assets/<canonical>/`
+   - Update inside the markdown: `slug:` frontmatter field, every `assets/<scaffolding>/` image path.
 
 If the source genuinely has no clear single author (e.g. an Epic UE documentation page, a vendor whitepaper), use the publishing organisation in lowercase as the "author": `epic-2022-ue51-virtual-shadow-maps-docs`, `khronos-2023-...`. Match adjacent corpus precedent.
 
@@ -333,7 +338,7 @@ A True result writes the page as `pNNN-page.png` and the vision agent processes 
 - PDF → `is_slide_deck_pdf(doc)` triggers True if **any** of:
   - Metadata `creator` / `producer` / `title` / `subject` mentions PowerPoint / Keynote / Google Slides / Beamer / Impress / "presentation".
   - **All** pages are landscape AND aspect ratio is in `[1.25, 1.85]` (4:3 ≈ 1.33, 16:10 ≈ 1.6, 16:9 ≈ 1.78), AND page count ≥ 3.
-- Override per-source: set `"slide_deck": True/False` in the SOURCES entry to force a particular mode.
+- Override per-source: pass `--slide-deck` / `--no-slide-deck` to force a particular mode (absent ⇒ auto-detect).
 
 **Paper-PDF body-text classification** (`_classify_paper_pdf`):
 
@@ -384,9 +389,9 @@ You may see `MuPDF error: format error: No common ancestor in structure tree` wa
 
 ### Pass 1: Extract & mark (dispatched to research-extractor, or run inline for trivial sources)
 
-For PDFs / PPTXs and recorded-talk videos, dispatch a `research-extractor` agent with a brief naming the source path / URL and the canonical slug. The agent adds the source to `tools/extract_research.py` SOURCES, runs the extraction script(s), runs phase2 OCR + cleanup, archives the source to `/mnt/archive4/PAPERS/`, then **reads the produced markdown end-to-end and marks every problematic area inline** with a `<!-- FIXME(extract): … -->` comment — garbled / suspect equations, OCR artefacts, and (critically) each page that carries a figure / plot / diagram and therefore needs a vision-pass description (`<!-- FIXME(extract): pNNN needs vision — <one line> -->`). It reports back the slug, asset counts, and **the count of pages flagged for vision** — the orchestrator uses that count to decide whether Pass 2 is dispatched at all (see Pass 2 below).
+For PDFs / PPTXs and recorded-talk videos, dispatch a `research-extractor` agent with a brief naming the source path / URL and the canonical slug. The agent runs `extract_research.py <source-path> --slug=<slug>` (plus `extract_research_phase2.py` for PPTX and `cleanup_research.py`), archives the source to `/mnt/archive4/PAPERS/`, then **reads the produced markdown end-to-end and marks every problematic area inline** with a `<!-- FIXME(extract): … -->` comment — garbled / suspect equations, OCR artefacts, and (critically) each page that carries a figure / plot / diagram and therefore needs a vision-pass description (`<!-- FIXME(extract): pNNN needs vision — <one line> -->`). It reports back the slug, asset counts, and **the count of pages flagged for vision** — the orchestrator uses that count to decide whether Pass 2 is dispatched at all (see Pass 2 below).
 
-For trivial cases (single-page paper, source already in SOURCES, just need to rerun under `--force`), the orchestrator may run inline:
+For trivial cases (single-page paper, an already-extracted source you just need to rerun under `--force`), the orchestrator may run inline:
 
 Determine input type and run the appropriate script:
 
@@ -432,12 +437,13 @@ Step 4 — run video pipeline on local file:
 
 `research_video.py` reuses an SRT already next to the mp4 (same stem, `.en.srt` suffix); when none exists it re-transcribes the audio via the SOTA STT pass before scene processing. YouTube auto-captions are never used.
 
-**PDF/PPTX file:** Add to `SOURCES` in `tools/extract_research.py`, then:
+**PDF/PPTX file:** pass the source path as the first argument and the canonical slug with `--slug`:
 ```bash
-~/.claude/skills/research/.venv/bin/python ~/.claude/skills/research/tools/extract_research.py --only=SLUG
-~/.claude/skills/research/.venv/bin/python ~/.claude/skills/research/tools/extract_research_phase2.py --only=SLUG
+~/.claude/skills/research/.venv/bin/python ~/.claude/skills/research/tools/extract_research.py "<source-path>" --slug=SLUG
+# PPTX only — extract + transcribe embedded videos (no-op for PDFs):
+~/.claude/skills/research/.venv/bin/python ~/.claude/skills/research/tools/extract_research_phase2.py "<source-path>" --slug=SLUG
 ```
-Also add to `SOURCES_BY_SLUG` in `tools/extract_research_phase2.py` for the `--only` filter to work.
+The slug defaults to the filename stem when `--slug` is omitted; the workflow always passes the canonical slug explicitly. Force the render mode with `--slide-deck` / `--no-slide-deck` only when the `is_slide_deck_pdf` heuristic gets it wrong; `--force` overwrites an existing `<slug>.md` in place instead of writing a `.regen` sidecar.
 
 **Cleanup (all types):**
 ```bash
@@ -602,8 +608,8 @@ All scripts live in `tools/` and use the venv at `tools/.venv/`. None of them si
 | `tools/subsample_long_scenes.py` | Reads the `redetect_scenes` TSV and writes additional `sub-NNN-MM-*.jpg` frames inside any scene longer than `--min-len`. | Append-only. |
 | `tools/srt_to_windows.py` | Groups an SRT into per-slide transcript windows from a `slide_starts.txt`. Output to a chosen path (defaults to `/tmp`). | Writes only to the explicit `--out` path. |
 | `tools/transcribe_to_srt.py` | SOTA STT (faster-whisper `large-v3`, CUDA→CPU fallback) SRT generation — the canonical transcript source for every recorded-talk video (YouTube, HLS, local mp4). Self-bootstraps the CUDA-12 cublas stack (no `LD_LIBRARY_PATH` needed) and import-exposes `transcribe()` for `research_video.py`. VAD-filtered to avoid hallucinated loops over non-speech audio. | Refuses to overwrite an existing SRT — writes `<srt-stem>.regen-<YYYYMMDD-HHMMSS>-<6hex>.srt` sidecar instead. Pass `--force` to overwrite in place. |
-| `tools/extract_research.py` | PDF/PPTX → text + image extraction. Supports `--only=SLUG` and `--force`. | Refuses to overwrite an existing per-slug `.md` even under `--only` — writes a `<slug>.regen-<YYYYMMDD-HHMMSS>-<6hex>.md` sidecar instead. Pass `--force` to overwrite in place. Sidecar suffixes are randomised so concurrent agents don't clobber each other. |
-| `tools/extract_research_phase2.py` | Extract videos embedded in PPTX decks and transcribe them with faster-whisper. (Body-text OCR fallback for image-only PDFs / slides moved into phase 1; per-image OCR was removed entirely — the vision pass owns image description.) Supports `--only=SLUG[,SLUG2]`. | Per-slug `.md` only. |
+| `tools/extract_research.py` | PDF/PPTX → text + image extraction for **one** source. Invoked as `extract_research.py <source-path> [--slug SLUG] [--title TITLE] [--slide-deck\|--no-slide-deck] [--force] [--no-marker] [--no-llm]`. Slug/title default to the filename stem. No hardcoded source list — the path is the argument. | Refuses to overwrite an existing per-slug `.md` — writes a `<slug>.regen-<YYYYMMDD-HHMMSS>-<6hex>.md` sidecar instead. Pass `--force` to overwrite in place. Sidecar suffixes are randomised so concurrent agents don't clobber each other. |
+| `tools/extract_research_phase2.py` | Extract videos embedded in **one** PPTX deck and transcribe them with faster-whisper. Invoked as `extract_research_phase2.py <source-path> [--slug SLUG]`; a non-PPTX path is a no-op. (Body-text OCR fallback for image-only PDFs / slides moved into phase 1; per-image OCR was removed entirely — the vision pass owns image description.) | Per-slug `.md` only. |
 | `tools/cleanup_research.py` | Strip watermarks, duplicate headings, garbage OCR. Supports `--only=SLUG`. | Per-slug `.md` only. |
 | `tools/validate_research.py` | Pass 2.5: extract every LaTeX/Mermaid block from `/mnt/archive4/PAPERS/Prepared/<slug>.md`, validate via the Node helper, write `findings-pass2.5-validate.md` sidecar. Supports `--only=SLUG[,SLUG2]`, `--html`. Exits 1 on any parse error. | Read-only on the markdown source; writes only to `assets/<slug>/findings-pass2.5-validate.md` (and `<slug>.preview.html` under `--html`). |
 | `tools/validate_md.mjs` | Node helper invoked by `validate_research.py`. Reads JSON blocks on stdin, validates LaTeX via `katex.renderToString({throwOnError:true})` and Mermaid via `mermaid.parse()` (jsdom-backed). Returns JSON with per-block `ok` + `error`. Not normally called directly. | Pure stdin → stdout, no file writes. |

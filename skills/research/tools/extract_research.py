@@ -1,10 +1,21 @@
 #!/usr/bin/env python3
-"""Extract text and images from PDF/PPTX research documents into markdown."""
+"""Extract text and images from one PDF/PPTX research document into markdown.
+
+Invoked per-document with the source path as the first argument:
+
+    extract_research.py <path-to.pdf|.pptx> [--slug SLUG] [--title TITLE]
+                        [--slide-deck|--no-slide-deck] [--force] [--no-marker] [--no-llm]
+
+The slug and title default to the filename stem; the /research workflow always
+passes an explicit citable `--slug`. `--slide-deck` / `--no-slide-deck` force
+the render mode that `is_slide_deck_pdf` would otherwise auto-detect.
+"""
 
 import datetime
 import hashlib
 import io
 import os
+import re
 import secrets
 import sys
 import tempfile
@@ -63,1358 +74,6 @@ def _ocr_image_bytes(png_bytes: bytes) -> str:
 OUTPUT_DIR = Path("/mnt/archive4/PAPERS/Prepared")
 PROJECT_ROOT = OUTPUT_DIR  # display base for relative_to() in log output
 ASSETS_DIR = OUTPUT_DIR / "assets"
-
-SOURCES = [
-    # ===== ryg-papers-i-like batch (referenced sources) =====
-    {
-        "path": "/mnt/archive4/PAPERS/lamport-1978-state-the-problem.pdf",
-        "slug": "lamport-1978-state-the-problem",
-        "type": "pdf",
-        "title": "State the Problem Before Describing the Solution — Leslie Lamport 1978 (ACM SIGSOFT SEN)",
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/herlihy-1991-wait-free-synchronization.pdf",
-        "slug": "herlihy-1991-wait-free-synchronization",
-        "type": "pdf",
-        "title": "Wait-Free Synchronization — Maurice Herlihy 1991 (ACM TOPLAS 13:1)",
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/cook-1998-how-complex-systems-fail.pdf",
-        "slug": "cook-1998-how-complex-systems-fail",
-        "type": "pdf",
-        "title": "How Complex Systems Fail — Richard I. Cook 1998/2000 (Univ. of Chicago, CtL)",
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/moffat-turpin-1997-minimum-redundancy-prefix-codes.pdf",
-        "slug": "moffat-turpin-1997-minimum-redundancy-prefix-codes",
-        "type": "pdf",
-        "title": "On the Implementation of Minimum-Redundancy Prefix Codes — Moffat & Turpin 1997 (IEEE Trans. Comm. 45:10)",
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/dybvig-1990-destination-driven-code-generation.pdf",
-        "slug": "dybvig-1990-destination-driven-code-generation",
-        "type": "pdf",
-        "title": "Destination-Driven Code Generation — Dybvig, Hieb, Butler 1990 (Indiana CS TR-302)",
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/millikin-v8-one-pass-codegen.pdf",
-        "slug": "millikin-v8-one-pass-codegen",
-        "type": "pdf",
-        "title": "One-Pass Code Generation in V8 — Kevin Millikin, Google (slides)",
-        "slide_deck": True,
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/valmari-2012-dfa-minimization.pdf",
-        "slug": "valmari-2012-dfa-minimization",
-        "type": "pdf",
-        "title": "Fast Brief Practical DFA Minimization — Antti Valmari 2012 (Information Processing Letters 112)",
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/sarnak-tarjan-1986-persistent-search-trees.pdf",
-        "slug": "sarnak-tarjan-1986-persistent-search-trees",
-        "type": "pdf",
-        "title": "Planar Point Location Using Persistent Search Trees — Sarnak & Tarjan 1986 (CACM 29:7)",
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/porter-duff-1984-compositing-digital-images.pdf",
-        "slug": "porter-duff-1984-compositing-digital-images",
-        "type": "pdf",
-        "title": "Compositing Digital Images — Porter & Duff 1984 (SIGGRAPH, Computer Graphics 18:3)",
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/brandt-2001-hard-sync-without-aliasing.pdf",
-        "slug": "brandt-2001-hard-sync-without-aliasing",
-        "type": "pdf",
-        "title": "Hard Sync Without Aliasing — Eli Brandt 2001 (ICMC)",
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/veach-1997-light-transport.pdf",
-        "slug": "veach-1997-light-transport",
-        "type": "pdf",
-        "title": "Robust Monte Carlo Methods for Light Transport Simulation — Eric Veach 1997 (PhD thesis, Stanford)",
-    },
-    {
-        "path": "/tmp/freeman-2025-holographic-radiance-cascades.pdf",
-        "slug": "freeman-2025-holographic-radiance-cascades",
-        "type": "pdf",
-        "title": "Holographic Radiance Cascades for 2D Global Illumination — Freeman, Sannikov, Margel (arXiv 2505.02041, 2025)",
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/goto-vandegeijn-2008-matrix-multiplication.pdf",
-        "slug": "goto-vandegeijn-2008-matrix-multiplication",
-        "type": "pdf",
-        "title": "Anatomy of High-Performance Matrix Multiplication — Goto & van de Geijn 2008 (ACM TOMS 34:3)",
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/bientinesi-2005-dense-linear-algebra.pdf",
-        "slug": "bientinesi-2005-dense-linear-algebra",
-        "type": "pdf",
-        "title": "Formal Correctness and Stability of Dense Linear Algebra Algorithms — Bientinesi & van de Geijn 2005 (IMACS World Congress)",
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/chazelle-1986-filtering-search.pdf",
-        "slug": "chazelle-1986-filtering-search",
-        "type": "pdf",
-        "title": "Filtering Search: A New Approach to Query-Answering — Bernard Chazelle 1986 (SIAM J. Comput. 15:3)",
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/mcilroy-1999-killer-adversary-quicksort.pdf",
-        "slug": "mcilroy-1999-killer-adversary-quicksort",
-        "type": "pdf",
-        "title": "A Killer Adversary for Quicksort — M. D. McIlroy 1999 (Softw. Pract. Exper. 29:4)",
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/knuth-1974-structured-programming-goto.pdf",
-        "slug": "knuth-1974-structured-programming-goto",
-        "type": "pdf",
-        "title": "Structured Programming with go to Statements — Donald E. Knuth 1974 (ACM Computing Surveys 6:4)",
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/bryant-1986-obdd.pdf",
-        "slug": "bryant-1986-obdd",
-        "type": "pdf",
-        "title": "Graph-Based Algorithms for Boolean Function Manipulation (OBDDs) — Randal E. Bryant 1986 (IEEE Trans. Computers C-35:8)",
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/braun-2013-ssa-construction.pdf",
-        "slug": "braun-2013-ssa-construction",
-        "type": "pdf",
-        "title": "Simple and Efficient Construction of Static Single Assignment Form — Braun et al. 2013 (CC 2013)",
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/lamport-1976-glitch-phenomenon.pdf",
-        "slug": "lamport-1976-glitch-phenomenon",
-        "type": "pdf",
-        "title": "On the Glitch Phenomenon — Leslie Lamport 1976 (unpublished/rejected; Lamport pubs)",
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/lamport-1984-buridans-principle.pdf",
-        "slug": "lamport-1984-buridans-principle",
-        "type": "pdf",
-        "title": "Buridan's Principle — Leslie Lamport 1984 (Found. of Physics 2012)",
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/curtsinger-berger-2013-stabilizer.pdf",
-        "slug": "curtsinger-berger-2013-stabilizer",
-        "type": "pdf",
-        "title": "STABILIZER: Statistically Sound Performance Evaluation — Curtsinger & Berger 2013 (ASPLOS)",
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/ansari-2016-code-placement-instability.pdf",
-        "slug": "ansari-2016-code-placement-instability",
-        "type": "pdf",
-        "title": "Causes of Performance Instability due to Code Placement in x86 — Zia Ansari, Intel 2016 (LLVM Dev Mtg, slides)",
-        "slide_deck": True,
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/tomasulo-1967-multiple-arithmetic-units.pdf",
-        "slug": "tomasulo-1967-multiple-arithmetic-units",
-        "type": "pdf",
-        "title": "An Efficient Algorithm for Exploiting Multiple Arithmetic Units — R. M. Tomasulo 1967 (IBM J. R&D 11:1)",
-        # Image-only 1967 scan (no text layer): the 'scanned' classification makes
-        # extract_research raise; this source is extracted by the sonnet-vision
-        # pass instead (marker OCR would lose the figure/layout context).
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/anderson-1967-ibm360-model91-fp.pdf",
-        "slug": "anderson-1967-ibm360-model91-fp",
-        "type": "pdf",
-        "title": "The IBM System/360 Model 91: Floating-Point Execution Unit — Anderson, Earle, Goldschmidt, Powers 1967 (IBM J. R&D 11:1)",
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/conway-acs-reminiscences.pdf",
-        "slug": "conway-acs-reminiscences",
-        "type": "pdf",
-        "title": "The IBM Advanced Computing Systems (ACS) Reminiscences — Lynn Conway (memoir)",
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/wilson-1995-dynamic-storage-allocation.pdf",
-        "slug": "wilson-1995-dynamic-storage-allocation",
-        "type": "pdf",
-        "title": "Dynamic Storage Allocation: A Survey and Critical Review — Wilson, Johnstone, Neely, Boles 1995 (IWMM)",
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/johnstone-wilson-1998-memory-fragmentation.pdf",
-        "slug": "johnstone-wilson-1998-memory-fragmentation",
-        "type": "pdf",
-        "title": "The Memory Fragmentation Problem: Solved? — Johnstone & Wilson 1998 (ISMM)",
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/meyer-tischer-2001-glicbawls.pdf",
-        "slug": "meyer-tischer-2001-glicbawls",
-        "type": "pdf",
-        "title": "GLICBAWLS: Grey Level Image Compression By Adaptive Weighted Least Squares — Meyer & Tischer 2001 (DCC)",
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/altera-2004-adaptive-logic-module.pdf",
-        "slug": "altera-2004-adaptive-logic-module",
-        "type": "pdf",
-        "title": "Improving FPGA Performance and Area Using an Adaptive Logic Module — Hutton et al., Altera 2004 (FPL)",
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/odonoghue-2016-conic-operator-splitting.pdf",
-        "slug": "odonoghue-2016-conic-operator-splitting",
-        "type": "pdf",
-        "title": "Conic Optimization via Operator Splitting and Homogeneous Self-Dual Embedding — O'Donoghue, Chu, Parikh, Boyd 2016 (JOTA)",
-    },
-    # ===== end ryg-papers-i-like batch =====
-    {
-        "path": "/home/midori/Downloads/p886-vattani.pdf",
-        "slug": "vattani-2015-cache-stampede",
-        "type": "pdf",
-        "title": "Optimal Probabilistic Cache Stampede Prevention (Vattani, Chierichetti, Lowenstein — VLDB 2015)",
-    },
-    {
-        "path": "/home/midori/Downloads/Rundlett-Gustafsson-raytracing-voxels-in-teardown-and-beyond.pdf",
-        "slug": "rundlett-gustafsson-2025-raytracing-voxels-teardown",
-        "type": "pdf",
-        "title": "Raytracing Voxels in Teardown and Beyond — Rundlett & Gustafsson (Graphics Programming Conference 2026)",
-        "slide_deck": True,
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/preetham-1999-analytic-daylight.pdf",
-        "slug": "preetham-1999-analytic-daylight",
-        "type": "pdf",
-        "title": "A Practical Analytic Model for Daylight — Preetham, Shirley, Smits 1999 (SIGGRAPH 1999)",
-    },
-    {
-        "path": "/home/midori/Downloads/3484514.pdf",
-        "slug": "muller-rideau-2022-double-word-arithmetic",
-        "type": "pdf",
-        "title": "Formalization of Double-Word Arithmetic, and Comments on \"Tight and Rigorous Error Bounds for Basic Building Blocks of Double-Word Arithmetic\" — Muller & Rideau 2022 (ACM TOMS 48:1 art.9)",
-    },
-    {
-        "path": "/home/midori/Downloads/dekker1971.pdf",
-        "slug": "dekker-1971-double-length-arithmetic",
-        "type": "pdf",
-        "title": "A Floating-Point Technique for Extending the Available Precision — T. J. Dekker 1971 (Numer. Math. 18, 224-242)",
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/engel-2007-cascaded-shadow-maps.pdf",
-        "slug": "engel-2007-cascaded-shadow-maps",
-        "type": "pdf",
-        "title": "Cascaded Shadow Maps — Wolfgang Engel 2007 (ShaderX5 §4.1, Rockstar San Diego)",
-    },
-    {
-        "path": "/home/midori/Downloads/2602.19452v1.pdf",
-        "slug": "gao-baidoo-2026-compensated-summation",
-        "type": "pdf",
-        "title": "Dekker's Floating Point Number System and Compensated Summation Algorithms — Gao & Baidoo 2026",
-    },
-    {
-        "path": "/home/midori/Downloads/df64_qf128.pdf",
-        "slug": "thall-2009-extended-precision-gpu",
-        "type": "pdf",
-        "title": "Extended-Precision Floating-Point Numbers for GPU Computation (df64 / qf128) — Andrew Thall 2009 (Alma College)",
-    },
-    {
-        "path": "/home/midori/Downloads/foster-metaxas-gmip96.pdf",
-        "slug": "foster-metaxas-1996-realistic-liquid-animation",
-        "type": "pdf",
-        "title": "Realistic Animation of Liquids — Foster & Metaxas 1996",
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/montoya-2022-teardown-breakdown.pdf",
-        "slug": "montoya-2022-teardown-breakdown",
-        "type": "pdf",
-        "title": "Teardown Teardown (blog breakdown, 2022) — Juan Diego Montoya",
-        "slide_deck": False,
-    },
-    # PPTX
-    {
-        "path": "/mnt/archive4/PAPERS/bauer-2019-rdr2-atmospherics.pptx",
-        "slug": "bauer-2019-rdr2-atmospherics",
-        "type": "pptx",
-        "title": "Creating the Atmospheric World of RDR2 — Bauer 2019",
-    },
-    {
-        "path": "/mnt/archive4/Downloads/Frostbite PB and unified volumetrics.pptx",
-        "slug": "frostbite-pb-volumetrics",
-        "type": "pptx",
-        "title": "Frostbite PB and Unified Volumetrics",
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/karis-2014-temporal-aa.pptx",
-        "slug": "karis-2014-temporal-aa",
-        "type": "pptx",
-        "title": "High-Quality Temporal Supersampling — Karis 2014",
-    },
-    # PPTX
-    {
-        "path": "/mnt/archive4/PAPERS/schneider-2023-nubis-cubed.pptx",
-        "slug": "schneider-2023-nubis-cubed",
-        "type": "pptx",
-        "title": "Nubis Cubed — Schneider (Advances in Real-Time Rendering 2023)",
-    },
-    {
-        "path": "/home/midori/Downloads/Nubis - Authoring Realtime Volumetric Cloudscapes with the Decima Engine - Final .pdf",
-        "slug": "nubis-decima",
-        "type": "pdf",
-        "title": "Nubis - Authoring Realtime Volumetric Cloudscapes with Decima Engine",
-    },
-    {
-        "path": "/home/midori/Downloads/s2016-pbs-frostbite-sky-clouds-new.pdf",
-        "slug": "s2016-frostbite-sky-clouds",
-        "type": "pdf",
-        "title": "Physically Based Sky, Atmosphere and Cloud Rendering in Frostbite (SIGGRAPH 2016)",
-    },
-    {
-        "path": "/home/midori/Downloads/The Real-time Volumetric Cloudscapes of Horizon - Zero Dawn - ARTR.pdf",
-        "slug": "horizon-zd-clouds",
-        "type": "pdf",
-        "title": "The Real-time Volumetric Cloudscapes of Horizon Zero Dawn",
-    },
-    # DUPLICATE SKIPPED: The-Real-time-Volumetric-Cloudscapes-of-Horizon-Zero-Dawn.pdf
-    # (identical MD5: 5f084c030aa9c2912110259d2851033c)
-    {
-        "path": "/home/midori/Downloads/egsr2020.pdf",
-        "slug": "egsr2020",
-        "type": "pdf",
-        "title": "EGSR 2020",
-    },
-    {
-        "path": "/home/midori/Downloads/Kuhi_informaatika_2018.pdf",
-        "slug": "kuhi-2018",
-        "type": "pdf",
-        "title": "Kuhi Informaatika 2018",
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/revision-2013-volumetric.pdf",
-        "slug": "revision-2013-volumetric",
-        "type": "pdf",
-        "title": "Real-Time Volumetric Rendering — Patapom (Revision 2013 Course Notes)",
-    },
-    {
-        "path": "/home/midori/Downloads/oz_volumes.pdf",
-        "slug": "oz-volumes",
-        "type": "pdf",
-        "title": "Oz Volumes",
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/wrenninge-2013-oz-volumes.pdf",
-        "slug": "wrenninge-2013-oz-volumes",
-        "type": "pdf",
-        "title": "Oz: The Great and Volumetric — Wrenninge, Kulla, Lundqvist (SIGGRAPH 2013 Talks)",
-    },
-    {
-        "path": "/home/midori/Downloads/suppl.pdf",
-        "slug": "siggraph23-mrpnn-suppl",
-        "type": "pdf",
-        "title": "Deep Real-time Volumetric Rendering Using Multi-feature Fusion — Supplementary (SIGGRAPH 2023)",
-    },
-    {
-        "path": "/mnt/archive4/Downloads/siggraph15_volsampling.pptx",
-        "slug": "siggraph15-volsampling",
-        "type": "pptx",
-        "title": "A Novel Sampling Algorithm for Fast and Stable Real-Time Volume Rendering (SIGGRAPH 2015)",
-    },
-    {
-        "path": "/mnt/archive4/Downloads/DecimaSiggraph2017-final.pptx",
-        "slug": "decima-siggraph2017",
-        "type": "pptx",
-        "title": "Advances in Lighting and AA — Decima Engine (SIGGRAPH 2017)",
-    },
-    {
-        "path": "/home/midori/Downloads/seed-siggraph21-surfel-gi.pdf",
-        "slug": "seed-siggraph21-surfel-gi",
-        "type": "pdf",
-        "title": "SEED SIGGRAPH 2021 — Surfel GI",
-    },
-    {
-        "path": "/home/midori/Downloads/SIGGRAPH2022-Advances-Lumen-Wright et al.pdf",
-        "slug": "siggraph2022-lumen-advances",
-        "type": "pdf",
-        "title": "Advances in Lumen — SIGGRAPH 2022 (Wright et al.)",
-    },
-    {
-        "path": "/home/midori/Downloads/3675382.pdf",
-        "slug": "radiance-caching-on-surface",
-        "type": "pdf",
-        "title": "Radiance Caching with On-Surface Caches for Real-Time Global Illumination (Tatzgern et al.)",
-    },
-    {
-        "path": "/tmp/research-scherzer/scherzer2010d-paper.pdf",
-        "slug": "scherzer-2010-temporal-coherence",
-        "type": "pdf",
-        "title": "Exploiting Temporal Coherence in Real-Time Rendering (Scherzer, Yang, Mattausch — SIGGRAPH Asia 2010 Course)",
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/scherzer-2012-temporal-coherence-survey.pdf",
-        "slug": "scherzer-2012-temporal-coherence-survey",
-        "type": "pdf",
-        "title": "Temporal Coherence Methods in Real-Time Rendering — Scherzer, Yang, Mattausch, Nehab, Sander, Wimmer, Eisemann (Computer Graphics Forum 31:8, 2012)",
-    },
-    {
-        "path": "/home/midori/Downloads/svgf_preprint.pdf",
-        "slug": "schied-2017-svgf",
-        "type": "pdf",
-        "title": "Spatiotemporal Variance-Guided Filtering (SVGF — Schied et al., HPG 2017)",
-    },
-    {
-        "path": "/home/midori/Downloads/adaptive_temporal_filtering.pdf",
-        "slug": "schied-2018-asvgf",
-        "type": "pdf",
-        "title": "Gradient Estimation for Real-Time Adaptive Temporal Filtering (A-SVGF — Schied et al., HPG 2018)",
-    },
-    {
-        "path": "/home/midori/Downloads/El_Mansouri_Jalal_Rendering_Rainbow_Six.pdf",
-        "slug": "el-mansouri-2016-r6-siege",
-        "type": "pdf",
-        "title": "Rendering 'Rainbow Six | Siege' (El Mansouri — GDC 2016, 4× Checkerboard Reconstruction)",
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/jimenez-2017-cod-taa-upsampling.pdf",
-        "slug": "jimenez-2017-cod-taa-upsampling",
-        "type": "pdf",
-        "slide_deck": True,
-        "title": "Dynamic Temporal Antialiasing and Upsampling in Call of Duty (Jimenez — SIGGRAPH 2017 Advances / Digital Dragons 2018)",
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/schneider-2022-hfw-superstorms.pdf",
-        "slug": "schneider-2022-hfw-superstorms",
-        "type": "pdf",
-        "slide_deck": True,
-        "title": "The Real-time Volumetric Superstorms of Horizon Forbidden West (Schneider — GDC 2022)",
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/hillaire-2020-sky-atmosphere.pdf",
-        "slug": "hillaire-2020-sky-atmosphere",
-        "type": "pdf",
-        "slide_deck": True,
-        "title": "Physically Based and Scalable Atmospheres in Unreal Engine (Hillaire — SIGGRAPH 2020)",
-    },
-    {
-        "path": "/home/midori/Downloads/SimulatingTropicalWeather_Weick_Colin_Zhou_Emily.pdf",
-        "slug": "simulating-tropical-weather-weick-zhou",
-        "type": "pdf",
-        "title": "Simulating Tropical Weather (Weick, Colin; Zhou, Emily)",
-    },
-    {
-        "path": "/home/midori/Downloads/Report-Sparkles_CS-2024-02.pdf",
-        "slug": "report-sparkles-cs-2024",
-        "type": "pdf",
-        "title": "Sparkles: A Practical Glint Rendering Framework (CS Report 2024-02)",
-    },
-    {
-        "path": "/home/midori/Downloads/siggraph15_sparkly.pdf",
-        "slug": "siggraph15-sparkly-slides",
-        "type": "pdf",
-        "title": "Rendering Glints on High-Resolution Normal-Mapped Specular Surfaces — SIGGRAPH 2015 (Slides)",
-    },
-    {
-        "path": "/home/midori/Downloads/sparkle.pdf",
-        "slug": "siggraph15-sparkly-paper",
-        "type": "pdf",
-        "title": "Rendering Glints on High-Resolution Normal-Mapped Specular Surfaces — SIGGRAPH 2015 (Paper)",
-    },
-    {
-        "path": "/home/midori/Downloads/2856400.2856409.pdf",
-        "slug": "zirr-kaplanyan-2016-procedural-multiscale",
-        "type": "pdf",
-        "title": "Real-time Rendering of Procedural Multiscale Materials (Zirr & Kaplanyan — I3D 2016)",
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/wronski-2014-volumetric-fog.pptx",
-        "slug": "bwronski-2014-volumetric-fog",
-        "type": "pptx",
-        "title": "Volumetric Fog: Unified, Compute Shader Based Solution to Atmospheric Scattering — Wroński (SIGGRAPH 2014)",
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/schneider-2015-hzd-clouds.pdf",
-        "slug": "schneider-2015-hzd-clouds",
-        "type": "pdf",
-        "title": "The Real-time Volumetric Cloudscapes of Horizon Zero Dawn — Schneider & Vos (SIGGRAPH 2015 Advances in Real-Time Rendering)",
-        "slide_deck": True,
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/hillaire-2015-frostbite-volumetrics.pptx",
-        "slug": "hillaire-2015-frostbite-volumetrics",
-        "type": "pptx",
-        "title": "Physically Based and Unified Volumetric Rendering in Frostbite — Hillaire (SIGGRAPH 2015)",
-    },
-    {
-        "path": "/home/midori/Downloads/Fast Flexible Physically-Based Volumetric Light Scattering - Notes.pdf",
-        "slug": "fast-flexible-volumetric-light-scattering-notes",
-        "type": "pdf",
-        "title": "Fast Flexible Physically-Based Volumetric Light Scattering — Course Notes (GDC)",
-    },
-    {
-        "path": "/home/midori/Downloads/2109.13704v2.pdf",
-        "slug": "ruijters-volume-rendering-artifacts",
-        "type": "pdf",
-        "title": "Common Artifacts in Volume Rendering (Ruijters 2021)",
-    },
-    {
-        "path": "/home/midori/Downloads/geomclipmap.pdf",
-        "slug": "losasso-hoppe-geomclipmap",
-        "type": "pdf",
-        "title": "Geometry Clipmaps: Terrain Rendering Using Nested Regular Grids (Losasso & Hoppe)",
-    },
-    {
-        "path": "/home/midori/Downloads/paper-lowres.pdf",
-        "slug": "soderlund-2022-sdf-grid-raytracing",
-        "type": "pdf",
-        "title": "Ray Tracing of Signed Distance Function Grids (Söderlund, Evans, Akenine-Möller — JCGT 2022)",
-    },
-    {
-        "path": "/home/midori/Downloads/SIGGRAPH2007_AlphaTestedMagnification.pdf",
-        "slug": "green-2007-sdf-magnification",
-        "type": "pdf",
-        "title": "Improved Alpha-Tested Magnification for Vector Textures and Special Effects (Green — SIGGRAPH 2007)",
-    },
-    {
-        "path": "/home/midori/Downloads/Clipmap.pdf",
-        "slug": "tanner-1998-clipmap",
-        "type": "pdf",
-        "title": "The Clipmap: A Virtual Mipmap (Tanner, Migdal, Jones — SIGGRAPH 1998)",
-    },
-    {
-        "path": "/home/midori/Downloads/Thesis-1.pdf",
-        "slug": "kuehnert-2022",
-        "type": "pdf",
-        "title": "Methods for Automated Creation and Efficient Visualisation of Large-Scale Terrains based on Real Height-Map Data (Kühnert — TU Chemnitz 2022)",
-    },
-    {
-        "path": "/home/midori/Downloads/aaltonenhaar_siggraph2015_combined_final_footer_220dpi.pdf",
-        "slug": "aaltonen-haar-2015-gpu-driven",
-        "type": "pdf",
-        "title": "GPU-Driven Rendering Pipelines (Haar & Aaltonen — SIGGRAPH 2015)",
-    },
-    {
-        "path": "/home/midori/Downloads/Wihlidal_Graham_OptimizingTheGraphics.pdf",
-        "slug": "wihlidal-2016-optimizing-graphics-pipeline",
-        "type": "pdf",
-        "title": "Optimizing the Graphics Pipeline with Compute (Wihlidal — GDC 2016)",
-    },
-    {
-        "path": "/home/midori/Downloads/p387-fernando.pdf",
-        "slug": "fernando-2001-adaptive-shadow-maps",
-        "type": "pdf",
-        "title": "Adaptive Shadow Maps (Fernando, Fernandez, Bala, Greenberg — SIGGRAPH 2001)",
-    },
-    {
-        "path": "/home/midori/Downloads/johnson05_irregularzbuf.pdf",
-        "slug": "johnson-2005-irregular-zbuffer",
-        "type": "pdf",
-        "title": "The Irregular Z-Buffer: Hardware Acceleration for Irregular Data Structures (Johnson, Lee, Burns, Mark — UT Austin / TOG 2005)",
-    },
-    {
-        "path": "/home/midori/Downloads/Fitted_virtual_shadow_maps.pdf",
-        "slug": "giegl-2007-fitted-virtual-shadow-maps",
-        "type": "pdf",
-        "title": "Fitted Virtual Shadow Maps (Giegl & Wimmer — Vienna University of Technology, 2007)",
-    },
-    {
-        "path": "/home/midori/Downloads/12_CSSM.pdf",
-        "slug": "kolic-2013-camera-space-shadow-maps",
-        "type": "pdf",
-        "title": "Camera Space Shadow Maps for Large Virtual Environments (Kolic & Mihajlovic — University of Zagreb, 2013)",
-    },
-    {
-        "path": "/home/midori/Downloads/clustered_shadows_tvcg.pdf",
-        "slug": "olsson-2015-clustered-shadows",
-        "type": "pdf",
-        "title": "More Efficient Virtual Shadow Maps for Many Lights (Olsson, Billeter, Sintorn, Kämpe et al. — TVCG 2015)",
-    },
-    {
-        "path": "/home/midori/Downloads/Sakmary-Resolution-Matched-Virtual-Shadow-Maps.pdf",
-        "slug": "sakmary-resolution-matched-virtual-shadow-maps",
-        "type": "pdf",
-        "title": "Resolution Matched Virtual Shadow Maps (Sakmary — CTU Prague)",
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/premoze-2004-multiple-scattering.pdf",
-        "slug": "premoze-2004-multiple-scattering",
-        "type": "pdf",
-        "title": "Practical Rendering of Multiple Scattering Effects in Participating Media — Premoze 2004",
-    },
-    {
-        "path": "/home/midori/Downloads/Predicted Virtual Soft Shadow Maps with High Quality Filtering.pdf",
-        "slug": "shen-2011-predicted-virtual-soft-shadow-maps",
-        "type": "pdf",
-        "title": "Predicted Virtual Soft Shadow Maps with High Quality Filtering (Shen, Guennebaud, Yang, Feng — Eurographics 2011)",
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/narasimhan-2004-analytic-multiple-scattering.pdf",
-        "slug": "narasimhan-2004-analytic-multiple-scattering",
-        "type": "pdf",
-        "title": "Analytic Rendering of Multiple Scattering in Participating Media — Narasimhan 2004",
-    },
-    {
-        "path": "/home/midori/Downloads/GIEGL-2007-QV1-Preprint.pdf",
-        "slug": "giegl-2007-queried-virtual-shadow-maps",
-        "type": "pdf",
-        "title": "Queried Virtual Shadow Maps (Giegl & Wimmer — Vienna University of Technology, 2007)",
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/elek-2012-screen-space-scattering.pdf",
-        "slug": "elek-2012-screen-space-scattering",
-        "type": "pdf",
-        "title": "Real-Time Screen-Space Scattering in Homogeneous Environments — Elek 2012 (Computer Graphics Forum / EGSR 2012)",
-    },
-    {
-        "path": "/home/midori/Downloads/Virtual Shadow Maps in Unreal Engine _ Unreal Engine 5.1 Documentation _ Epic Developer Community.pdf",
-        "slug": "epic-ue51-virtual-shadow-maps-docs",
-        "type": "pdf",
-        "title": "Virtual Shadow Maps in Unreal Engine (Epic — UE 5.1 Documentation)",
-    },
-    {
-        "path": "/home/midori/Downloads/aila2004egsr_paper.pdf",
-        "slug": "aila-laine-2004-alias-free-shadow-maps",
-        "type": "pdf",
-        "title": "Alias-Free Shadow Maps (Aila & Laine — Helsinki University of Technology / Eurographics Symposium on Rendering 2004)",
-    },
-    {
-        "path": "/home/midori/Downloads/mwre-1520-0493_1997_125_2265_aotvof_2.0.co_2.pdf",
-        "slug": "margolin-1997-vof-cloud-advection",
-        "type": "pdf",
-        "title": "Application of the Volume-of-Fluid Method to the Advection–Condensation Problem (Margolin, Reisner & Smolarkiewicz — Mon. Wea. Rev. 1997)",
-    },
-    {
-        "path": "/home/midori/Downloads/qt40v513qg.pdf",
-        "slug": "lefohn-2007-resolution-matched-shadow-maps",
-        "type": "pdf",
-        "title": "Resolution Matched Shadow Maps (Lefohn, Sengupta, Owens — UC Davis / TOG 2007)",
-    },
-    {
-        "path": "/home/midori/Downloads/flux_main.pdf",
-        "slug": "hirasawa-2021-flux-interpolated-advection",
-        "type": "pdf",
-        "title": "A Flux-Interpolated Advection Scheme for Fluid Simulation (Hirasawa, Kanai & Ando — CGI 2021)",
-    },
-    {
-        "path": "/home/midori/Downloads/An_Efficient_Alias-free_Shadow_Algorithm_for_Opaqu.pdf",
-        "slug": "sintorn-olsson-2008-alias-free-shadow-volumes",
-        "type": "pdf",
-        "title": "An Efficient Alias-free Shadow Algorithm for Opaque and Transparent Objects using per-triangle Shadow Volumes (Sintorn, Olsson, Assarsson — Chalmers 2008)",
-    },
-    {
-        "path": "/home/midori/Downloads/Lauritzen-SDSM(SIGGRAPH 2010 Advanced RealTime Rendering Course).pdf",
-        "slug": "lauritzen-2010-sample-distribution-shadow-maps",
-        "type": "pdf",
-        "title": "Sample Distribution Shadow Maps (Lauritzen — SIGGRAPH 2010 Advances in Real-Time Rendering Course)",
-    },
-    {
-        "path": "/home/midori/Downloads/avsm_egsr2010_lowres.pdf",
-        "slug": "salvi-2010-adaptive-volumetric-shadow-maps",
-        "type": "pdf",
-        "title": "Adaptive Volumetric Shadow Maps (Salvi, Vidimče, Lauritzen, Lefohn — Intel / EGSR 2010)",
-    },
-    {
-        "path": "/home/midori/Downloads/chen2025dmd.pdf",
-        "slug": "chen-2025-dmd-fluid-subspace",
-        "type": "pdf",
-        "title": "Fast Subspace Fluid Simulation with a Temporally-Aware Basis (Chen et al. — SIGGRAPH 2025)",
-    },
-    {
-        "path": "/home/midori/Downloads/2015-1.pdf",
-        "slug": "jin-2015-conservative-semi-lagrangian-ffd",
-        "type": "pdf",
-        "title": "Improvement of Fast Fluid Dynamics with a Conservative Semi-Lagrangian Scheme (Jin & Chen — HFF 2015)",
-    },
-    {
-        "path": "/home/midori/Downloads/gridFluids_GPU_Gems.pdf",
-        "slug": "harris-gpu-gems-ch38-fast-fluid-dynamics",
-        "type": "pdf",
-        "title": "Fast Fluid Dynamics Simulation on the GPU (Harris — GPU Gems Ch. 38, 2004)",
-    },
-    {
-        "path": "/home/midori/Downloads/fast-fluid-dynamics-on.pdf_recZxLHseys3jxzKm.pdf",
-        "slug": "fais-iorio-2011-ffd-scc",
-        "type": "pdf",
-        "title": "Fast Fluid Dynamics on the Single-chip Cloud Computer (Fais & Iorio — Autodesk Research, 2011)",
-    },
-    {
-        "path": "/home/midori/Downloads/surfaceTracking.pdf",
-        "slug": "muller-2009-surface-tracking",
-        "type": "pdf",
-        "title": "Fast and Robust Tracking of Fluid Surfaces (Müller — SCA 2009)",
-    },
-    {
-        "path": "/home/midori/Downloads/LLDL21.pdf",
-        "slug": "lyu-2021-fluid-solid-coupling",
-        "type": "pdf",
-        "title": "Fast and Versatile Fluid-Solid Coupling for Turbulent Flow Simulation (Lyu, Li, Desbrun, Liu — SIGGRAPH 2021)",
-    },
-    {
-        "path": "/home/midori/Downloads/batty-siggraph2007-variationalcoupling.pdf",
-        "slug": "batty-2007-variational-coupling",
-        "type": "pdf",
-        "title": "A Fast Variational Framework for Accurate Solid-Fluid Coupling (Batty, Bertails, Bridson — SIGGRAPH 2007)",
-    },
-    {
-        "path": "/mnt/archive4/Downloads/2017_Sig_Improved_Culling_final.pptx",
-        "slug": "drobot-2017-improved-culling",
-        "type": "pptx",
-        "title": "Improved Culling for Tiled and Clustered Rendering (Drobot — SIGGRAPH 2017 Advances in Real-Time Rendering)",
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/hasselgren-2016-masked-occlusion-culling.pdf",
-        "slug": "hasselgren-2016-masked-occlusion-culling",
-        "type": "pdf",
-        "title": "Masked Software Occlusion Culling (Hasselgren, Andersson & Akenine-Möller — Intel, High Performance Graphics 2016)",
-    },
-    {
-        "path": "/home/midori/Downloads/cuntz07gpudt.pdf",
-        "slug": "cuntz-kolb-2007-hierarchical-3d-distance-transform",
-        "type": "pdf",
-        "title": "Fast Hierarchical 3D Distance Transforms on the GPU (Cuntz & Kolb — Eurographics 2007 Short Papers)",
-    },
-    {
-        "path": "/home/midori/Downloads/tr0601-distancetransform.pdf",
-        "slug": "cuntz-kolb-2007-tr-3d-distance-transform",
-        "type": "pdf",
-        "title": "Fast Hierarchical 3D Distance Transforms on the GPU (Cuntz & Kolb — University of Siegen Technical Report, May 15 2007)",
-    },
-    {
-        "path": "/home/midori/Downloads/Improved Moment Shadow Maps for Translucent_Occluders, Soft Shadows and Single Scattering.pdf",
-        "slug": "peters-2017-improved-moment-shadow-maps",
-        "type": "pdf",
-        "title": "Improved Moment Shadow Maps for Translucent Occluders, Soft Shadows and Single Scattering (Peters, Münstermann, Wetzstein, Klein — JCGT Vol. 6 No. 1, 2017)",
-    },
-    {
-        "path": "/home/midori/Downloads/1360612.1360633.pdf",
-        "slug": "annen-2008-all-frequency-shadows",
-        "type": "pdf",
-        "title": "Real-Time, All-Frequency Shadows in Dynamic Scenes (Annen, Dong, Mertens, Bekaert, Seidel, Kautz — ACM TOG / SIGGRAPH 2008)",
-    },
-    {
-        "path": "/home/midori/Downloads/GDC2023_GT7_SKY_RENDERING.pdf",
-        "slug": "suzuki-yasutomi-2023-gt7-sky-dome",
-        "type": "pdf",
-        "title": "Realistic Real-time Sky Dome Rendering in Gran Turismo 7 (Suzuki & Yasutomi — Polyphony Digital, GDC 2023)",
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/crassin-2009-gigavoxels-ray-guided-streaming.pdf",
-        "slug": "crassin-2009-gigavoxels-ray-guided-streaming",
-        "type": "pdf",
-        "title": "GigaVoxels: Ray-Guided Streaming for Efficient and Detailed Voxel Rendering (Crassin, Neyret, Lefebvre, Eisemann — i3D 2009)",
-        "slide_deck": False,
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/crassin-2011-gigavoxels-thesis.pdf",
-        "slug": "crassin-2011-gigavoxels-thesis",
-        "type": "pdf",
-        "title": "GigaVoxels: A Voxel-Based Rendering Pipeline for Efficient Exploration of Large and Detailed Scenes (Cyril Crassin — PhD thesis, Université de Grenoble, 2011)",
-        "slide_deck": False,
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/amanatides-woo-1987-voxel-traversal.pdf",
-        "slug": "amanatides-woo-1987-voxel-traversal",
-        "type": "pdf",
-        "title": "A Fast Voxel Traversal Algorithm for Ray Tracing (John Amanatides & Andrew Woo — Dept. of Computer Science, University of Toronto, Eurographics '87)",
-        # PDF v1.2 has no embedded image objects — Figure 1 is vector PostScript paths.
-        # Force slide-deck mode so PyMuPDF rasterises each page, giving the vision pass
-        # something to read for the figure + code listings. Filename pattern: pNNN-slide.png.
-        "slide_deck": True,
-    },
-    {
-        "path": "/home/midori/Downloads/1730804.1730814.pdf",
-        "slug": "laine-karras-2010-sparse-voxel-octrees",
-        "type": "pdf",
-        "title": "Efficient Sparse Voxel Octrees (Laine & Karras — NVIDIA Research / I3D 2010)",
-        "slide_deck": False,
-    },
-    {
-        "path": "/home/midori/Downloads/Young_iastate_0097M_16385.pdf",
-        "slug": "young-2017-multilevel-voxel",
-        "type": "pdf",
-        "title": "Multi-level Voxel Representation for GPU-Accelerated Solid Modeling (Young, MS thesis, Iowa State 2017)",
-        "slide_deck": False,
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/gobbetti-marton-2005-far-voxels.pdf",
-        "slug": "gobbetti-marton-2005-far-voxels",
-        "type": "pdf",
-        "title": "Far Voxels: A Multiresolution Framework for Interactive Rendering of Huge Complex 3D Models on Commodity Graphics Platforms (Gobbetti & Marton, SIGGRAPH 2005)",
-    },
-    {
-        "path": "/home/midori/Downloads/1404435.1404438.pdf",
-        "slug": "mittring-2008-advanced-virtual-texture-topics",
-        "type": "pdf",
-        "title": "Advanced Virtual Texture Topics (Martin Mittring — Crytek GmbH; Chapter 2 of \"Advances in Real-Time Rendering in 3D Graphics and Games Course\", N. Tatarchuk ed., SIGGRAPH 2008)",
-        "slide_deck": False,
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/blinn-1982-light-reflection-clouds-dusty-surfaces.pdf",
-        "slug": "blinn-1982-light-reflection-clouds-dusty-surfaces",
-        "type": "pdf",
-        "title": "Light Reflection Functions for Simulation of Clouds and Dusty Surfaces (James F. Blinn, JPL/Caltech — Computer Graphics 16:3, July 1982 / SIGGRAPH 1982)",
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/gobbetti-marton-iglesias-guitian-2008-single-pass-gpu-raycasting.pdf",
-        "slug": "gobbetti-marton-iglesias-guitian-2008-single-pass-gpu-raycasting",
-        "type": "pdf",
-        "title": "A single-pass GPU ray casting framework for interactive out-of-core rendering of massive volumetric datasets (Gobbetti, Marton, Iglesias-Guitián — Visual Computer 2008)",
-        "slide_deck": False,
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/schwarz-seidel-2010-fast-parallel-voxelization.pdf",
-        "slug": "schwarz-seidel-2010-fast-parallel-voxelization",
-        "type": "pdf",
-        "title": "Fast Parallel Surface and Solid Voxelization on GPUs (Michael Schwarz, Hans-Peter Seidel — SIGGRAPH Asia 2010)",
-        "slide_deck": False,
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/eisemann-decoret-2008-single-pass-gpu-solid-voxelization.pdf",
-        "slug": "eisemann-decoret-2008-single-pass-gpu-solid-voxelization",
-        "type": "pdf",
-        "title": "Single-Pass GPU Solid Voxelization for Real-Time Applications (Elmar Eisemann, Xavier Décoret — Graphics Interface 2008)",
-        "slide_deck": False,
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/frisken-perry-2002-quadtree-octree-traversal.pdf",
-        "slug": "frisken-perry-2002-quadtree-octree-traversal",
-        "type": "pdf",
-        "title": "Simple and Efficient Traversal Methods for Quadtrees and Octrees (Sarah F. Frisken, Ronald N. Perry — Journal of Graphics Tools, 2002)",
-        "slide_deck": False,
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/lefebvre-hoppe-2006-perfect-spatial-hashing.pdf",
-        "slug": "lefebvre-hoppe-2006-perfect-spatial-hashing",
-        "type": "pdf",
-        "title": "Perfect Spatial Hashing (Sylvain Lefebvre, Hugues Hoppe — SIGGRAPH 2006)",
-        "slide_deck": False,
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/knoll-2008-octree-volume-rendering-survey.pdf",
-        "slug": "knoll-2008-octree-volume-rendering-survey",
-        "type": "pdf",
-        "title": "A Survey of Octree Volume Rendering Methods (Aaron Knoll — IRTG 1131 / VG 2008 / SCI Institute, 2008)",
-        "slide_deck": False,
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/lefebvre-dachsbacher-2007-tiletrees.pdf",
-        "slug": "lefebvre-dachsbacher-2007-tiletrees",
-        "type": "pdf",
-        "title": "TileTrees (Sylvain Lefebvre, Carsten Dachsbacher — I3D 2007)",
-        "slide_deck": False,
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/lefohn-2006-glift-gpu-data-structures.pdf",
-        "slug": "lefohn-2006-glift-gpu-data-structures",
-        "type": "pdf",
-        "title": "Glift: Generic, Efficient, Random-Access GPU Data Structures (Aaron E. Lefohn, Shubhabrata Sengupta, Joe Kniss, Richard Strzodka, John D. Owens — ACM TOG 25:1, January 2006)",
-        "slide_deck": False,
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/kraus-ertl-2002-adaptive-texture-maps.pdf",
-        "slug": "kraus-ertl-2002-adaptive-texture-maps",
-        "type": "pdf",
-        "title": "Adaptive Texture Maps (Martin Kraus, Thomas Ertl — Graphics Hardware 2002)",
-        "slide_deck": False,
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/bouthors-2008-interactive-anisotropic-scattering-clouds.pdf",
-        "slug": "bouthors-2008-interactive-anisotropic-scattering-clouds",
-        "type": "pdf",
-        "title": "Interactive Multiple Anisotropic Scattering in Clouds (Bouthors, Neyret, Holzschuch, Pacanowski, Cani, Lefebvre — I3D 2008)",
-        "slide_deck": False,
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/bouthors-neyret-lefebvre-2006-stratiform-clouds.pdf",
-        "slug": "bouthors-neyret-lefebvre-2006-stratiform-clouds",
-        "type": "pdf",
-        "title": "Real-Time Realistic Illumination and Shading of Stratiform Clouds (Bouthors, Neyret, Lefebvre — Eurographics 2006)",
-        "slide_deck": False,
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/max-1995-optical-models-direct-volume-rendering.pdf",
-        "slug": "max-1995-optical-models-direct-volume-rendering",
-        "type": "pdf",
-        "title": "Optical Models for Direct Volume Rendering (Nelson Max — IEEE Transactions on Visualization and Computer Graphics 1:2, June 1995)",
-        "slide_deck": False,
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/kajiya-vonherzen-1984-ray-tracing-volume-densities.pdf",
-        "slug": "kajiya-vonherzen-1984-ray-tracing-volume-densities",
-        "type": "pdf",
-        "title": "Ray Tracing Volume Densities (James T. Kajiya, Brian P. Von Herzen — Computer Graphics 18:3, July 1984 / SIGGRAPH 1984)",
-        "slide_deck": False,
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/tatarchuk-2013-destiny-rendering.pdf",
-        "slug": "tatarchuk-2013-destiny-rendering",
-        "type": "pdf",
-        "title": "Destiny: From Mythic Science Fiction to Rendering in Real Time (Natalya Tatarchuk — Bungie, SIGGRAPH 2013 Advances in Real-Time Rendering)",
-        # Creator = "Microsoft® PowerPoint® 2010" → is_slide_deck_pdf auto-fires on "powerpoint"
-        # No override needed; left here as documentation of the auto-detect outcome.
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/tatarchuk-2015-applied-graphics-research.pdf",
-        "slug": "tatarchuk-2015-applied-graphics-research",
-        "type": "pdf",
-        "title": "Applied Graphics Research for Video Games (Natalya Tatarchuk — AMD, GDC 2015)",
-        # Likely a PowerPoint export; is_slide_deck_pdf will auto-detect via "powerpoint" in Creator.
-        # No override needed.
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/yusov-2013-epipolar-sampling-min-max-trees.pdf",
-        "slug": "yusov-2013-epipolar-sampling-min-max-trees",
-        "type": "pdf",
-        "title": "Outdoor Light Scattering Sample (Egor Yusov — Intel, 2013 / Intel Developer Zone); epipolar sampling with 1D min-max mip-tree acceleration for real-time atmospheric scattering",
-        # Text-layer PDF; let is_slide_deck_pdf auto-detect. Expected: paper route via marker.
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/jarosz-2008-monte-carlo-light-transport-scattering-media.pdf",
-        "slug": "jarosz-2008-monte-carlo-light-transport-scattering-media",
-        "type": "pdf",
-        "title": "Efficient Monte Carlo Methods for Light Transport in Scattering Media (Wojciech Jarosz — PhD thesis, UCSD, 2008)",
-        # Text-layer PhD thesis (~83 MB, 200+ pages). Let is_slide_deck_pdf auto-detect.
-        # Expected: paper route via marker with redo_inline_math=True (math-dense: RTE, HG phase
-        # function, beam radiance estimate, photon density estimate, Rayleigh/Mie phase functions).
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/toth-umenhoffer-2009-volumetric-lighting-participating-media.pdf",
-        "slug": "toth-umenhoffer-2009-volumetric-lighting-participating-media",
-        "type": "pdf",
-        "title": "Real-Time Volumetric Lighting in Participating Media (Toth & Umenhoffer — Eurographics 2009 Short Papers)",
-        # Small text-layer paper (~780 KB). Let is_slide_deck_pdf auto-detect (expected: False).
-        # Math content: HG phase function, single-scattering integral along view ray,
-        # ray-marching with shadow-map sampling. redo_inline_math=True is the default.
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/bruneton-neyret-2008-precomputed-atmospheric-scattering.pdf",
-        "slug": "bruneton-neyret-2008-precomputed-atmospheric-scattering",
-        "type": "pdf",
-        "title": "Precomputed Atmospheric Scattering (Bruneton & Neyret — EGSR 2008 / JCGT 2008)",
-        # Text-layer paper (~2.3 MB, 8 pages). Let is_slide_deck_pdf auto-detect (expected: False).
-        # Math content: radiative transfer equation, Rayleigh/Mie phase functions,
-        # precomputed 4D scattering tables, single vs multiple scattering.
-        # redo_inline_math=True is the default.
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/keinert-2014-enhanced-sphere-tracing.pdf",
-        "slug": "keinert-2014-enhanced-sphere-tracing",
-        "type": "pdf",
-        "title": "Enhanced Sphere Tracing (Keinert et al. — STAG 2014)",
-        # Text-layer paper. Let is_slide_deck_pdf auto-detect (expected: False).
-        # Math content: sphere tracing acceleration, SDF evaluation, step-size bounds.
-        # redo_inline_math=True is the default.
-        "slide_deck": False,
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/hart-1995-sphere-tracing.pdf",
-        "slug": "hart-1995-sphere-tracing",
-        "type": "pdf",
-        "title": "Sphere Tracing: A Geometric Method for the Antialiased Ray Tracing of Implicit Surfaces (John C. Hart — The Visual Computer 12, 1996 / earlier 1995 technical report)",
-        # Text-layer paper. Let is_slide_deck_pdf auto-detect (expected: False).
-        # Math content: implicit surface rendering, Lipschitz bounds, sphere tracing algorithm,
-        # antialiasing via unbounding volumes. redo_inline_math=True is the default.
-        "slide_deck": False,
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/crassin-2011-voxel-cone-tracing.pdf",
-        "slug": "crassin-2011-voxel-cone-tracing",
-        "type": "pdf",
-        "title": "Interactive Indirect Illumination Using Voxel Cone Tracing (Cyril Crassin, Fabrice Neyret, Miguel Sainz, Simon Green, Elmar Eisemann — SIGGRAPH 2011 / GPU Pro 2)",
-        # Text-layer paper (ACM / NVIDIA). Let is_slide_deck_pdf auto-detect (expected: False).
-        # Foundational paper for voxel-based global illumination via cone tracing in a sparse
-        # voxel octree. Math content: cone-casting integral, mipmapped voxel cone filter,
-        # anisotropic GGX, ambient occlusion via cone tracing, diffuse/specular indirect
-        # illumination. redo_inline_math=True is the default.
-    },
-    # ============================================================================
-    # Williams 1983 — Pyramidal Parametrics (foundational mipmap / image pyramid)
-    # ============================================================================
-    {
-        "path": "/mnt/archive4/PAPERS/williams-1983-pyramidal-parametrics.pdf",
-        "slug": "williams-1983-pyramidal-parametrics",
-        "type": "pdf",
-        "title": "Pyramidal Parametrics (Lance Williams — Computer Graphics 17:3, July 1983 / SIGGRAPH 1983)",
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/schneider-2022-nubis-evolved.pptx",
-        "slug": "schneider-2022-nubis-evolved",
-        "type": "pptx",
-        "title": "Nubis, Evolved: Real-time Volumetric Clouds for Skies, Environments, and VFX — Andrew Schneider (SIGGRAPH 2022 Advances in Real-Time Rendering in Games)",
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/krause-2025-enshrouded-volumetric-fog.pdf",
-        "slug": "krause-2025-enshrouded-volumetric-fog",
-        "type": "pdf",
-        "slide_deck": True,
-        "title": "The Fog is Lifting: Volumetric Rendering Enshrouded — Philip Krause (GDC 2025)",
-    },
-    # ============================================================================
-    # Ulschmid et al. 2026 — NAADF: Globally Illuminated Voxel Worlds Accelerated
-    # with Nested Axis-Aligned Distance Fields (EUROGRAPHICS 2026 / CGF 70413)
-    # ============================================================================
-    {
-        "path": "/mnt/archive4/PAPERS/ulschmid-2026-naadf-voxel-gi.pdf",
-        "slug": "ulschmid-2026-naadf-voxel-gi",
-        "type": "pdf",
-        "title": "NAADF: Globally Illuminated Voxel Worlds Accelerated with Nested Axis-Aligned Distance Fields (Ulschmid, Ott, Macho, Wimmer, Ohrhallinger — TU Wien / EUROGRAPHICS 2026 / CGF 10.1111/cgf.70413)",
-        # Text-layer CGF paper. Let is_slide_deck_pdf auto-detect (expected: False).
-        # Math content: nested axis-aligned distance fields, voxel cone stepping,
-        # global illumination integral, ADF hierarchy construction, ray-AABB tests.
-        # redo_inline_math=True is the default.
-        "slide_deck": False,
-    },
-    # ============================================================================
-    # Kider et al. 2014 — A Framework for the Experimental Comparison of Solar
-    # and Skydome Illumination (SIGGRAPH Asia 2014, ACM TOG 33:6 art.180)
-    # Cornell Program of Computer Graphics.
-    # Measurement-methodology anchor for offline-baked-sky-LUT-authoring research.
-    # Dataset used by Bruneton's clear-sky-models harness and GT7 Skysim validation.
-    # ============================================================================
-    {
-        "path": "/mnt/archive4/PAPERS/kider-2014-experimental-comparison-skydome-illumination.pdf",
-        "slug": "kider-2014-experimental-comparison-skydome-illumination",
-        "type": "pdf",
-        "title": "A Framework for the Experimental Comparison of Solar and Skydome Illumination — Kider, Knowlton, Newlin, Li, Greenberg (SIGGRAPH Asia 2014 / ACM TOG 33:6 art.180, Cornell Program of Computer Graphics)",
-        # ~12-page paper PDF. Text-layer expected (not scanned). slide_deck=False.
-        # Math-heavy: spectral radiometry, camera/spectroradiometer calibration,
-        # hemispherical fisheye + spot measurement equations.
-        "slide_deck": False,
-    },
-    # ============================================================================
-    # Wilkie et al. 2021 — A Fitted Radiance and Attenuation Model for Realistic
-    # Atmospheres (SIGGRAPH 2021, ACM TOG 40:4 art.138)
-    # Charles University CGG group. Successor to Hosek-Wilkie 2012 and
-    # Wilkie-Hosek 2013. Fitted analytic sky model with aerial perspective
-    # attenuation trained against path-traced ground truth. Multi-spectral output.
-    # CGG publication page: "Unless compatibility with old codebases is essential,
-    # the new model should be used whenever possible."
-    # ============================================================================
-    {
-        "path": "/mnt/archive4/PAPERS/wilkie-2021-fitted-radiance-atmosphere.pdf",
-        "slug": "wilkie-2021-fitted-radiance-atmosphere",
-        "type": "pdf",
-        "title": "A Fitted Radiance and Attenuation Model for Realistic Atmospheres — Wilkie, Vévoda, Bashford-Rogers, Hošek, Iser, Kolářová, Rittig, Křivánek (SIGGRAPH 2021 / ACM TOG 40:4 art.138, Charles University CGG)",
-        # ~26 MB paper PDF (large due to high-fidelity full-sky comparison renders).
-        # Text-layer expected (not scanned). slide_deck=False.
-        # Math-heavy: fitted coefficient parameterisation, radiance + attenuation
-        # formulas, solar disc, multi-spectral output, aerial perspective LUT.
-        # High equation-substitution risk: rho (particle radius), tau (optical depth),
-        # omega (single-scattering albedo), mu (emission cosine), gamma (scattering angle).
-        "slide_deck": False,
-    },
-    # ============================================================================
-    # Hošek & Wilkie 2012 — An Analytic Model for Full Spectral Sky-Dome Radiance
-    # (SIGGRAPH 2012 / ACM TOG 31:4 art.95, Charles University in Prague)
-    # The canonical analytic sky model that succeeded Preetham 1999. Fitted from
-    # a path-traced ground-truth dataset; supports 11 wavelengths (spectral), RGB,
-    # and CIE XYZ output. 9 coefficients per (turbidity, albedo, sun-elevation)
-    # combination. Predecessor of Wilkie 2021 and widely used as a bake source for
-    # offline sky LUTs (GT7 Suzuki-Yasutomi 2023, Bruneton clear-sky-models harness).
-    # ============================================================================
-    {
-        "path": "/mnt/archive4/PAPERS/hosek-wilkie-2012-analytic-skydome.pdf",
-        "slug": "hosek-wilkie-2012-analytic-skydome",
-        "type": "pdf",
-        "title": "An Analytic Model for Full Spectral Sky-Dome Radiance — Hošek & Wilkie (SIGGRAPH 2012 / ACM TOG 31:4 art.95, Charles University in Prague)",
-        # Text-layer SIGGRAPH paper (~1.3 MB). Let is_slide_deck_pdf auto-detect (expected: False).
-        # Math-heavy: 9-coefficient fitted analytic formula, Preetham comparison plots,
-        # polar-plot panels per wavelength band, turbidity/albedo parameterisation.
-        # High equation-substitution risk: gamma (scattering angle vs transmittance exponent),
-        # theta (zenith angle), chi (chi-function in the HW radiance formula),
-        # rho (particle radius), tau (optical depth).
-        "slide_deck": False,
-    },
-    # ============================================================================
-    # Nishita et al. 1993 — Display of the Earth Taking into Account Atmospheric Scattering
-    # SIGGRAPH 1993, Tomoyuki Nishita, Takao Sirai, Katsumi Tadamura, Eihachiro Nakamae.
-    # THE foundational atmospheric scattering paper: single-scattering for a planet from
-    # space, wavelength-dependent extinction, precomputed scattering tables extended by
-    # Bruneton 2008. Cited by Hosek-Wilkie, Bruneton, Hillaire, GT7. Small (~380 KB),
-    # Ghostscript-produced — likely re-scan or old TeX vintage like Preetham 1999.
-    # Expect old-TeX-vintage math corruption (decimal-points-as-colons, dropped Greek,
-    # shattered equations). High equation-substitution risk: sigma (extinction coefficient),
-    # lambda (wavelength), theta (scattering angle), tau (optical depth), rho (density).
-    # ============================================================================
-    {
-        "path": "/mnt/archive4/PAPERS/nishita-1993-display-of-earth-atmospheric.pdf",
-        "slug": "nishita-1993-display-of-earth-atmospheric",
-        "type": "pdf",
-        "title": "Display of the Earth Taking into Account Atmospheric Scattering — Nishita, Sirai, Tadamura, Nakamae (SIGGRAPH 1993)",
-        "slide_deck": False,
-    },
-    # ============================================================================
-    # Wilkie & Hošek 2013 — Predicting Sky Dome Appearance on Earth-like Extrasolar Worlds
-    # SCCG 2013, Alexander Wilkie & Lukáš Hošek (Charles University in Prague).
-    # Companion to Hosek-Wilkie 2012 / Wilkie 2021: extends the analytic sky model to
-    # alien-sun scenarios (star colour temperatures 3000K–10000K, binary stars).
-    # Derives coefficient-scaling rules for re-fitting when illumination spectrum changes
-    # substantially. Primary source for offline-baked-sky-LUT authoring under non-solar
-    # illumination. 8-page pdfTeX paper; text-layer intact (no OCR issues expected).
-    # Math-heavy: spectral scaling rules, coefficient parameterisation, blackbody emission
-    # across star temperatures, binary-star superposition. High equation-substitution risk:
-    # lambda (wavelength), theta (zenith angle), gamma (scattering angle), tau (optical
-    # depth), chi (chi-function in HW radiance formula).
-    # ============================================================================
-    {
-        "path": "/mnt/archive4/PAPERS/wilkie-hosek-2013-extrasolar-sky-dome.pdf",
-        "slug": "wilkie-hosek-2013-extrasolar-sky-dome",
-        "type": "pdf",
-        "title": "Predicting Sky Dome Appearance on Earth-like Extrasolar Worlds — Wilkie & Hošek (SCCG 2013, Charles University in Prague)",
-        # 8-page pdfTeX paper (PDF 1.4, pdfTeX-1.40.9). Text-layer expected; not scanned.
-        # slide_deck=False confirmed by metadata (creator=LaTeX with hyperref, portrait pages).
-        "slide_deck": False,
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/kol-2012-analytical-sky-simulation.pdf",
-        "slug": "kol-2012-analytical-sky-simulation",
-        "type": "pdf",
-        "title": "Analytical Sky Simulation — An Implementation and Analysis of Daytime Skylight Models (Timothy R. Kol, Utrecht University MSc Thesis, 2012)",
-        # 41-page master's thesis (PDF 1.4, PDFill PDF Editor 14.0, portrait 612x792 pt).
-        # Likely a re-print of a TeX original. Text-layer should be present.
-        # slide_deck=False confirmed by portrait geometry and page count.
-        "slide_deck": False,
-    },
-    # ============================================================================
-    # Maquignaz 2024 — Towards Physically-Based Sky-Modeling (arXiv 2412.11883v1)
-    # Ian J. Maquignaz, Université Laval, 16 December 2024.
-    # 12-page figure-dense ACM acmart pdfTeX paper (~33 MB).
-    # Introduces "AllSky" DNN/sky-modeling approach for EDR (14 EV) environment maps
-    # inclusive of the sun. Argues conventional HDRI is insufficient for outdoor scene
-    # relighting. Newest work in offline sky-LUT authoring as of Dec 2024.
-    # ============================================================================
-    {
-        "path": "/mnt/archive4/PAPERS/maquignaz-2024-physically-based-sky-modeling.pdf",
-        "slug": "maquignaz-2024-physically-based-sky-modeling",
-        "type": "pdf",
-        "title": "Towards Physically-Based Sky-Modeling — Ian J. Maquignaz (Université Laval, arXiv 2412.11883v1, December 2024)",
-        # 12-page pdfTeX (ACM acmart template). Text-layer expected; not scanned.
-        # slide_deck=False confirmed by portrait ACM layout.
-        "slide_deck": False,
-    },
-    # ============================================================================
-    # Fang et al. 2025 — Aokana: A GPU-Driven Voxel Rendering Framework for Open
-    # World Games (ACM 2025, article 3728299)
-    # Yingrong Fang, Qitong Wang, Wei Wang — Fudan University + Harvard.
-    # GPU-driven voxel rendering for open-world games: octree-based sparse voxel
-    # representation, GPU culling/LOD, indirect draw, deferred shading pipeline.
-    # 17-page text-layer LaTeX paper (ACM acmart template). Not a slide deck.
-    # Math content: voxel LOD selection criteria, frustum/occlusion culling bounds,
-    # indirect dispatch sizing, lighting integrals over voxel volumes.
-    # ============================================================================
-    {
-        "path": "/home/midori/Downloads/3728299.pdf",
-        "slug": "fang-2025-aokana-voxel-rendering",
-        "type": "pdf",
-        "title": "Aokana: A GPU-Driven Voxel Rendering Framework for Open World Games — Fang, Wang, Wang (Fudan University + Harvard, ACM 2025 art.3728299)",
-        # 17-page pdfTeX (ACM acmart template). Text-layer expected; not scanned.
-        # slide_deck=False: portrait ACM two-column layout confirmed.
-        "slide_deck": False,
-    },
-    # ============================================================================
-    # Braley et al. 2010 — GPU Accelerated Voxel Traversal using the Prediction Buffer
-    # Colin Braley, Robert Hagan, Yong Cao, Denis Gracanin — Virginia Tech.
-    # 8-page IEEE-style text-layer LaTeX paper. Introduces the "Prediction Buffer":
-    # a screen-space depth-buffer pre-pass on the CPU voxel tree to skip empty space
-    # in GPU ray traversal, dramatically reducing wasted fragment shader invocations.
-    # Context: GPU-accelerated DDA / Amanatides-Woo traversal in a voxel volume;
-    # companion to amanatides-woo-1987-voxel-traversal in the naadf corpus.
-    # ============================================================================
-    {
-        "path": "/mnt/archive4/PAPERS/braley-2010-prediction-buffer-traversal.pdf",
-        "slug": "braley-2010-prediction-buffer-traversal",
-        "type": "pdf",
-        "title": "GPU Accelerated Voxel Traversal using the Prediction Buffer — Braley, Hagan, Cao, Gracanin (Virginia Tech, 2010)",
-        # 8-page text-layer LaTeX paper (IEEE two-column). Not a slide deck.
-        # Math content: ray-AABB entry/exit computation, DDA step formulas,
-        # prediction-buffer depth test, fragment count reduction analysis.
-        "slide_deck": False,
-    },
-    # ============================================================================
-    # Molenaar & Eisemann 2024 — Editing Compact Voxel Representations on the GPU
-    # Pacific Graphics 2024, Computer Graphics Forum Vol 43 No 7.
-    # Maarten Molenaar & Elmar Eisemann — Delft University of Technology.
-    # Presents GPU-side editing algorithms for Sparse Voxel DAGs (SVDAGs) and
-    # related compact voxel representations without full decompression; includes
-    # CSG boolean operations, voxelisation updates, and topology-preserving edits.
-    # 12-page text-layer LaTeX paper (Wiley/Eurographics two-column ACM-style).
-    # Math content: SVDAG node addressing, DAG traversal/update cost, CSG
-    # set-difference and union on voxel trees, memory-bandwidth analysis.
-    # ============================================================================
-    {
-        "path": "/mnt/archive4/PAPERS/molenaar-eisemann-2024-svdag-editing.pdf",
-        "slug": "molenaar-eisemann-2024-svdag-editing",
-        "type": "pdf",
-        "title": "Editing Compact Voxel Representations on the GPU — Molenaar & Eisemann (Delft University of Technology, Pacific Graphics 2024 / CGF Vol 43 No 7)",
-        # 12-page pdfLaTeX paper. Text-layer expected; not scanned.
-        # slide_deck=False: portrait two-column layout (standard CGF paper format).
-        "slide_deck": False,
-    },
-    # ============================================================================
-    # Hillaire 2016 — Physically Based Sky, Atmosphere and Cloud Rendering in Frostbite
-    # SIGGRAPH 2016 course notes (LaTeX paper format, portrait, 62 pp).
-    # Text-layer PDF via LaTeX/hyperref. NOT a slide deck — marker/paper route.
-    # Math-heavy: single-scattering RTE, Rayleigh/Mie phase functions, aerial perspective
-    # LUT, multiple scattering approximation, Henyey-Greenstein HG phase function,
-    # cloud density modeling, lighting integrals.
-    # ============================================================================
-    {
-        "path": "/mnt/archive4/PAPERS/hillaire-2016-frostbite-sky-clouds.pdf",
-        "slug": "hillaire-2016-frostbite-sky-clouds",
-        "type": "pdf",
-        "title": "Physically Based Sky, Atmosphere and Cloud Rendering in Frostbite — Sébastien Hillaire (EA Frostbite, SIGGRAPH 2016 Physically Based Shading in Theory and Practice Course)",
-        # Portrait LaTeX paper (612×792 pt, US Letter). is_slide_deck_pdf will auto-detect False.
-        # marker/paper route expected; redo_inline_math=True default.
-        "slide_deck": False,
-    },
-    # ============================================================================
-    # Höglund & Engström 2016 — Real-Time Rendering of Convincing Clouds
-    # MSc thesis, Linköping University. Text-layer LaTeX, 52 pages.
-    # Load-bearing math: Van der Corput low-discrepancy jitter, EMA history blend,
-    # high-transmittance early-exit criteria, multi-octave cloud SDF, lighting integrals.
-    # ============================================================================
-    {
-        "path": "/mnt/archive4/PAPERS/hogfeldt-2016-convincing-clouds.pdf",
-        "slug": "hogfeldt-2016-convincing-clouds",
-        "type": "pdf",
-        "title": "Real-Time Rendering of Convincing Clouds — Joakim Höglund & Anrikard Engström (MSc thesis, Linköping University, 2016)",
-        # Portrait LaTeX thesis (595×842 pt, A4). is_slide_deck_pdf auto-detects False.
-        # marker/paper route. Math-dense: jitter sequences, EMA blend, extinction integral.
-        "slide_deck": False,
-    },
-    # ============================================================================
-    # Hoobler 2016 — Fast, Flexible, Physically-Based Volumetric Light Scattering
-    # GDC 2016 — Nathan Hoobler (NVIDIA Developer Technology).
-    # FULL-SLIDE version chosen: frostbite-volumetric-light-2016.pdf (864×486 pt, 16:9,
-    # PowerPoint 2013 export). Preferred over the notes-pages export
-    # (hillaire-2016-volumetric-light-scattering-gdc-notes.pdf, 732×552, smaller slide
-    # thumbnail + empty speaker-notes area). 71 pages.
-    # ============================================================================
-    {
-        "path": "/mnt/archive4/PAPERS/frostbite-volumetric-light-2016.pdf",
-        "slug": "hoobler-2016-volumetric-light-scattering",
-        "type": "pdf",
-        "title": "Fast, Flexible, Physically-Based Volumetric Light Scattering — Nathan Hoobler (NVIDIA Developer Technology, GDC 2016)",
-        # PowerPoint 2013 export → is_slide_deck_pdf will auto-detect True via "powerpoint"
-        # in creator metadata. No override needed; slide_deck documented here for clarity.
-        "slide_deck": True,
-    },
-    # ============================================================================
-    {
-        "path": "/tmp/research-arxiv-2601-15300/2601.15300v1.pdf",
-        "slug": "wang-2026-llm-long-context-degradation",
-        "type": "pdf",
-        "title": "Intelligence Degradation in Long-Context LLMs: Critical Threshold Determination via Natural Length Distribution Analysis — Wang, Min & Zou (arXiv 2601.15300, Jan 2026)",
-        # 16-page arXiv paper with text layer. Portrait single-column layout.
-        # Not a slide deck; standard LaTeX paper format.
-        "slide_deck": False,
-    },
-    # ============================================================================
-    # Re-extractions with canonical slugs (current marker pipeline)
-    # ============================================================================
-    {
-        "path": "/mnt/archive4/PAPERS/schneider-2017-nubis-decima.pdf",
-        "slug": "schneider-2017-nubis-decima",
-        "type": "pdf",
-        "title": "Nubis: Authoring Real-time Volumetric Cloudscapes with the Decima Engine — Schneider (SIGGRAPH 2017 Advances in Real-Time Rendering)",
-        # Landscape 16:9 PDF, PowerPoint export → is_slide_deck_pdf auto-detects True.
-        # Forcing True for clarity; sNNN-slide.png asset naming.
-        "slide_deck": True,
-    },
-    {
-        "path": "/mnt/archive4/PAPERS/decarpentier-ishiyama-2017-decima-final.pptx",
-        "slug": "de-carpentier-ishiyama-2017-decima-lighting-aa",
-        "type": "pptx",
-        "title": "Decima Engine: Advances in Lighting and Anti-Aliasing — De Carpentier & Ishiyama (SIGGRAPH 2017 Advances in Real-Time Rendering)",
-    },
-    # ============================================================================
-    {
-        "path": "/mnt/archive4/PAPERS/persson-2012-graphics-gems-games.pdf",
-        "slug": "persson-2012-graphics-gems-games",
-        "type": "pdf",
-        "title": "Graphics Gems for Games — Findings from Avalanche Studios — Emil Persson (SIGGRAPH 2012)",
-        # PDF export of a PowerPoint 2007 deck. Portrait-aspect pages (0.75 ratio)
-        # mean the landscape heuristic will NOT auto-detect slide_deck=True; force it.
-        "slide_deck": True,
-    },
-    # ============================================================================
-    # Yang et al. 2009 — Amortized Supersampling
-    # ACM Transactions on Graphics / SIGGRAPH Asia 2009.
-    # Jiawen Chen Yang, Diego Nehab, Pedro V. Sander, Pitchaya Sitthi-amorn,
-    # Jason Lawrence, Hugues Hoppe.
-    # Seminal paper for N-stored-frame temporal accumulation with per-frame VP
-    # matrix reprojection. Maintains 4 separate subpixel buffers updated round-robin,
-    # each reprojected using its stored VP matrix. Referenced by Enshrouded
-    # (Krause 2025) and NAADF (Ulschmid 2026).
-    # ============================================================================
-    {
-        "path": "/mnt/archive4/PAPERS/yang-2009-amortized-supersampling.pdf",
-        "slug": "yang-2009-amortized-supersampling",
-        "type": "pdf",
-        "title": "Amortized Supersampling — Yang, Nehab, Sander, Sitthi-amorn, Lawrence, Hoppe (ACM Transactions on Graphics / SIGGRAPH Asia 2009)",
-        # Text-layer ACM TOG paper. Let is_slide_deck_pdf auto-detect (expected: False).
-        # Math content: subpixel jitter patterns, reprojection via stored VP matrices,
-        # temporal accumulation blend weights, antialiasing error analysis.
-        "slide_deck": False,
-    },
-    # ============================================================================
-    # Nehab et al. 2007 — Accelerating Real-Time Shading with Reverse Reprojection Caching
-    # Graphics Hardware 2007. Diego Nehab, Pedro V. Sander, Jason Lawrence,
-    # Natalya Tatarchuk, John R. Isidoro.
-    # Foundational paper for reverse reprojection caching: stores shading payloads
-    # in screen-space buffers and reprojection via stored VP matrices with
-    # depth-based cache validation. Introduces the "reverse reprojection" formulation
-    # (current-frame pixel → previous-frame screen coords) and the disocclusion /
-    # depth-mismatch validity test. Directly cited by yang-2009-amortized-supersampling
-    # and scherzer-2012-temporal-coherence-survey.
-    # ============================================================================
-    {
-        "path": "/mnt/archive4/PAPERS/nehab-2007-reverse-reprojection-caching.pdf",
-        "slug": "nehab-2007-reverse-reprojection-caching",
-        "type": "pdf",
-        "title": "Accelerating Real-Time Shading with Reverse Reprojection Caching — Nehab, Sander, Lawrence, Tatarchuk, Isidoro (Graphics Hardware 2007)",
-        # Text-layer ACM paper (~1.3 MB, ~8 pages). Let is_slide_deck_pdf auto-detect
-        # (expected: False — portrait two-column ACM layout).
-        # Math content: reprojection matrix M = VP_prev * VP_curr^{-1}, depth
-        # validity test epsilon threshold, cache hit rate formula.
-        # Moderate equation-substitution risk: M (matrix), epsilon (depth threshold),
-        # p_prev / p_curr (projected screen coordinates).
-        "slide_deck": False,
-    },
-    # ============================================================================
-    # Schneider 2018 — Nubis: Realtime Volumetric Cloudscapes In A Nutshell
-    # Eurographics 2018 (Advances in Real-Time Rendering / Education sessions).
-    # 36-slide PPTX, ~298 MB. A "nutshell" recap of the Nubis cloud system
-    # (HZD 2015 / nubis-evolved 2022) with written speaker notes across all slides.
-    # Companion to schneider-2015-hzd-clouds, schneider-2022-nubis-evolved, and
-    # schneider-2023-nubis-cubed. Minimal math; emphasis on visual intuition and
-    # noise function composition. Video narration captured separately:
-    # schneider-2018-nubis-nutshell (YouTube youtu.be/-d8qT5-1LOI).
-    # ============================================================================
-    {
-        "path": "/mnt/archive4/PAPERS/schneider-2018-nubis-nutshell.pptx",
-        "slug": "schneider-2018-nubis-nutshell",
-        "type": "pptx",
-        "title": "Nubis: Realtime Volumetric Cloudscapes In A Nutshell — Andrew Schneider (Eurographics 2018)",
-    },
-    # ============================================================================
-    # Osborne & Sannikov 2024 — Radiance Cascades: A Novel High-Resolution Formal
-    # Solution for Multidimensional Non-LTE Radiative Transfer
-    # arXiv 2408.14425, submitted 26 August 2024.
-    # John A. Osborne, Ivan Sannikov.
-    # The astrophysics-origin radiance-cascades paper: formal solution of the
-    # non-LTE radiative transfer equation in 2D/3D using a cascade of spatial
-    # intervals and angular resolution levels. Introduces the radiance-cascades
-    # algorithm as a solution method for stellar-atmosphere/nebula RT problems
-    # (NOT a real-time rendering technique per se, but the conceptual origin of
-    # the 2D GI technique used in RC2D). 21-page arXiv preprint, native LaTeX
-    # text layer.
-    # Extreme equation density: RTE integrals, formal solution operator, level
-    # populations, NLTE iteration (Lambda iteration, ALI), angular/spatial
-    # discretisation, probe distributions, multi-frequency quadrature, atomic
-    # line/continuum terms. High substitution risk for: kappa (opacity), chi
-    # (total extinction), eta (emissivity), J (mean intensity), I (specific
-    # intensity), S (source function), tau (optical depth), mu (direction cosine),
-    # Lambda (formal solution operator), epsilon (photon-destruction probability).
-    # ============================================================================
-    {
-        "path": "/tmp/osborne-sannikov-2024-radiance-cascades-non-lte.pdf",
-        "slug": "osborne-sannikov-2024-radiance-cascades-non-lte",
-        "type": "pdf",
-        "title": "Radiance Cascades: A Novel High-Resolution Formal Solution for Multidimensional Non-LTE Radiative Transfer — John A. Osborne & Ivan Sannikov (arXiv 2408.14425, August 2024)",
-        # 21-page arXiv paper (native LaTeX text layer). Not a slide deck.
-        # slide_deck=False: portrait single-column arXiv layout.
-        # Extreme math density — redo_inline_math=True (default) is essential.
-        "slide_deck": False,
-    },
-]
 
 
 @dataclass
@@ -2290,6 +949,100 @@ def _render_pptx_worker_main(argv: list[str]) -> int:
     return 0
 
 
+USAGE = (
+    "usage: extract_research.py <path-to.pdf|.pptx> [--slug SLUG] [--title TITLE] "
+    "[--slide-deck|--no-slide-deck] [--force] [--no-marker] [--no-llm]"
+)
+
+
+def _slugify(text: str) -> str:
+    """Scaffolding slug from a filename stem. Lowercase, hyphen-separated.
+
+    Only a fallback for when the caller omits --slug. The /research workflow
+    requires a citable canonical slug (`<author>-<year>-<topic>`) and always
+    passes --slug explicitly; this just keeps the script runnable without it.
+    """
+    slug = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+    return slug or "untitled"
+
+
+def _parse_cli(argv: list[str]) -> tuple[str, str | None, str | None, bool | None]:
+    """Parse `<path> [--slug S] [--title T] [--slide-deck|--no-slide-deck]`.
+
+    Returns (path, slug, title, slide_deck). slide_deck is None when neither
+    --slide-deck nor --no-slide-deck is passed, which leaves slide-deck
+    detection to `is_slide_deck_pdf`. The global routing flags (--force,
+    --no-marker, --no-llm) are read directly from sys.argv elsewhere and
+    ignored here.
+    """
+    path: str | None = None
+    slug: str | None = None
+    title: str | None = None
+    slide_deck: bool | None = None
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        if arg in ("--force", "--no-marker", "--no-llm"):
+            pass
+        elif arg == "--slide-deck":
+            slide_deck = True
+        elif arg == "--no-slide-deck":
+            slide_deck = False
+        elif arg.startswith("--slug="):
+            slug = arg.split("=", 1)[1]
+        elif arg == "--slug":
+            i += 1
+            slug = argv[i] if i < len(argv) else None
+        elif arg.startswith("--title="):
+            title = arg.split("=", 1)[1]
+        elif arg == "--title":
+            i += 1
+            title = argv[i] if i < len(argv) else None
+        elif arg.startswith("-"):
+            raise SystemExit(f"extract_research.py: unknown flag {arg!r}\n{USAGE}")
+        elif path is None:
+            path = arg
+        else:
+            raise SystemExit(
+                f"extract_research.py: unexpected extra argument {arg!r}\n{USAGE}"
+            )
+        i += 1
+    if path is None:
+        raise SystemExit(USAGE)
+    return path, slug, title, slide_deck
+
+
+def _build_source(
+    path: str, slug: str | None, title: str | None, slide_deck: bool | None
+) -> dict:
+    """Build the per-document source dict the extractors consume.
+
+    Mirrors the shape the old hardcoded SOURCES entries had: type comes from
+    the extension, slug/title default to the filename stem, and slide_deck is
+    only set when forced on the CLI (absent ⇒ auto-detect).
+    """
+    ext = Path(path).suffix.lower()
+    if ext == ".pptx":
+        doc_type = "pptx"
+    elif ext == ".pdf":
+        doc_type = "pdf"
+    else:
+        raise SystemExit(
+            f"extract_research.py: unsupported source extension {ext!r} "
+            f"(expected .pdf or .pptx): {path}"
+        )
+    stem = Path(path).stem
+    source = {
+        "path": path,
+        "type": doc_type,
+        "slug": slug or _slugify(stem),
+        "title": title or stem,
+    }
+    if slide_deck is not None:
+        source["slide_deck"] = slide_deck
+    return source
+
+
 def main():
     if _IMPORT_ERROR is not None:
         raise RuntimeError(
@@ -2298,13 +1051,9 @@ def main():
             f"that has them. Original error: {_IMPORT_ERROR!r}"
         )
 
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    path, slug, title, slide_deck = _parse_cli(sys.argv[1:])
 
-    force = "--force" in sys.argv
-    only_slugs = set()
-    for arg in sys.argv[1:]:
-        if arg.startswith("--only="):
-            only_slugs.update(arg.split("=", 1)[1].split(","))
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     # Marker prepass routing flags (see _MARKER_ENABLED / _MARKER_USE_LLM
     # at module top). `--no-marker` reverts text-paper PDFs to the legacy
@@ -2318,32 +1067,20 @@ def main():
     if "--force" in sys.argv:
         _MARKER_FORCE = True
 
-    for source in SOURCES:
-        path = source["path"]
-        if not os.path.exists(path):
-            print(f"SKIP (not found): {path}")
-            continue
+    source = _build_source(path, slug, title, slide_deck)
+    if not os.path.exists(source["path"]):
+        raise SystemExit(f"extract_research.py: source not found: {source['path']}")
 
-        if only_slugs and source["slug"] not in only_slugs:
-            continue
+    # Per-slug existence is handled inside write_markdown(): if `<slug>.md`
+    # already exists and --force is not passed, it writes a `.regen` sidecar
+    # instead of overwriting the (possibly heavily-refined) live extraction.
+    print(f"Extracting: {source['title']}...")
+    if source["type"] == "pdf":
+        doc = extract_pdf(source)
+    else:
+        doc = extract_pptx(source)
 
-        md_path = OUTPUT_DIR / f"{source['slug']}.md"
-        # Per-slug existence is now handled inside write_markdown(): if the .md
-        # already exists and --force is not passed, it writes a .md.regen sidecar
-        # instead of overwriting the (possibly heavily-refined) live extraction.
-        # We still skip the full re-extraction in bulk mode (no --only) because
-        # there's no point regenerating identical scaffolding 100× per run.
-        if md_path.exists() and not force and not only_slugs:
-            print(f"SKIP (exists, pass --only=SLUG --force to refresh): {source['slug']}")
-            continue
-
-        print(f"Extracting: {source['title']}...")
-        if source["type"] == "pdf":
-            doc = extract_pdf(source)
-        else:
-            doc = extract_pptx(source)
-
-        write_markdown(doc)
+    write_markdown(doc)
 
     print("Done.")
 

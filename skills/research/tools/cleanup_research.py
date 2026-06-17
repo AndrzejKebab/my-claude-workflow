@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """Clean up formatting in extracted research markdown files."""
 
+import sys
 import re
 from pathlib import Path
 
-OUTPUT_DIR = Path(__file__).resolve().parent.parent / "docs" / "research"
+# The extracted markdown corpus lives at a single hardcoded global location,
+# independent of cwd / which project invoked /research — same root the rest of
+# the pipeline (extract_research.py, validate_research.py) writes to.
+OUTPUT_DIR = Path("/mnt/archive4/PAPERS/Prepared")
 
 # Repeated footer/watermark lines to strip from PPTX-sourced slides
 STRIP_LINES = [
@@ -118,10 +122,23 @@ def cleanup_file(path: Path) -> tuple[str, int]:
 
 
 def main():
+    # `--only=SLUG[,SLUG2]` scopes cleanup to specific docs (matches
+    # validate_research.py). Absent, every per-slug `<slug>.md` is cleaned.
+    only_slugs: set[str] | None = None
+    for arg in sys.argv[1:]:
+        if arg.startswith("--only="):
+            slugs = {s.strip() for s in arg.split("=", 1)[1].split(",") if s.strip()}
+            only_slugs = slugs if slugs else None
+        elif arg.startswith("-"):
+            raise SystemExit(f"cleanup_research.py: unknown flag {arg!r}")
+
     total_changes = 0
     for md_file in sorted(OUTPUT_DIR.glob("*.md")):
-        # Skip non-slug bookkeeping files (index*.md) — not per-slug extractions.
-        if md_file.name.startswith("index"):
+        # Skip non-slug bookkeeping files (index*.md) and per-slug regen
+        # sidecars — neither is a canonical extraction.
+        if md_file.name.startswith("index") or ".regen-" in md_file.name:
+            continue
+        if only_slugs and md_file.stem not in only_slugs:
             continue
         slug, changes = cleanup_file(md_file)
         if changes:
