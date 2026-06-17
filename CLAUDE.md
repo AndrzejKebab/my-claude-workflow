@@ -33,6 +33,10 @@ Adapted from caveman (juliusbrussee/caveman): take its savings, reject its gramm
 - Research corpus (cross-project, MegaSync, not git-tracked): `/mnt/archive4/PAPERS/Prepared` (extracted `<slug>.md` + `assets/<slug>/` + `index*.md`); raw sources in `/mnt/archive4/PAPERS/`.
 - Unity API canon (engine reference: RenderGraph/Jobs/Burst/Entities/authoring): `~/_dev/my-claude-workflow/docs/unity` — the shared canonical home, merged from copies that had diverged across sibling Unity projects.
 
+## Unity — read the `docs/unity` canon before touching a covered area (binding)
+
+Before the first edit to Unity code in an area the canon (`~/_dev/my-claude-workflow/docs/unity/`) covers, read that subdocset. This is a session-start gate checked the moment a task reveals it touches the area — read it before the edit, never retroactively after the area's documented defect has already bitten. Triggers map to a subdocset: a package sample or `Samples~/`↔`Assets/Samples/…` change → `authoring/package-samples.md`; a `MonoBehaviour`/`ScriptableObject`/baker/serialized-reference change → `authoring/`; a `BlobAsset`/`ISystem`/baking/query/singleton change → `entities/`; a `[BurstCompile]` surface → `burst/`; a render-pass or shader-binding change → `rendergraph/`. Cite engine sources by `file:line`, never a guessed signature; a `/delegate` brief touching such an area lists the subdocset in required reading, and any agent that finds its task touches one reads it regardless of the brief. Two recorded costs of skipping it: a missed entry-point-only Burst rule shipped `[BurstCompile]` helpers that passed EditMode and broke only at AOT build; and editing `Samples~/` directly instead of the `Assets/Samples/…` import hit the stale-import compile break `authoring/package-samples.md` exists to prevent.
+
 ## Work ethic
 After a significant task, submit and end the session — don't accept further requests.
 
@@ -75,7 +79,8 @@ Unity locks each project to a single editor instance, so every Unity invocation 
 
 - Check via process scan, e.g. `pgrep -af '[U]nity' | grep <projectPath>` (bracket pattern, or the check's own shell self-matches and reports a phantom editor).
 - Editor running → `unity-cli` (batchmode fails against the instance lock). Editor not running → batchmode via the `unity` wrapper; never drive `unity-cli` at an editor that is not there.
-- To recompile: editor running → `unity-cli-recompile` (focuses the editor via `hyprctl` and recompiles through the unity-cli connector); editor not running → batchmode via the `unity` wrapper. Never hand-poke `unity-cli editor refresh` — `unity-cli-recompile` wraps the live-editor recompile.
+- To recompile: editor running → `unity-cli-recompile` (focuses the editor via `hyprctl` and recompiles through the unity-cli connector); editor not running → batchmode via the `unity` wrapper. Never hand-poke `unity-cli editor refresh` — `unity-cli-recompile` wraps the live-editor recompile (enforced by a global PreToolUse hook).
+- **Quirk — re-running PlayMode tests under disabled domain reload (fast-enter-playmode).** The first PlayMode test run in a session works; subsequent runs in the same session start with stale static/`SharedStatic`/scene state or do not start at all. Before re-running a PlayMode test session, issue `unity-cli-recompile` first — the script compile forces the domain reload that resets the state.
 - Briefs include "check whether the editor is running" as a step; they never assert editor state as a fact.
 
 ## Worktrees

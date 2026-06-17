@@ -7,7 +7,7 @@ This docset is `mara`-local: the rules are the engine's, but the cited evidence 
 ## Documents
 
 - [`monobehaviour-files.md`](monobehaviour-files.md) — the one-class-per-file rule and why `fileID: 11500000` only binds the file-name-matching type; the corollary for programmatic (`-executeMethod`) scene and prefab builders; the symptom and the YAML-level confirmation procedure.
-- [`package-samples.md`](package-samples.md) — the package-sample lifecycle: `Samples~/` is tilde-ignored delivery, the `Assets/Samples/…` import is the working copy, develop there and publish back to `Samples~/` when ready; re-import/publish is additive (stale files linger), and publishing must preserve `.cs.meta` GUIDs or a consumer's import gets missing scripts (the serialization-rule companion).
+- [`package-samples.md`](package-samples.md) — the package-sample lifecycle: `Samples~/` is the tilde-ignored golden deliverable, the `Assets/Samples/…` import is the working copy; import-if-absent first, develop and prove in the import, then promote to `Samples~/` only past a required compile + manual-QA gate. Re-import/publish is additive (stale files linger), and publishing must preserve `.cs.meta` GUIDs or a consumer's import gets missing scripts (the serialization-rule companion).
 
 ## When to read this
 

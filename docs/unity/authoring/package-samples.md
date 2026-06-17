@@ -12,13 +12,23 @@ The path uses the package's `displayName` and the sample's `displayName` from `p
 
 ## The iteration workflow
 
-Develop in `Assets/`, publish to `Samples~/` when ready:
+`Samples~/` is the golden deliverable; the `Assets/` import is where the sample is actually built and proven. Develop in `Assets/`, and promote to `Samples~/` only after the sample passes the promotion gate below.
 
-1. **Maintain the working version in `Assets/Samples/<DisplayName>/<Version>/<SampleName>/`.** Test it, edit it, and iterate there — this is the only copy with assemblies and imported assets.
-2. **Publish to `Samples~/<SampleName>/` only when the sample is ready to ship**, by copying the working version over (see the publish procedure below).
+0. **If there is no `Assets/Samples/…` working copy, create one first.** A sample with no import has no assembly and no imported assets, so it cannot be edited or verified — the first move is always to get a working copy. Through the editor this is the Package Manager Samples tab → Import. When driving Unity headlessly (no UI), "import" by copying `Samples~/<SampleName>/` into `Assets/Samples/<DisplayName>/<Version>/<SampleName>/` with the `.meta` siblings, so the working copy carries the package's own GUIDs.
+1. **Maintain the working version in `Assets/Samples/<DisplayName>/<Version>/<SampleName>/`.** Test it, edit it, and iterate there — this is the only copy with assemblies and imported assets, so it is the only copy a change to the package's own API can be verified against.
+2. **Promote to `Samples~/<SampleName>/` only after the promotion gate passes**, by copying the working version over (see the publish procedure below).
 3. **The `Assets/` working copy remains after publishing.** Publishing copies into `Samples~/`; it does not move or consume the working copy, so you keep testing and editing in `Assets/` across publish cycles.
 
-Never hand-author directly in `Samples~/`. A file written there has no compile and no import, so its first feedback is a consumer's failed import — the slowest possible loop, and the one that shipped this project's missing-script defects.
+Never hand-author directly in `Samples~/`. A file written there has no compile and no import, so its first feedback is a consumer's failed import — the slowest possible loop, and the one that shipped this project's missing-script defects. Editing `Samples~/` first and only then copying into a stale `Assets/` import is the same anti-pattern wearing a disguise: the copy Unity actually compiles is the stale one, so a package API change the `Samples~/` edit depended on still breaks the build until the import is synced. Edit the import, prove it, then promote.
+
+## Promotion gate — compile and manual QA
+
+A sample is the package's worked example; promoting an unverified one ships a defect that only surfaces on a consumer's import. Promotion to the golden `Samples~/` deliverable is therefore gated on two checks against the `Assets/` working copy, both required:
+
+1. **Compile-gate green.** The project imports and every assembly the sample belongs to compiles with zero errors — the headless probe is the batchmode import (`-batchmode -quit`), confirmed by a zero count of `error CS` and `## Script Compilation Error` in the log, not by the process exit code alone. A sample whose working copy does not compile cannot be promoted.
+2. **Manual QA pass.** The sample is opened and run, and it does what it demonstrates — its scene opens with no missing scripts, and its interaction behaves. The compile-gate proves the code builds; only running it proves the authored assets (scenes, prefabs, serialized references) still resolve and the demo works, which no compile catches.
+
+Only after both pass does the working copy get copied over to `Samples~/`. Skipping the manual QA is how a green-compiling sample with a broken scene reference still ships.
 
 ## Re-import is not a clean sync
 
