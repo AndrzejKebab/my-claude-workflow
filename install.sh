@@ -58,6 +58,7 @@ link_file HARNESS.md
 
 # Make shell scripts executable
 chmod +x "$SCRIPT_DIR/skills/claude-status/claude-status.sh"
+chmod +x "$SCRIPT_DIR/skills/cdiff/cdiff.sh"
 chmod +x "$SCRIPT_DIR/skills/enforce/enforce.sh"
 chmod +x "$SCRIPT_DIR/skills/shipshape/tools/"*.py "$SCRIPT_DIR/skills/shipshape/tools/"*.sh
 

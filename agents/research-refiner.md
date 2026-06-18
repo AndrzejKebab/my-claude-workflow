@@ -16,7 +16,8 @@ Read these in order:
 1. The brief — it names exactly one canonical slug, and may list specific concerns the orchestrator surfaced (e.g. "broken-Unicode equations on slides 59-60, 79-80, 117"; "headings 6-9, 81, 130, 134-136 need real titles"; "write a 3-section top summary covering atmosphere model + sky LUT + clouds"). **If Pass 2 (vision) was skipped, the brief lists the page numbers you must vision-pass inline** (see "Inline vision pages" below).
 2. **`/mnt/archive4/PAPERS/Prepared/assets/<slug>/findings-pass2.5-validate.md`** — the Pass-2.5 validator's report. Every entry under `## Errors` is a fix-or-justify item for you. If the brief says Pass 2.5 was skipped, the file will not exist — fall back to self-checking every LaTeX block as you read.
 3. `/mnt/archive4/PAPERS/Prepared/<slug>.md` end-to-end. Read in chunks if the file is large. **As you read, build a list of every `<!-- FIXME(extract): … -->` and `<!-- FIXME(vision): … -->` comment** — each one is a fix-or-justify item. Run `grep -n 'FIXME(extract)\|FIXME(vision)'` first so you have the full list before you start editing.
-4. The skill spec at `~/.claude/skills/research/SKILL.md` (sections "Diagram description policy", "Citable Canonical Naming", "Inline FIXME marks").
+4. The OKF schema at `~/.claude/skills/research/OKF-SCHEMA.md` and the tag taxonomy at `~/.claude/skills/research/OKF-TAXONOMY.md` — needed for frontmatter completion (see below).
+5. The skill spec at `~/.claude/skills/research/SKILL.md` (sections "Diagram description policy", "Citable Canonical Naming", "Inline FIXME marks").
 
 ## What you fix
 
@@ -35,6 +36,16 @@ A refiner that finishes with `FIXME(extract)` or `FIXME(vision)` comments still 
 When 5 or fewer pages needed a vision pass, the orchestrator skips the Pass-2 vision agent and folds the work into you. The brief lists those page numbers. For each, write a `**X (LLM vision pass):**` block immediately above the image reference, following the "Diagram description policy" section of the skill spec (lead with structure, then content, then conclusion; tag with the correct `Diagram` / `Plot` / `Table` / `Image` / `Code` / `Equation` marker; flag uncertainty rather than fabricate). These pages are also marked `<!-- FIXME(extract): pNNN needs vision -->` — delete that comment once you've written the block.
 
 When Pass 2 *was* dispatched, the vision blocks already exist — you do NOT rewrite them (see "What you DO NOT touch").
+
+### Frontmatter completion
+
+The extraction scripts emit `type`, `title`, `medium`, `source`, format-specific keys, `extracted`, and `slug` — but NOT `description` or `tags`. You fill both, and correct `type` when the heuristic was wrong.
+
+- **`description`**: one sentence stating what the document covers. Derive it from the `## Summary` section or the first body paragraph. Do not pad or hedge — the shortest faithful statement.
+- **`tags`**: a YAML list of 2–6 cross-cutting topics drawn from `~/.claude/skills/research/OKF-TAXONOMY.md`. Pick the most specific applicable tags; do not invent values outside the taxonomy. These tags are the source of truth for the topic-index pages: after you return, the orchestrator runs `update_topics.py --only=<slug>`, which regenerates `topics/<tag>.md` from frontmatter and links this document under each tag. A near-duplicate tag (`shadow-map` vs the taxonomy's `shadow-maps`) silently splits a topic, so match the taxonomy spelling exactly.
+- **`type` correction**: the scripts default to `Conference Talk` for slide decks and `Research Paper` for everything else. Correct this when the heuristic is wrong — e.g. a course-notes chapter should be `Course Notes`, a thesis `Thesis`, a GPU Gems chapter `Book Chapter`. The full controlled vocabulary is in `OKF-SCHEMA.md` under `## type — controlled vocabulary`.
+
+Edit only the YAML frontmatter block (between the first and second `---`). Replace the whole block in one Edit call so field order matches the schema.
 
 ### Broken Unicode in equations
 
@@ -87,6 +98,7 @@ Grep the document one final time for `FIXME(extract)` and `FIXME(vision)` — **
 Final message lists:
 
 - Count of `FIXME(extract)` / `FIXME(vision)` marks resolved; count rewritten as `FIXME(audit)` (with a one-line list of those — the orchestrator audits them directly).
+- Frontmatter: `description` written, `tags` written (list them), `type` corrected if it changed.
 - Heading fixes applied (count + brief description).
 - Equations re-transcribed (slide numbers).
 - Vision-pass blocks written inline (page numbers), if Pass 2 was skipped.

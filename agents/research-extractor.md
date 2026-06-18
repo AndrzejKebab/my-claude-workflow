@@ -34,13 +34,16 @@ If `~/.claude/skills/research/.venv/` does not exist (fresh install), bootstrap 
 
 Pass the source path as the first argument and the canonical `--slug` (decided up front per "REQUIRED: Citable Canonical Naming" — the script writes `<slug>.md` directly, so there is normally no rename step).
 
-1. Run extraction. `extract_research_phase2.py` is a no-op for PDFs (only PPTX decks carry embedded video), so it's safe to run unconditionally:
+**Source `~/.envrc` first.** The marker prepass on a text-paper PDF is LLM-backed and needs `CLAUDE_API_KEY`, whose canonical home is `~/.envrc`; the session shell does not export it automatically. Run the extraction under a shell that has sourced it, or marker silently degrades to no-LLM output (GPU passes succeed, every LLM-cleanup processor fails with HTTP 401 — no equation reconstruction, no table merge, no inline-math redo). Never scavenge a key from an unrelated project `.env` (e.g. `chat/.env`) — those are usually expired and are exactly what produces the silent 401.
+
+1. Run extraction (sourcing the key for the whole block). `extract_research_phase2.py` is a no-op for PDFs (only PPTX decks carry embedded video), so it's safe to run unconditionally:
    ```bash
-   ~/.claude/skills/research/.venv/bin/python ~/.claude/skills/research/tools/extract_research.py "<source-path>" --slug=<slug>
-   ~/.claude/skills/research/.venv/bin/python ~/.claude/skills/research/tools/extract_research_phase2.py "<source-path>" --slug=<slug>
-   ~/.claude/skills/research/.venv/bin/python ~/.claude/skills/research/tools/cleanup_research.py --only=<slug>
+   bash -c 'set -a; source ~/.envrc; set +a;
+     ~/.claude/skills/research/.venv/bin/python ~/.claude/skills/research/tools/extract_research.py "<source-path>" --slug=<slug>
+     ~/.claude/skills/research/.venv/bin/python ~/.claude/skills/research/tools/extract_research_phase2.py "<source-path>" --slug=<slug>
+     ~/.claude/skills/research/.venv/bin/python ~/.claude/skills/research/tools/cleanup_research.py --only=<slug>'
    ```
-   For PDFs, the `is_slide_deck_pdf` heuristic auto-detects slide decks; force the mode with `--slide-deck` / `--no-slide-deck` only if the heuristic gets it wrong (rare; only override after vision-confirming the source). Wait for completion before chaining. PPTX extraction takes ~30-60 s for the LibreOffice render step. Long PDFs render at ~5-10 s per 50 pages.
+   For PDFs, the `is_slide_deck_pdf` heuristic auto-detects slide decks; force the mode with `--slide-deck` / `--no-slide-deck` only if the heuristic gets it wrong (rare; only override after vision-confirming the source). Wait for completion before chaining. PPTX extraction takes ~30-60 s for the LibreOffice render step. Long PDFs render at ~5-10 s per 50 pages. **If marker reports HTTP 401 on its LLM processors, the key did not load — stop, fix `~/.envrc` sourcing, and re-run with `--force`; do not report degraded output as success.**
 2. Verify: `wc -l /mnt/archive4/PAPERS/Prepared/<slug>.md` (should be > 50), `find /mnt/archive4/PAPERS/Prepared/assets/<slug> | wc -l` (should match page count for slide decks, or be larger for papers). If `extract_research.py` wrote a `<slug>.regen-*.md` sidecar instead of `<slug>.md`, the live extraction already existed — surface the sidecar in your report rather than `--force`-overwriting it blindly.
 3. Archive the source:
    ```bash
@@ -93,7 +96,7 @@ In your final message:
 - For papers: page count + figure-bearing vs text-only page split.
 - For videos: scene count, duration.
 - **The count of `FIXME(extract): … needs vision` marks you left** — the orchestrator uses this to decide whether Pass 2 (vision) is dispatched (>5) or folded into the refiner (≤5).
-- Any extraction warnings worth surfacing (marker fall-through to PyMuPDF, under-detected scenes, missing speaker notes, broken Unicode in equations). These should also be marked inline in the document.
+- Any extraction warnings worth surfacing (marker fall-through to PyMuPDF, **marker LLM-processor HTTP 401 = key not loaded, a blocking error not a soft warning**, under-detected scenes, missing speaker notes, broken Unicode in equations). These should also be marked inline in the document.
 - Confirmation that the source was archived to `/mnt/archive4/PAPERS/`.
 
 ## Hard rules

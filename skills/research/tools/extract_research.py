@@ -838,13 +838,16 @@ def write_markdown(doc: Document):
     render_suffix = "slide" if doc.is_slide_deck else "page"
     filename = Path(doc.source_path).name
 
+    concept_kind = "Conference Talk" if doc.is_slide_deck else "Research Paper"
     lines = [
         "---",
+        f"type: {concept_kind}",
+        f"title: {doc.title}",
+        f"medium: {doc.doc_type}",
         f"source: {doc.source_path}",
-        f"type: {doc.doc_type}",
         f"pages: {doc.page_count}",
         f"slide_deck: {str(doc.is_slide_deck).lower()}",
-        "extracted: 2026-04-16",
+        f"extracted: {datetime.date.today().isoformat()}",
         f"slug: {doc.slug}",
         "---",
         "",

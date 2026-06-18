@@ -62,6 +62,20 @@ brew install yt-dlp ffmpeg
 
 LibreOffice is needed for PPTX → PNG rendering. yt-dlp + ffmpeg are needed for the video pipeline. OCR is provided by [OpenOCR](https://github.com/Topdu/OpenOCR) (`openocr-python`), pinned in `pyproject.toml` — no system OCR engine is needed. OpenOCR auto-downloads ONNX detection + recognition models (~36 MB total) to `~/.cache/openocr/` on first use.
 
+### API key for the marker LLM tier — source `~/.envrc` before every extraction (binding)
+
+The marker prepass on a text-paper PDF (Pass 1's equation / table / heading cleanup, plus `redo_inline_math`) is an LLM-backed tier that needs `CLAUDE_API_KEY` in the environment. The canonical home for that key on this setup is **`~/.envrc`**. The Claude Code session shell does NOT export it automatically, so **every `extract_research.py` invocation on a paper PDF must run under a shell that has sourced it** — prepend `source ~/.envrc` to the command:
+
+```bash
+bash -c 'set -a; source ~/.envrc; set +a; ~/.claude/skills/research/.venv/bin/python ~/.claude/skills/research/tools/extract_research.py "<source-path>" --slug=<slug>'
+```
+
+The extractor agent's brief MUST carry this — the agent does not know where the key lives otherwise, and the failure is silent-by-degradation, not a hard stop.
+
+**The 401 symptom and why it is a hard failure, not a warning.** When the key is absent, expired, or wrong, marker's GPU passes (surya layout + OCR) still succeed, but every LLM-cleanup processor (`LLMTableProcessor`, `LLMMathBlockProcessor`, `LLMSectionHeaderProcessor`, `redo_inline_math`) fails with HTTP 401 and is skipped. The run does NOT fall through to PyMuPDF — it produces *marker-without-LLM* output: text layer present, but no equation reconstruction, no table merge, no heading repair, no inline-math redo. For a math-bearing paper that is a quality regression that reads like success. Treat a 401 report from the extractor as a blocking error: fix the key (source `~/.envrc`) and re-run with `--force`, do not proceed to Pass 2 on degraded output.
+
+**Do not scavenge keys from random project `.env` files.** A stale `ANTHROPIC_API_KEY` in some unrelated project (`chat/.env`, etc.) is the trap — it is often expired and is exactly what produces the silent 401. `~/.envrc`'s `CLAUDE_API_KEY` is the single source of truth; ignore everything else.
+
 ### Invocation
 
 The agents invoke scripts using the skill venv directly. The two extraction scripts take the **source path** as their first argument; the canonical slug is passed with `--slug`:
@@ -70,7 +84,7 @@ The agents invoke scripts using the skill venv directly. The two extraction scri
 ~/.claude/skills/research/.venv/bin/python ~/.claude/skills/research/tools/extract_research.py <source-path> --slug=<slug>
 ```
 
-The per-slug post-processing scripts (`cleanup_research.py`, `validate_research.py`) operate on the already-written `/mnt/archive4/PAPERS/Prepared/<slug>.md` and take `--only=<slug>` instead:
+The per-slug post-processing scripts (`cleanup_research.py`, `validate_research.py`, `update_topics.py`) operate on the already-written `/mnt/archive4/PAPERS/Prepared/<slug>.md` and take `--only=<slug>` instead (`update_topics.py` reads the document's final `tags` and regenerates the `topics/` index pages that link it):
 
 ```bash
 ~/.claude/skills/research/.venv/bin/python ~/.claude/skills/research/tools/validate_research.py --only=<slug>
@@ -89,6 +103,10 @@ One-off helpers (e.g. `split_<slug>_notes.py` for a particular deck's PowerPoint
 ### Legacy project copies
 
 Projects that adopted /research before this restructuring (notably `woweyreey`) may have their own `<project>/tools/*.py` copies running against `<project>/tools/.venv/`. Those continue to work but are **legacy**: no further updates land there. Migration path for those projects: `cd ~/.claude/skills/research && uv sync`, then update any project-specific `tools/<script>.py` invocations to point at the skill copy.
+
+## Output frontmatter schema
+
+Every extracted document emits an OKF-adapted YAML frontmatter block. The canonical field definitions and controlled vocabularies (`type`, `medium`, `tags`) are in `~/.claude/skills/research/OKF-SCHEMA.md`. The extraction scripts (`extract_research.py`, `research_video.py`) emit `type`, `title`, `medium`, `source`, format-specific keys (`pages`, `slide_deck`, `duration`), `extracted`, and `slug`. The refiner (Pass 3) fills `description` and `tags`, and corrects `type` when the script heuristic guessed wrong.
 
 ## Architecture overview
 
@@ -352,7 +370,7 @@ A True result writes the page as `pNNN-page.png` and the vision agent processes 
 - Input: paper-PDF path + per-source `assets/<slug>/` cache dir.
 - Cache: `assets/<slug>/marker.md` (paginated markdown) + `assets/<slug>/marker-meta.json` (PDF mtime + use_llm + provider + model + redo_inline_math flag + LLM token totals). Cache invalidates on PDF mtime change OR use_llm flip OR provider/model change OR redo_inline_math flip; bypass with `--force`.
 - Processor list = marker's defaults MINUS `LLMImageDescriptionProcessor` — that processor auto-describes every figure with the configured LLM, which would duplicate the /research vision pass with a less-strict prompt and inflate the LLM bill ~10×. Image FILES are also not extracted (we use PyMuPDF page renders for the vision pass).
-- **LLM backend (default)**: Anthropic Claude `claude-sonnet-4-6` via `marker.services.claude.ClaudeService`, with `redo_inline_math: True`. API key resolved as: `CLAUDE_API_KEY` (project `.envrc` convention, preferred) → `ANTHROPIC_API_KEY` (Anthropic SDK fallback). `convert_pdf` raises a clear error if neither is set when `use_llm=True`. Override: pass `claude_model_name="claude-opus-4-7"` for the most math-dense primary sources where the cost premium is justified.
+- **LLM backend (default)**: Anthropic Claude `claude-sonnet-4-6` via `marker.services.claude.ClaudeService`, with `redo_inline_math: True`. API key resolved as: `CLAUDE_API_KEY` (canonical home `~/.envrc` — see "API key for the marker LLM tier" above; must be sourced into the invoking shell) → `ANTHROPIC_API_KEY` (Anthropic SDK fallback). `convert_pdf` raises a clear error if neither is set when `use_llm=True`, but a *present-but-invalid* key does NOT raise — it produces per-processor HTTP 401s and silent degradation to marker-without-LLM output (see the 401 symptom above). Override: pass `claude_model_name="claude-opus-4-7"` for the most math-dense primary sources where the cost premium is justified.
 - **LLM backend (legacy)**: pass `llm_provider="gemini"` to fall back to `GoogleGeminiService` (model `gemini-2.0-flash`, key `GOOGLE_API_KEY`/`GEMINI_API_KEY`). **Not recommended** — Flash is the documented source of broken-LaTeX output the Pass 2.5 validator was built to catch (misplaced `&` inside `\begin{split}`, undefined macros like `\ddy`, dropped exponents on phase-function formulas). Use only for compatibility with older cached outputs that you don't want to re-extract.
 - **Why Sonnet 4.6 over Opus 4.7**: marker invokes the LLM many times per document (one call per equation / table merge / complex region / page correction; with `redo_inline_math` also one per inline-math block). Cost-per-call dominates the bill on multi-page papers. Sonnet 4.6 matches Opus 4.7 on focused VQA + structured-JSON math/table cleanup at ~5× lower per-token cost; reserve Opus for thesis-scale math-dense sources where a wrong-formula citation would be especially expensive.
 - **Why redo_inline_math is on by default**: inline math is exactly the surface where Flash failed (misplaced `&`, undefined macros), so the extra LLM call per inline-math block is a worthwhile baseline. Marker's own docs: *"If you want the absolute highest quality inline math conversion, use this along with `--use_llm`."*
@@ -588,6 +606,7 @@ After Pass 2.5 (validate) completes with errors enumerated to disk, dispatch a s
 - **Resolve every inline `FIXME` mark.** The brief MUST tell the refiner to `grep -n 'FIXME(extract)\|FIXME(vision)'` the document, fix each flagged item, and delete the comment once handled. Anything it cannot resolve from text-layer + render evidence alone it re-marks `<!-- FIXME(audit): … -->` and lists in its return message. A refiner that finishes with `FIXME(extract)` / `FIXME(vision)` comments still present has not completed its pass.
 - **Inline vision pages (when Pass 2 was skipped).** If the ≤5-page rule meant Pass 2 was not dispatched, the brief lists the page numbers the extractor flagged `needs vision` and instructs the refiner to write the `**X (LLM vision pass):**` blocks for them itself, following the "Diagram description policy" section of this skill. (When Pass 2 *was* dispatched, those blocks already exist — the refiner only flags suspect ones, never rewrites them.)
 - **The Pass 2.5 sidecar path** (`/mnt/archive4/PAPERS/Prepared/assets/<slug>/findings-pass2.5-validate.md`) — REQUIRED. The refiner is expected to address every error the validator reported. Brief explicitly: "Read the sidecar first; every entry under `## Errors` must be fixed in your edit pass."
+- **Frontmatter completion** — the extraction scripts emit `type` (a heuristic default), `title`, `medium`, `source`, format-specific keys, `extracted`, and `slug`, but NOT `description` or `tags`. The refiner fills these two fields and corrects `type` when the heuristic was wrong (e.g. a course-notes PDF or thesis that defaulted to `Research Paper` should be corrected to `Course Notes` or `Thesis`). The canonical `type` vocabulary and tag list are at `~/.claude/skills/research/OKF-SCHEMA.md` and `~/.claude/skills/research/OKF-TAXONOMY.md`.
 - Broken-Unicode equations (slide numbers, beyond what Pass 2.5 already caught).
 - Heading fixes (slide numbers + recommended titles, or "infer from slide content").
 - Speaker-notes typo fixes (paths to areas with known auto-caption errors).
@@ -595,7 +614,7 @@ After Pass 2.5 (validate) completes with errors enumerated to disk, dispatch a s
 
 The refiner reads the document end-to-end in its own context window — never run this inline either, because the document is typically 3-5 K lines long after Pass 2.
 
-After Pass 3 returns, the orchestrator re-runs `tools/validate_research.py --only=<slug>` (Pass 3.5) as the clean-room check — see Pass 2.5 above. When 3.5 is clean and no `FIXME(extract)` / `FIXME(vision)` marks remain, the run is done; summarise the work in your final message to the user (note any `FIXME(audit)` marks the refiner escalated).
+After Pass 3 returns, the orchestrator re-runs `tools/validate_research.py --only=<slug>` (Pass 3.5) as the clean-room check — see Pass 2.5 above. Once 3.5 is clean, it runs `tools/update_topics.py --only=<slug>` (Pass 3.6, the final bookkeeping step): the script reads the document's final `tags` and splices it into the `topics/<tag>.md` index pages for the bundle it lives in. Topic membership is derived from frontmatter — the script owns only the member table between the `<!-- members:start -->` / `<!-- members:end -->` markers and the topic index, preserving each page's intro — and it is concurrency-safe (a per-bundle `flock` serializes the read-derive-write and writes publish atomically via `os.replace`), so parallel extractions of different papers may run it at the same time. When 3.5 is clean, the topic pages are updated, and no `FIXME(extract)` / `FIXME(vision)` marks remain, the run is done; summarise the work in your final message to the user (note any `FIXME(audit)` marks the refiner escalated).
 
 ## Pipeline Scripts
 
@@ -612,6 +631,7 @@ All scripts live in `tools/` and use the venv at `tools/.venv/`. None of them si
 | `tools/extract_research_phase2.py` | Extract videos embedded in **one** PPTX deck and transcribe them with faster-whisper. Invoked as `extract_research_phase2.py <source-path> [--slug SLUG]`; a non-PPTX path is a no-op. (Body-text OCR fallback for image-only PDFs / slides moved into phase 1; per-image OCR was removed entirely — the vision pass owns image description.) | Per-slug `.md` only. |
 | `tools/cleanup_research.py` | Strip watermarks, duplicate headings, garbage OCR. Supports `--only=SLUG`. | Per-slug `.md` only. |
 | `tools/validate_research.py` | Pass 2.5: extract every LaTeX/Mermaid block from `/mnt/archive4/PAPERS/Prepared/<slug>.md`, validate via the Node helper, write `findings-pass2.5-validate.md` sidecar. Supports `--only=SLUG[,SLUG2]`, `--html`. Exits 1 on any parse error. | Read-only on the markdown source; writes only to `assets/<slug>/findings-pass2.5-validate.md` (and `<slug>.preview.html` under `--html`). |
+| `tools/update_topics.py` | Pass 3.6: regenerate the OKF `<bundle>/topics/<tag>.md` index pages from document frontmatter `tags`. `--only=<slug>` rebuilds the slug's bundle, `--bundle=<Prepared\|Articles>` one bundle, `--all` (default) both; `--check` dry-runs, `--prune` deletes pages whose tag fell below two members. A tag needs ≥2 documents to get a page. | Idempotent. Owns only the member table (between `<!-- members:start -->` / `<!-- members:end -->`) and `topics/index.md`; preserves each page's hand-written intro. Per-bundle `flock` + atomic `os.replace` writes make concurrent invocations safe. |
 | `tools/validate_md.mjs` | Node helper invoked by `validate_research.py`. Reads JSON blocks on stdin, validates LaTeX via `katex.renderToString({throwOnError:true})` and Mermaid via `mermaid.parse()` (jsdom-backed). Returns JSON with per-block `ok` + `error`. Not normally called directly. | Pure stdin → stdout, no file writes. |
 | `tools/render_md_html.mjs` | Node helper invoked by `validate_research.py --html`. Compiles a single markdown to a self-contained HTML preview (KaTeX server-side via `@vscode/markdown-it-katex`, mermaid client-side via jsdelivr CDN). Not normally called directly. | Writes to the explicit output path passed on argv. |
 

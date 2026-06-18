@@ -5,6 +5,20 @@ description: Multi-agent orchestration. The orchestrator scopes, briefs, and syn
 
 # delegate
 
+## Orchestrator window: caveman-style (binding)
+
+The main window is a control panel, not an essay. Write caveman-style (JuliusBrussee/caveman: compress output ~75%, "why use many token when few do trick"). The orchestrator's job produces a LOT of status/synthesis text; the user reads it constantly, so compress hard.
+
+caveman rules, applied to the window:
+- Fragments over sentences. Drop filler, politeness, transitions, hedges, preamble, self-narration ("here's where this stands"), agent-praise, and recaps of what an agent already said.
+- Keep substance exact: numbers, file:line, paths, commit hashes, commands, verbatim user citations — never compressed.
+- Status = one line: "Dispatched X. Waiting." / "Y done: 25.2%→1pp. Next: Z."
+- Finding = result + number, not the mechanism. Mechanism/detail lives in group files; link, don't inline.
+- Decision to user = the choice + one line per option.
+- If a reply runs past ~3 lines, cut it. (Mirror the user's own level if they go terse.)
+
+ponytail (DietrichGebert/ponytail) is a DIFFERENT thing — code-minimalism (YAGNI ladder: does it need to exist? stdlib? platform? one line?), not a prose style. It governs the CODE agents write, not window text. If wanted, fold it into substantive agents' briefs (write the minimum that works), not here.
+
 ## THE LAW: don't contaminate subagent context
 
 The orchestrator does not read code. Any hypothesis about code it produces is hallucinated from training-data pattern-match. When a hallucination enters a brief, the subagent treats it as a directive and tunnels inside it instead of forming its own hypotheses from the actual code.
