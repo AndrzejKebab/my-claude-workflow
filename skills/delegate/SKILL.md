@@ -1,6 +1,6 @@
 ---
 name: delegate
-description: Multi-agent orchestration. The orchestrator scopes, briefs, and synthesizes — every other action is dispatched to sub-agents. The single most important rule: the orchestrator NEVER injects hypotheses, code-path references, or fix directions into briefs. Subagent context purity is the entire value proposition.
+description: Multi-agent orchestration. The orchestrator scopes, briefs, and synthesizes — every other action is dispatched to sub-agents. Two hard laws: (1) the orchestrator NEVER injects hypotheses, code-path references, or fix directions into briefs — subagent context purity is the entire value proposition; (2) the orchestrator never edits repo code and never runs the gate — it dispatches, agents do, no matter how small the change.
 ---
 
 # delegate
@@ -41,6 +41,14 @@ The orchestrator does not read code. Any hypothesis about code it produces is ha
 
 ---
 
+## THE LAW (2): the orchestrator never edits code and never runs the gate
+
+The orchestrator dispatches; agents do. Every mutation of repo state is dispatched: source edits, shader/config/asset changes, builds, tests, captures, format runs, compile-fixes, dependency installs, and the verification gate itself. The orchestrator reads only canon, spec, and the group files, and writes only the group files plus checkpoint commits of agents' already-written work. Running a build "to check," running a capture "to verify," hand-fixing one line "because it's small," or hand-running the gate are the same violation: the orchestrator became a single-context implementer, and every such edit is unreviewed work the dispatch discipline exists to prevent.
+
+The temptation scales inversely with size — the one-liner feels too small to dispatch, and the one-liner is exactly where the rule is load-bearing, because a pile of "too small to dispatch" one-liners is how the orchestrator silently becomes the implementer. The test is *touches repo code / build / gate?*, not *how small?* — when in doubt, dispatch. Want a change? Write a brief and dispatch. Want green/red? Dispatch the validating agent and read back the result. The only repo write the orchestrator owns is the checkpoint commit (contract 2), and that commits agents' work — never an edit the orchestrator authored. If you are about to call `Edit`, `Write` on a source file, `cargo`/`vite`/`npm`/a test runner, or a capture script, stop: that is a dispatch, not an orchestrator action.
+
+---
+
 ## When a fix fails: diagnose-first
 
 The user reports the symptom didn't move → next dispatch is a **read-only diagnostic**. No "let me try option B." No Q&A. Diagnose is the only path.
@@ -53,7 +61,7 @@ The user reports the symptom didn't move → next dispatch is a **read-only diag
 
 ## Structural contracts
 
-1. **Never work alone.** Every source read, edit, build, test, format, compile-fix is dispatched. Orchestrator reads only canon/spec and the group files. "Too small to dispatch" is the trap — a one-liner, config tweak, package install, "just run the build" all still dispatch. The test is *touches repo code/build?*, not *how small?*.
+1. **Never work alone — this is LAW (2), not a guideline.** Every source read, edit, build, test, capture, format, compile-fix is dispatched. Orchestrator reads only canon/spec and the group files, and writes only the group files plus checkpoint commits of agents' already-written work. "Too small to dispatch" is the trap — a one-liner, config tweak, shader tweak, package install, "just run the build," "just grab a capture to check" all still dispatch. The test is *touches repo code/build/gate?*, not *how small?*. See THE LAW (2) above.
 2. **Checkpoint before every code-mutating dispatch — and commit WIP often during the work; never hold a large uncommitted tree.** A committed WIP with a known-red gate is recoverable; an uncommitted pile is not, and under concurrent editors it invites clobbers and racing-writer loss (an agent's `git checkout`/`restore` on a shared file destroys a sibling's uncommitted edits with no copy to restore). Not commit purists: never gate a commit on all-green — commit at each meaningful step (a piece that passes, before a risky diagnostic, before a handoff), labelling WIP as WIP with the known-red gate named. **Each completed step checkpoints as its own commit before the next step dispatches** — when an agent returns its gate green, commit that deliverable immediately, never batch several green steps into one deferred commit, and never defer checkpointing to the user's own final commit ("the user commits at the end" is not a licence to hold a multi-step green tree; the user's commit is the end state, the orchestrator's per-step checkpoints are the recovery trail to it). Recovery, not tidiness, is the reason: git edits get botched, and a committed step is the only state a bungled `Edit`/`restore`/`checkout` can roll back to — an uncommitted multi-step tree has no floor. Edits revert via selective `Edit` from the diff, never `git checkout`/`restore` on a shared file. Sonnet commit agent for orchestrator checkpoints; substantive agents commit their own progress.
 3. **Shared-context files on disk** (`docs/orchestrate/<topic>/`). One file per group. Agents read on entry, append on exit.
 4. **Every deliverable ends with `## Side notes`.** Agent's channel to flag anything the brief missed.

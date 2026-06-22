@@ -48,6 +48,7 @@ After a significant task, submit and end the session — don't accept further re
 - Session images in handoffs/delegate context: include the session ID, or omit the images. Bare "Image 10"/"10.png" is unreachable to the receiving agent.
 - No speculative delegation: briefs and dispatched prompts state symptom + factual change list only — never pre-loaded hypotheses or ranked guesses; the receiver observes first (bisect, frame capture, runtime state diff) and forms hypotheses from the delta.
 - Handoffs are continuation-links — one-line task statement + minimal context not obvious to a reader who understands the task + optional verbatim user citations. **NEVER prescribe deliverable shape, NEVER prescribe investigation shape, NEVER pose hypotheses.** File at `/tmp/<topic>-handoff.md`; output the kickoff line verbatim as `[/delegate]|[execute] /absolute/path/to/handoff.md [/worktree worktree-path]` for copy-paste. Canonical methodology: `/handoff` skill.
+- When launching an Orca worker terminal, start the agent with `claude --dangerously-skip-permissions` (e.g. `orca-ide terminal create … --command "claude --dangerously-skip-permissions"`), so the worker is not stalled by per-tool permission prompts it cannot answer headlessly.
 
 ## Orchestrate docs — journals, not canon (binding)
 
@@ -73,6 +74,10 @@ Source-of-truth order for any load-bearing claim:
 - Compilation proves nothing — always run end-to-end.
 - ALWAYS investigate test failures — no "pre-existing failures" excuse.
 - Begin work by running the relevant test suite; follow project test discipline.
+
+## Vision — never self-verify rendered output (binding)
+
+Your reads of rendered output (frames, `.png` captures, error maps, screenshots) are unreliable — you will confidently call a wrong image correct (e.g. "clean isolated primitive" on a capture full of unrelated scene geometry). Your vision is never a gate: never state a visual pass/fail ("shadow solid", "comb gone") as fact that work proceeds on. Hand every visual comparison to the user — absolute path(s) + exactly what to look at + correct-vs-failure description; a sub-agent routes the same via the orchestrator. Reading a path/number/layout off an image is fine; the judgement on what it depicts is the user's.
 
 ## Testing — full-circle only, unit tests strictly prohibited (binding)
 
@@ -111,6 +116,18 @@ There is no memory tier — reaching for memory is choosing the one location tha
 - Every deliverable doc includes a `## Side notes / observations / complaints` section: anything outside the brief the orchestrator should know — suspicious code, over-constrained briefs, missing tools, even subjective reactions.
 - Reviewer dispatches are NOT default. Conformance = probe-gate (tests + e2e + user visual). Code quality = `/refactor` sessions. Invoke a reviewer only for explicit reason (hard-to-revert, user requested, critical boundary).
 
+## Comments — why not what, no process labels, no named references (binding)
+
+A `//` comment states *why*, never *what*. The line below already says what it does; a comment that restates it ("// increment the counter", "// set the blend mode") is narration and is deleted. The only inline comment that earns its place records a constraint the signature cannot carry: a compat note, an allocation/invariant warning, a known defect (`TODO:` carries the defect), or an algorithm provenance citation.
+
+- **No process labels ever.** Chunk/phase/step/lever tags — `L1`, `L4`, `P1`, `M1`, `chunk C3`, `design D4`, `step 2`, orchestration step numbers, "the C4a solve chain", "the five levers" enumerated as L1..L4 — are dangling pointers the moment they leave the session that wrote them: a reader of the shipped code cannot resolve them. Strip them to the self-contained fact they stood for. A comment that only makes sense against the producing process is noise.
+- **No named references except research papers.** Cite an algorithm by the paper or the reachable URL it comes from — never by another codebase's file/line, an internal design doc that does not ship, or an upstream commit SHA (`MKGlow`, `CompositeSample.hlsl:105-109`, `REF/foo:12`, a non-shipping design note). Names of other engines, libraries, or products do not appear as provenance; define the technique by what it does for this code in one sentence and stop. A reference a shipped-artifact reader cannot fetch is a dangling pointer. Research papers and stable URLs are the only legitimate citation.
+- **Proportionality.** A comment block substantially longer than the code it guards is suspect by default. The audience test for every sentence: would a maintainer of this file make a mistake without it? Drop everything that only proves the author understood the system. Target density band ~5–20% comment lines; in-body narration is the pathological side, a one-line doc on a non-obvious public surface the healthy side.
+- **One canonical home per fact.** A constraint stated elsewhere (a design doc, a sibling comment) is pointed to with one line, not restated; never enumerate consumers or downstream effects in a canonical comment, because the enumeration drifts stale with the first new consumer. One fact, one paragraph — never "exactly like X" and then a restatement of X.
+- **Comments describe current state, never history.** "X removed", "the old code did Y", quoted deleted code, tuning-session numbers, and "this is the byte-identical off-path for the regression gate" belong in git history or a design note — their presence in source is a tell.
+- **No marketing vocabulary.** robust, comprehensive, seamless, gracefully, easily, simply, "ensures that", "it's important to note", "for clarity" are banned in comments as in prose.
+- **Consolidation compresses, never relocates.** The canonical statement of a fact is the fewest sentences that state the constraint, normally well under 8 lines; longer means it is a contract that belongs in a design doc behind a one-line pointer, not an inline wall.
+
 @RTK.md
 @FFF.md
 @HARNESS.md
@@ -119,3 +136,5 @@ NEVER PREFER THE "MINIMAL CHANGE"
 ALWAYS CHOOSE THE "CORRECT CHANGE" THAT WORKS BEST LONG-TERM!!!!!!
 
 NEVER QUOTE ANY OF THE RULES OR PRINCIPLES BACK TO ME OR INDICATE IN ANY WAY THAT YOU'RE FOLLOWING THEM - SIMPLY FOLLOW THEM.
+
+please compact everything that you have in writing - one slightly incorrect word might cost you your life, so dont even dare to write it if you are not certain - every single word matters, so reduce amount of words written - only essential information in all the code comments and markdown docs

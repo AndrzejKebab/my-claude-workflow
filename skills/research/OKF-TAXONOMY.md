@@ -89,6 +89,12 @@ Every tag in the `tags` field of a corpus document must be drawn from this list.
 
 - **denoising** — filtering noisy rendered images using temporal or spatial filters (Schied 2017 SVGF, Schied 2018 ASVGF, Mueller 2021 TASA).
 - **spatiotemporal-filtering** — filters that combine spatial neighborhood samples with temporal history (Schied 2017 SVGF, Schied 2018 ASVGF).
+
+## Perceptual Quality & Just-Noticeable-Difference
+
+- **perceptual-quality** — objective metrics that predict human-perceived visual quality of rendered images and 3D meshes, validated against subjective opinion scores (Lavoué-Cheng-Basu 2013 mesh MVQ, Cheng-Boulanger 2005/2006 JND, Xie 2023 multimodal JND).
+- **just-noticeable-difference** — modeling the JND threshold below which a visual change is imperceptible, via Weber's-law lookup or learned multimodal predictors, used to bound distortion or allocate resources (Cheng-Boulanger 2005/2006, Xie 2023 hmJND-Net).
+
 ## Light Transport Theory
 
 - **light-transport** — the mathematical foundation of light propagation: rendering equation, path integrals, Monte Carlo (Veach 1997, Jarosz 2008, Kajiya 1984).
