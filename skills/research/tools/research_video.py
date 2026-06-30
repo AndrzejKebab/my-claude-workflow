@@ -536,12 +536,30 @@ def process_video(video_path: Path, info: VideoInfo, srt_path: Path,
         "",
     ]
 
+    # Slide-centric emit: only a *visual* scene (slide or demo) opens a section.
+    # Speaker scenes never emit a header -- their narration is folded into the
+    # current section's transcript, which is buffered and flushed when the next
+    # visual scene (or the end) arrives. Without this, the non---all-slides path
+    # emits a bare "## [MM:SS]" header per speaker micro-scene and splits one
+    # continuous sentence across many of them, so an animation-revealed slide
+    # becomes dozens of empty timestamp headers with shredded transcript. See the
+    # "Slide-centric emit" rule in SKILL.md.
     slide_num = 0
+    transcript_buf = []
+
+    def flush_transcript():
+        text = " ".join(t.strip() for t in transcript_buf if t.strip())
+        transcript_buf.clear()
+        if text:
+            md_lines.append(f"> {text}")
+            md_lines.append("")
+
     for scene in scenes:
         ts = format_timestamp(scene.start_time)
         dur = scene.end_time - scene.start_time
 
         if scene.scene_type == "slide":
+            flush_transcript()
             slide_num += 1
             # Try to extract a title from OCR text (first line that looks like a heading)
             heading = ""
@@ -565,22 +583,19 @@ def process_video(video_path: Path, info: VideoInfo, srt_path: Path,
             md_lines.append("")
 
         elif scene.scene_type == "demo":
+            flush_transcript()
             md_lines.append(f"## Demo [{ts}]")
             md_lines.append(f"*({dur:.0f}s)*")
             md_lines.append("")
             md_lines.append(f"![{Path(scene.frame_path).name}]({scene.frame_path})")
             md_lines.append("")
 
-        else:  # speaker
-            # Skip very short speaker-only segments
-            if dur < 3:
-                continue
-            md_lines.append(f"## [{ts}]")
-            md_lines.append("")
-
+        # speaker scenes open no section -- fall through and fold the narration
+        # into the current section's transcript buffer.
         if scene.transcript:
-            md_lines.append(f"> {scene.transcript}")
-            md_lines.append("")
+            transcript_buf.append(scene.transcript)
+
+    flush_transcript()
 
     # Write markdown (refuse to overwrite an existing extraction unless --force).
     # Sidecar uses a randomised suffix so concurrent agents extracting the same
