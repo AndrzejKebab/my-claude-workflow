@@ -233,22 +233,34 @@ def classify_frame(frame: np.ndarray) -> str:
     h, w = frame.shape[:2]
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-    # Check the right 60% of the frame (where slides typically appear)
+    # Bright projected-slide signal (light-themed decks fill the slide area with
+    # bright pixels). Kept as the primary cue for backward compatibility.
     slide_region = gray[:, int(w * 0.35):]
-    bright_ratio = np.mean(slide_region > 160) # fraction of bright pixels
+    bright_ratio = np.mean(slide_region > 160)
 
-    # Check overall brightness
     overall_brightness = np.mean(gray)
 
-    # Slide: right portion has significant bright area (projected slide)
-    if bright_ratio > 0.25:
+    # Brightness-independent slide signal. A content slide carries dense, sharp
+    # text/vector edges regardless of theme; a dark-themed slide has low
+    # brightness but retains that edge structure, where a genuine dark
+    # speaker/transition shot does not. Measure edge density on the left 65% of
+    # the frame -- the slide area in the typical screen-capture composite layout
+    # (large slide + small speaker webcam PiP in the top-right corner). Without
+    # this cue, dark-themed decks score as "speaker" and their frames are dropped
+    # from the markdown entirely. For recordings that are slides end-to-end, use
+    # the --all-slides override, which is exact rather than heuristic.
+    left_edges = cv2.Canny(gray[:, : int(w * 0.65)], 50, 150)
+    edge_density = np.mean(left_edges > 0)
+
+    # Slide: bright projected region OR structured (text/diagram) content.
+    if bright_ratio > 0.25 or edge_density > 0.03:
         return "slide"
 
-    # Speaker: overall dark, stage lighting
+    # Speaker: dark and featureless (stage lighting, no slide structure).
     if overall_brightness < 80:
         return "speaker"
 
-    # Demo: everything else (game footage, varied brightness)
+    # Demo: everything else (game footage, varied brightness).
     return "demo"
 
 
@@ -434,7 +446,8 @@ def format_timestamp(seconds: float) -> str:
 
 
 def process_video(video_path: Path, info: VideoInfo, srt_path: Path,
-                  scene_threshold: float = 0.35, merge: bool = True) -> str:
+                  scene_threshold: float = 0.35, merge: bool = True,
+                  all_slides: bool = False) -> str:
     """Full pipeline: detect scenes, classify, OCR, transcribe, emit markdown.
 
     `merge=False` skips the consecutive-scene merge pass. The merge heuristic
@@ -465,7 +478,11 @@ def process_video(video_path: Path, info: VideoInfo, srt_path: Path,
     fps = cap.get(cv2.CAP_PROP_FPS)
 
     for i, (start, end) in enumerate(scene_intervals):
-        scene_type = classify_scene(video_path, start, end)
+        # --all-slides: the recording is slides end-to-end (screen-capture
+        # composite). Skip the brightness/edge heuristic, which can drop
+        # dark-themed slides, and treat every detected scene as a slide so its
+        # frame is OCR'd and embedded.
+        scene_type = "slide" if all_slides else classify_scene(video_path, start, end)
 
         scene = Scene(
             start_time=start,
@@ -588,7 +605,7 @@ def process_video(video_path: Path, info: VideoInfo, srt_path: Path,
 def main():
     if len(sys.argv) < 2:
         print("Usage: research_video.py <url-or-local-path> [--title='...'] [--slug='...'] "
-              "[--threshold=0.35] [--no-merge]")
+              "[--threshold=0.35] [--no-merge] [--all-slides]")
         sys.exit(1)
 
     url = sys.argv[1]
@@ -597,6 +614,7 @@ def main():
     threshold_arg = next((a.split("=", 1)[1] for a in sys.argv[2:] if a.startswith("--threshold=")), None)
     scene_threshold = float(threshold_arg) if threshold_arg else 0.35
     merge = "--no-merge" not in sys.argv[2:]
+    all_slides = "--all-slides" in sys.argv[2:]
     work_dir = Path(tempfile.mkdtemp(prefix="research-"))
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -635,7 +653,8 @@ def main():
         transcribe(str(video_path), str(srt_path))
 
     print(f"Processing: {info.title} ({format_timestamp(info.duration)})")
-    md_path = process_video(video_path, info, srt_path, scene_threshold=scene_threshold, merge=merge)
+    md_path = process_video(video_path, info, srt_path, scene_threshold=scene_threshold,
+                            merge=merge, all_slides=all_slides)
 
     print(f"\nDone: {md_path}")
 
