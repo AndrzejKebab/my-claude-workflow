@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+drafts="$HOME/.claude/drafts"
+mapfile -t files < <(ls -t "$drafts"/*/draft-*.md "$drafts"/draft-*.md 2>/dev/null || true)
+[ "${#files[@]}" -gt 0 ] || { echo "claude-draft: no drafts in $drafts" >&2; exit 1; }
+
+if [ "${1:-}" = "-l" ]; then
+  for i in "${!files[@]}"; do
+    f="${files[$i]}"
+    proj="$(basename "$(dirname "$f")")"
+    when="$(stat -c %y "$f" | cut -d. -f1)"
+    prev="$(head -c 70 "$f" | tr '\n' ' ')"
+    printf '%2d  %-18s  %s  %s\n' "$i" "$proj" "$when" "$prev"
+  done
+  exit 0
+fi
+
+idx="${1:-0}"
+[ "$idx" -lt "${#files[@]}" ] 2>/dev/null || { echo "claude-draft: no draft #$idx (have ${#files[@]})" >&2; exit 1; }
+cat "${files[$idx]}"
+[ "${#files[@]}" -gt 1 ] && echo "claude-draft: ${#files[@]} drafts — 'claude-draft -l' to list, 'claude-draft <n>' for older" >&2
+exit 0

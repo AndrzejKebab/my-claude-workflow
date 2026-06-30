@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export EDITOR="$HOME/_dev/my-claude-workflow/bin/claude-editor"
+export VISUAL="$EDITOR"
+export CLAUDE_LAUNCH_CWD="$PWD"
+
+exec "$HOME/.local/bin/claude" "$@"

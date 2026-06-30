@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+origin="${CLAUDE_LAUNCH_CWD:-$PWD}"
+slug="$(basename "$origin")"
+case "$slug" in ""|"/"|".") slug="root" ;; esac
+
+dir="$HOME/.claude/drafts/$slug"
+mkdir -p "$dir"
+
+tmp="${*: -1}"
+persist="$dir/draft-$(date +%Y%m%d-%H%M%S)-$$.md"
+
+if [ -n "${tmp:-}" ] && [ -f "$tmp" ]; then
+  cp -f "$tmp" "$persist"
+else
+  : >"$persist"
+fi
+
+CLAUDE_DRAFT_NVIM="${CLAUDE_DRAFT_NVIM:-nvim}"
+"$CLAUDE_DRAFT_NVIM" \
+  -c 'set fsync' \
+  -c 'set updatetime=750' \
+  -c 'autocmd TextChanged,TextChangedI,InsertLeave,CursorHold,CursorHoldI * silent! noautocmd write' \
+  "$persist"
+
+if [ -n "${tmp:-}" ]; then
+  cp -f "$persist" "$tmp" 2>/dev/null || true
+fi
+
+[ -s "$persist" ] || rm -f "$persist"
