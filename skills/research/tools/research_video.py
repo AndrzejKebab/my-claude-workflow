@@ -575,9 +575,12 @@ def process_video(video_path: Path, info: VideoInfo, srt_path: Path,
             md_lines.append(f"*[{ts}] ({dur:.0f}s)*")
             md_lines.append("")
 
-            if scene.ocr_text:
-                md_lines.append(scene.ocr_text)
-                md_lines.append("")
+            # NB: scene.ocr_text is deliberately NOT dumped into the body. OpenOCR
+            # reads top-to-bottom with no column awareness, so a multi-column slide
+            # comes out interleaved row-by-row into mangled, sense-losing text. The
+            # vision pass produces the layout-aware slide description; OCR stays
+            # internal-only (heading hint above + merge_similar_scenes). See the
+            # "OCR is internal-only" rule in SKILL.md.
 
             md_lines.append(f"![{Path(scene.frame_path).name}]({scene.frame_path})")
             md_lines.append("")
