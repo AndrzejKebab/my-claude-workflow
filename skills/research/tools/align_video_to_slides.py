@@ -194,6 +194,78 @@ def _trim_rolling_duplicates(text: str) -> str:
 # Strategy 2: pHash alignment (requires imagehash + frame images)
 # ---------------------------------------------------------------------------
 
+def _load_slide_hashes(slides_dir: str) -> dict[int, object]:
+    """Load PDF slide renders and pHash each one, keyed by 1-based slide index."""
+    import imagehash
+    from PIL import Image
+
+    slides_path = Path(slides_dir)
+    slide_hashes: dict[int, object] = {}
+    for png in sorted(slides_path.glob("s???-slide.png")):
+        m = re.match(r"s(\d+)-slide\.png", png.name)
+        if m:
+            idx = int(m.group(1))
+            img = Image.open(png).convert("RGB")
+            slide_hashes[idx] = imagehash.phash(img)
+    if not slide_hashes:
+        raise RuntimeError(f"No sNNN-slide.png found in {slides_dir}")
+    return slide_hashes
+
+
+def _load_scenes(scenes_tsv: str) -> list[tuple[float, float, str]]:
+    """Load (start, end, frame_path_or_name) triples from a scenes TSV.
+
+    redetect_scenes.py writes 3-column TSV: start\\tend\\t/full/path/to/frame.jpg
+    research_video.py writes 3-column TSV in the same format.
+    """
+    scenes: list[tuple[float, float, str]] = []
+    tsv_path = Path(scenes_tsv)
+    if tsv_path.exists():
+        for line in tsv_path.read_text().splitlines():
+            if line.startswith("#") or not line.strip():
+                continue
+            parts = line.split("\t")
+            if len(parts) >= 3:
+                scenes.append((float(parts[0]), float(parts[1]), parts[2].strip()))
+    if not scenes:
+        raise RuntimeError(f"No scenes found in TSV: {scenes_tsv}")
+    return scenes
+
+
+def _match_scenes_to_slides(
+    scenes: list[tuple[float, float, str]],
+    slide_hashes: dict[int, object],
+    frames_dir: str,
+) -> list[tuple[int | None, int]]:
+    """Best-matching slide + Hamming distance for every scene, unthresholded.
+
+    Returns a list parallel to `scenes`: (best_slide_idx_or_None, best_dist).
+    Thresholding is left to the caller so both the text-window aligner and the
+    slide-starts aligner can apply their own cutoffs against the same hashes.
+    """
+    import imagehash
+    from PIL import Image
+
+    frames_path = Path(frames_dir)
+    out: list[tuple[int | None, int]] = []
+    for _t_start, _t_end, frame_fn in scenes:
+        # frame_fn may be an absolute path (from redetect_scenes.py) or a bare
+        # filename relative to frames_dir (from research_video.py).
+        raw = Path(frame_fn)
+        frame_path = raw if raw.is_absolute() else frames_path / frame_fn
+        if not frame_path.exists():
+            out.append((None, 999))
+            continue
+        scene_hash = imagehash.phash(Image.open(frame_path).convert("RGB"))
+        best_slide, best_dist = None, 999
+        for slide_idx, slide_hash in slide_hashes.items():
+            dist = scene_hash - slide_hash
+            if dist < best_dist:
+                best_dist, best_slide = dist, slide_idx
+        out.append((best_slide, best_dist))
+    return out
+
+
 def phash_alignment(
     srt_entries: list[tuple[float, float, str]],
     slides_dir: str,
@@ -212,65 +284,20 @@ def phash_alignment(
     Slides with no scene match get "(no aligned transcript)".
     """
     try:
-        import imagehash
-        from PIL import Image
+        import imagehash  # noqa: F401
     except ImportError:
         raise RuntimeError(
             "imagehash / Pillow not installed. Run: "
             "~/.claude/skills/research/.venv/bin/pip install imagehash Pillow"
         )
 
-    # Load PDF slide hashes
-    slides_path = Path(slides_dir)
-    slide_hashes: dict[int, object] = {}
-    for png in sorted(slides_path.glob("s???-slide.png")):
-        m = re.match(r"s(\d+)-slide\.png", png.name)
-        if m:
-            idx = int(m.group(1))
-            img = Image.open(png).convert("RGB")
-            slide_hashes[idx] = imagehash.phash(img)
-
-    if not slide_hashes:
-        raise RuntimeError(f"No sNNN-slide.png found in {slides_dir}")
-
-    # Load scene timestamps from TSV.
-    # redetect_scenes.py writes 3-column TSV: start\tend\t/full/path/to/frame.jpg
-    # research_video.py writes 3-column TSV in the same format.
-    # We accept both and resolve the frame path as an absolute path if given,
-    # or as a relative name under frames_dir if it is a bare filename.
-    scenes: list[tuple[float, float, str]] = []  # (start, end, frame_path_or_name)
-    tsv_path = Path(scenes_tsv)
-    if tsv_path.exists():
-        for line in tsv_path.read_text().splitlines():
-            if line.startswith("#") or not line.strip():
-                continue
-            parts = line.split("\t")
-            if len(parts) >= 3:
-                scenes.append((float(parts[0]), float(parts[1]), parts[2].strip()))
-
-    if not scenes:
-        raise RuntimeError(f"No scenes found in TSV: {scenes_tsv}")
-
-    # Compute pHash for each scene capture
-    frames_path = Path(frames_dir)
-    scene_to_slide: dict[int, int | None] = {}
-    for scene_idx, (t_start, t_end, frame_fn) in enumerate(scenes):
-        # frame_fn may be an absolute path (from redetect_scenes.py) or a bare
-        # filename relative to frames_dir (from research_video.py).
-        raw = Path(frame_fn)
-        frame_path = raw if raw.is_absolute() else frames_path / frame_fn
-        if not frame_path.exists():
-            scene_to_slide[scene_idx] = None
-            continue
-        scene_hash = imagehash.phash(Image.open(frame_path).convert("RGB"))
-        best_slide = None
-        best_dist = hamming_threshold + 1
-        for slide_idx, slide_hash in slide_hashes.items():
-            dist = scene_hash - slide_hash
-            if dist < best_dist:
-                best_dist = dist
-                best_slide = slide_idx
-        scene_to_slide[scene_idx] = best_slide if best_dist <= hamming_threshold else None
+    slide_hashes = _load_slide_hashes(slides_dir)
+    scenes = _load_scenes(scenes_tsv)
+    matches = _match_scenes_to_slides(scenes, slide_hashes, frames_dir)
+    scene_to_slide = {
+        i: (slide if dist <= hamming_threshold else None)
+        for i, (slide, dist) in enumerate(matches)
+    }
 
     # Map SRT cues to slides via scene→slide mapping
     num_slides = max(slide_hashes.keys())
@@ -296,6 +323,96 @@ def phash_alignment(
     return result
 
 
+def _longest_increasing_by_time(anchors: list[tuple[int, float]]) -> list[tuple[int, float]]:
+    """Keep the longest run of anchors whose time strictly increases.
+
+    `anchors` is sorted by slide_idx ascending already; a pHash false-positive
+    (e.g. a demo screenshot that happens to resemble an earlier, unrelated
+    slide) shows up as a time value that drops back below a previous one.
+    Standard patience-sorting LIS (O(n log n)) on the time sequence discards
+    those outliers instead of letting one bad match corrupt interpolation.
+    """
+    import bisect
+
+    times = [t for _, t in anchors]
+    tails: list[int] = []  # index into `anchors` of the smallest tail time for each length
+    prev = [-1] * len(anchors)
+    for i, t in enumerate(times):
+        pos = bisect.bisect_left([times[j] for j in tails], t)
+        if pos == len(tails):
+            tails.append(i)
+        else:
+            tails[pos] = i
+        prev[i] = tails[pos - 1] if pos > 0 else -1
+    if not tails:
+        return []
+    chain = []
+    k = tails[-1]
+    while k != -1:
+        chain.append(anchors[k])
+        k = prev[k]
+    chain.reverse()
+    return chain
+
+
+def phash_slide_starts(
+    slides_dir: str,
+    scenes_tsv: str,
+    frames_dir: str,
+    total_duration: float,
+    hamming_threshold: int = 10,
+) -> list[float]:
+    """Estimate a first-appearance timestamp for every PDF slide.
+
+    Confident pHash matches (distance <= hamming_threshold) anchor the slides
+    they hit; a LIS pass over those anchors drops any that are out of order
+    (typically demo/video-in-slide footage that coincidentally resembles an
+    unrelated slide). Slides between two anchors — build-animation steps,
+    live-demo placeholders, anything pHash can't pin — get a linearly
+    interpolated start time; slides before the first or after the last anchor
+    are extrapolated from the average pace of the nearest known segment.
+
+    Returns a list of length `num_slides` (start time in seconds per slide,
+    1-based slide N at index N-1), suitable for srt_to_windows.py's
+    `slide_starts.txt` input (one integer-second timestamp per line).
+    """
+    slide_hashes = _load_slide_hashes(slides_dir)
+    num_slides = max(slide_hashes.keys())
+    scenes = _load_scenes(scenes_tsv)
+    matches = _match_scenes_to_slides(scenes, slide_hashes, frames_dir)
+
+    first_seen: dict[int, float] = {}
+    for (t_start, _t_end, _path), (slide, dist) in zip(scenes, matches):
+        if slide is not None and dist <= hamming_threshold and slide not in first_seen:
+            first_seen[slide] = t_start
+
+    anchors = sorted(first_seen.items())
+    anchors = _longest_increasing_by_time(anchors)
+    if not anchors:
+        raise RuntimeError(
+            f"No confident pHash anchors at threshold {hamming_threshold} — "
+            "loosen --hamming-threshold or fall back to time-proportional alignment."
+        )
+    if anchors[0][0] != 1:
+        anchors.insert(0, (1, 0.0))
+
+    starts = [0.0] * (num_slides + 1)  # 1-based; index 0 unused
+    for (idx_a, t_a), (idx_b, t_b) in zip(anchors, anchors[1:]):
+        starts[idx_a] = t_a
+        span = idx_b - idx_a
+        for i in range(idx_a + 1, idx_b):
+            starts[i] = t_a + (t_b - t_a) * (i - idx_a) / span
+    last_idx, last_t = anchors[-1]
+    starts[last_idx] = last_t
+    if last_idx < num_slides:
+        prev_idx, prev_t = anchors[-2] if len(anchors) > 1 else (1, 0.0)
+        pace = (last_t - prev_t) / max(1, last_idx - prev_idx)
+        for i in range(last_idx + 1, num_slides + 1):
+            starts[i] = min(total_duration, last_t + pace * (i - last_idx))
+
+    return starts[1:]
+
+
 # ---------------------------------------------------------------------------
 # CLI entry point
 # ---------------------------------------------------------------------------
@@ -318,7 +435,31 @@ def main():
     ph.add_argument("--hamming-threshold", type=int, default=20)
     ph.add_argument("--out", required=True)
 
+    ss = sub.add_parser(
+        "slide-starts",
+        help="Per-slide first-appearance timestamps via pHash anchors + interpolation "
+        "(writes a slide_starts.txt for srt_to_windows.py)",
+    )
+    ss.add_argument("--slides-dir", required=True)
+    ss.add_argument("--scenes-tsv", required=True)
+    ss.add_argument("--frames-dir", required=True)
+    ss.add_argument("--duration", type=float, required=True, help="Video duration in seconds")
+    ss.add_argument("--hamming-threshold", type=int, default=10)
+    ss.add_argument("--out", required=True)
+
     args = parser.parse_args()
+
+    if args.mode == "slide-starts":
+        starts = phash_slide_starts(
+            args.slides_dir,
+            args.scenes_tsv,
+            args.frames_dir,
+            args.duration,
+            args.hamming_threshold,
+        )
+        Path(args.out).write_text("\n".join(str(int(t)) for t in starts) + "\n")
+        print(f"Wrote {args.out} ({len(starts)} slide starts)", file=sys.stderr)
+        return
 
     srt_entries = parse_srt_timestamps(args.srt)
     print(f"Loaded {len(srt_entries)} SRT cues", file=sys.stderr)
