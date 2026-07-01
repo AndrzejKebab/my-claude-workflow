@@ -27,15 +27,32 @@ async function loadMermaid() {
     const dom = new JSDOM("<!DOCTYPE html><html><body></body></html>", {
       pretendToBeVisual: true,
     });
-    globalThis.window = dom.window;
-    globalThis.document = dom.window.document;
-    globalThis.navigator = dom.window.navigator;
-    globalThis.HTMLElement = dom.window.HTMLElement;
-    globalThis.Element = dom.window.Element;
-    globalThis.Node = dom.window.Node;
-    globalThis.SVGElement = dom.window.SVGElement;
-    globalThis.DOMParser = dom.window.DOMParser;
-    globalThis.XMLSerializer = dom.window.XMLSerializer;
+    // Assign DOM globals defensively: modern Node (21+) exposes some of these
+    // (notably `navigator`) as read-only built-in getters, and a plain
+    // `globalThis.navigator = …` throws "Cannot set property … which has only a
+    // getter", which previously aborted mermaid setup entirely and silently
+    // downgraded every diagram to an unvalidated warning. Swallow the read-only
+    // failures — mermaid.parse only needs window/document/DOM, not navigator.
+    const assignGlobal = (key, value) => {
+      try {
+        globalThis[key] = value;
+      } catch {
+        try {
+          Object.defineProperty(globalThis, key, { value, configurable: true, writable: true });
+        } catch {
+          /* read-only, non-configurable built-in — leave Node's version in place */
+        }
+      }
+    };
+    assignGlobal("window", dom.window);
+    assignGlobal("document", dom.window.document);
+    assignGlobal("navigator", dom.window.navigator);
+    assignGlobal("HTMLElement", dom.window.HTMLElement);
+    assignGlobal("Element", dom.window.Element);
+    assignGlobal("Node", dom.window.Node);
+    assignGlobal("SVGElement", dom.window.SVGElement);
+    assignGlobal("DOMParser", dom.window.DOMParser);
+    assignGlobal("XMLSerializer", dom.window.XMLSerializer);
     const mod = await import("mermaid");
     const mermaid = mod.default ?? mod;
     if (typeof mermaid.parse !== "function") {
