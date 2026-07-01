@@ -117,9 +117,9 @@ You are the orchestrator for the /research skill. You do **not** read 268-slide 
 | Pass | Agent | Purpose |
 |---|---|---|
 | 1 — extract & mark | `research-extractor` | Run `extract_research.py <source-path> --slug=<slug>` (and `extract_research_phase2.py` for PPTX), archive source to `/mnt/archive4/PAPERS/`. **Then read the produced markdown and mark every problematic area inline with a `<!-- FIXME(extract): … -->` comment** — garbled equations, suspect OCR, and (critically) each page that needs a vision-pass description. Report the slug, asset counts, and the count of pages flagged for vision. |
-| 2 — vision _(conditional)_ | `research-vision` | Read slide / figure images and write `**Diagram (LLM vision pass):**` blocks via Edit. **Dispatched ONLY when more than 5 pages need a vision pass** (per the extractor's `FIXME(extract): … needs vision` marks). When 5 or fewer pages need vision, skip this pass entirely — Pass 3 folds the handful of descriptions in. Batches well — dispatch one agent per ~30 slides to keep individual context lean. |
+| 2 — vision _(conditional)_ | `research-vision` | Read slide / figure images and **reconstruct each slide's structure in markdown** (verbatim nested bullets, tables, ```mermaid diagrams, two-column subfigures, code, LaTeX — see "Structural reconstruction policy"), load-bearing, with a `<!-- vision: reconstructed … -->` provenance marker above and the frame embedded below. **Dispatched ONLY when more than 5 pages need a vision pass** (per the extractor's `FIXME(extract): … needs vision` marks). When 5 or fewer pages need vision, skip this pass entirely — Pass 3 folds the handful in. Batches well — dispatch one agent per ~30 slides to keep individual context lean (reconstruction is heavier than captioning, so lean toward ~25). |
 | 2.5 — validate | _(orchestrator runs inline)_ | Run `tools/validate_research.py --only=<slug>`: every LaTeX block (`$…$`, `$$…$$`) is parsed by KaTeX and every Mermaid fenced block by `mermaid.parse()`. Errors are written to `findings-pass2.5-validate.md` for the refiner to fix, and to stderr for the orchestrator. Optional `--html` produces a browser-openable preview. |
-| 3 — refine _(+ inline vision)_ | `research-refiner` | Heading fixes, broken-Unicode equation re-transcription, speaker-notes typo cleanup, optional top-of-doc summary. **Resolves every `FIXME(extract)` and `FIXME(vision)` mark left in the document and deletes the comment once handled.** When Pass 2 was skipped (≤5 vision pages), the refiner also writes the `**X (LLM vision pass):**` blocks for those pages itself. Brief MUST cite the Pass-2.5 sidecar so the refiner has a concrete error list to address. |
+| 3 — refine _(+ inline vision)_ | `research-refiner` | Heading fixes, broken-Unicode equation re-transcription, speaker-notes typo cleanup, optional top-of-doc summary. **Resolves every `FIXME(extract)` and `FIXME(vision)` mark left in the document and deletes the comment once handled.** When Pass 2 was skipped (≤5 vision pages), the refiner also **reconstructs those pages itself** per the Structural reconstruction policy (verbatim bullets/tables/mermaid/subfigures, not a summary). Brief MUST cite the Pass-2.5 sidecar so the refiner has a concrete error list to address. |
 | 3.5 — re-validate | _(orchestrator runs inline, optional)_ | Re-run `tools/validate_research.py --only=<slug>` as a clean-room check after refine. If anything regressed (new errors introduced, old errors not fixed), re-dispatch the refiner. |
 
 You may also dispatch additional vision-pass batches **between** Pass 2 and 3 (e.g. "vision-pass slides 100-130 of the same doc, focusing on plot panels") if the first pass missed coverage. Multiple batches against the **same** paper must run sequentially — they all Edit the same `<slug>.md` and concurrent edits collide.
@@ -197,38 +197,93 @@ For a small extraction (single-page paper, < 5 slides, or "just rerun extraction
 - **Pass 3 (refine) still gets dispatched**: it is the context-heavy quality gate and the agent boundary is what makes the skill scale.
 - Pass 2 (vision) follows the >5-page rule like always — for a sub-5-page source it is folded into Pass 3 by definition.
 
-## Diagram description policy (vision pass output)
+## Structural reconstruction policy (vision pass output — LOAD-BEARING)
 
-Every diagram, plot, image-only table, photograph, or code listing the vision agent processes lands in the markdown as a **tagged block** immediately before the image reference. The tag is one of:
+**The vision pass is load-bearing, not a caption.** It does NOT summarise a slide/figure into one prose block beside the image. It **reconstructs the source's structure faithfully in markdown** — using every applicable markdown tool — so the `.md` carries the same information and organisation as the source, and is greppable/indexable for agentic use. The reconstruction **is** the slide section's body; the frame render sits beneath it as the ground truth to verify against. We convert PDFs/decks/talks to markdown precisely so agents can read and act on the content directly — a prose summary throws that away.
 
-- `**Diagram (LLM vision pass):**` — schematic, flowchart, polar plot, geometry sketch.
-- `**Plot (LLM vision pass):**` — quantitative-axis graph (density profile, error curve, …).
-- `**Table (LLM vision pass):**` — image-only data table (transcribed as markdown table inline).
-- `**Image (LLM vision pass):**` — photograph, screenshot, before/after.
-- `**Code (LLM vision pass):**` — code shown as image (transcribed as fenced block with language tag).
+Reconstruct with the richest markdown that fits the content — use all of these where applicable, not just prose:
 
-**Why "(LLM vision pass)"** — the parenthetical attribution is **non-negotiable**. It does two things:
+| Source content | Reconstruct as |
+|---|---|
+| Bullet / numbered hierarchy | **nested markdown lists, text VERBATIM** — preserve wording, order, and depth; carry emphasis (`**bold**` for bolded/colour-highlighted terms — colour often encodes meaning, e.g. a red "SLOW!") |
+| Data table, legend, comparison grid, key/value panel | **markdown table** |
+| Flowchart, pipeline, architecture, box-and-arrow, tree, state machine, timeline, dependency graph | **```mermaid** diagram (`flowchart`/`graph`/`sequenceDiagram`/`stateDiagram`/`gantt` as fits) |
+| Multi-panel figure, before/after, side-by-side variants | **two-column subfigure layout** (fenced-div, below) with per-panel captions |
+| Code shown as an image | **fenced code block** with a language tag, transcribed verbatim |
+| Equation / formula | **LaTeX** — `$…$` inline, `$$…$$` display |
+| Quantitative plot / chart | axes + conventions, then transcribe the readable data points into a **small table** (or a `mermaid xychart` when simple); mark any value read approximately |
+| Photograph, screenshot, in-engine render, artwork | **prose description** — these genuinely cannot be reconstructed; say what rendering feature / result it demonstrates |
 
-1. **Distinguishes the block from speaker-notes** (which are author-attributed transcription) and from slide-content text (which is text-layer extraction). Three sources of text in one document, three different reliability levels — the reader must be able to tell at a glance which is which.
-2. **Marks the block as auditable for hallucination correction**. Vision-pass output is the lossy stage of the pipeline. When (not if) a future reader spots a wrong axis label or a fabricated number, the tag tells them this is the block to verify against the source image and correct. Without the tag, hallucinated numbers metastasise into citations.
+A single slide usually needs **several** of these together (the bind-groups slide = a 3-level bullet list on the left + a slot-legend table on the right). Reconstruct each region with its right tool and lay them out in the order they appear.
 
-The `research-vision` agent is required to use these tags. The `research-refiner` agent is allowed to flag suspicious blocks but **must not silently rewrite them** — flag for human review instead.
+### Two-column subfigures inside `.md`
 
-### Description discipline (enforced by the vision agent)
+Use the fenced-div layout (Quarto/pandoc renders the columns; agents read the structure directly; GitHub renders each mermaid panel). Keep the fence as ```` ```mermaid ```` (NOT ```` ```{mermaid} ````) so the Pass-2.5 validator parses it and GitHub renders it:
 
-- Lead with structure (axes, conventions, plot type), then content (curve shape, key values), then conclusion (what the visual demonstrates).
-- Be quantitative when the slide is, qualitative when the slide is.
-- Flag uncertainty ("approximately N", "roughly", "appears to be") rather than fabricate precision.
+````
+::: {layout-ncol=2}
+
+::: {#fig-trad}
+```mermaid
+flowchart TD
+  M[Material: 5 textures + UBO] --> H[Backend hashmap lookup]
+  H --> S[New bind group per frame]
+```
+Traditional: on-demand, hashmap-cached (slow)
+:::
+
+::: {#fig-hh}
+```mermaid
+flowchart TD
+  L[User-land, level load] --> P[Immutable persistent bind group]
+  P --> D[Handle reused every draw]
+```
+HypeHype: user-land persistent
+:::
+
+Bind-group construction — on-demand vs. persistent.
+:::
+````
+
+### Provenance & auditability (non-negotiable)
+
+Reconstructed content is the lossy stage — it can carry vision errors — so it must stay auditable:
+
+- Immediately **above** each reconstructed region, place a greppable provenance marker: `<!-- vision: reconstructed from frame-XXXX.jpg — verify against image -->`.
+- Embed the frame render **directly below** the reconstruction — it is the ground truth a reader/refiner checks the bullets, tables, and diagrams against.
+- Genuine image descriptions (photos/renders) keep the explicit prose tag `**Image (LLM vision pass):**` — there is nothing to reconstruct, so the prose IS the vision output and must be marked as such.
+- Mark any value/label read with low confidence inline (`≈`, "approx.") or with `<!-- FIXME(vision): … -->`; never fabricate precision.
+- `research-refiner` may fix an obviously-wrong reconstruction against the frame, but flags anything it cannot verify with `<!-- FIXME(audit): … -->` rather than guessing.
+
+### Per-slide section shape
+
+```
+## Slide N — <title verbatim>
+*[timestamp] (Ns)*
+
+<!-- vision: reconstructed from frame-0067-4137.jpg — verify against image -->
+
+<verbatim nested bullets / tables / mermaid / subfigures / code — the load-bearing body>
+
+![frame-0067-4137.jpg](assets/<slug>/frame-0067-4137.jpg)
+
+> <transcript / speaker narration for this slide>
+```
+
+### Fidelity discipline
+
+- **Verbatim first, gloss second.** Transcribe the slide's own words and structure exactly; do not paraphrase or compress. Add a one-line interpretive gloss only where meaning isn't self-evident from the slide's text.
+- **Preserve order and hierarchy** — a reader must be able to reconstruct the slide's layout from the markdown alone.
+- **Do not merge or drop bullets.** Every load-bearing line on the slide appears in the reconstruction.
 
 ### Skip rules
 
-A slide is skipped (no vision block written) ONLY when:
+A slide gets **no reconstruction** ONLY when it is:
 
-- **Decorative**: title page, agenda, section divider, "Thanks!", "References", transition card.
-- **Pure-text bullets**: no diagram, plot, photo, table, or code anywhere on the slide.
-- **Already tagged**: a `**X (LLM vision pass):**` block already exists for that slide — re-tagging would duplicate.
+- **Decorative**: title page, agenda, section divider, "Thanks!", "References", transition card, pure chrome.
+- **Already reconstructed**: a reconstruction for that frame already exists — re-doing it would duplicate.
 
-Any slide with a real visual gets a per-slide block.
+Note the change from the old policy: a **pure-text bullet slide is NOT skipped** any more. Under the load-bearing model its bullets are reconstructed verbatim (they used to be skipped because the raw OCR dump duplicated them — that dump is now removed, so the frame is the only source of that structure and the vision pass owns it). Skip only genuinely contentless slides.
 
 ## REQUIRED: Citable Canonical Naming
 

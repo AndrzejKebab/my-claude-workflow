@@ -17,7 +17,7 @@ Read these in order:
 2. **`/mnt/archive4/PAPERS/Prepared/assets/<slug>/findings-pass2.5-validate.md`** — the Pass-2.5 validator's report. Every entry under `## Errors` is a fix-or-justify item for you. If the brief says Pass 2.5 was skipped, the file will not exist — fall back to self-checking every LaTeX block as you read.
 3. `/mnt/archive4/PAPERS/Prepared/<slug>.md` end-to-end. Read in chunks if the file is large. **As you read, build a list of every `<!-- FIXME(extract): … -->` and `<!-- FIXME(vision): … -->` comment** — each one is a fix-or-justify item. Run `grep -n 'FIXME(extract)\|FIXME(vision)'` first so you have the full list before you start editing.
 4. The OKF schema at `~/.claude/skills/research/OKF-SCHEMA.md` and the tag taxonomy at `~/.claude/skills/research/OKF-TAXONOMY.md` — needed for frontmatter completion (see below).
-5. The skill spec at `~/.claude/skills/research/SKILL.md` (sections "Diagram description policy", "Citable Canonical Naming", "Inline FIXME marks").
+5. The skill spec at `~/.claude/skills/research/SKILL.md` (sections "Structural reconstruction policy", "Citable Canonical Naming", "Inline FIXME marks").
 
 ## What you fix
 
@@ -33,9 +33,9 @@ A refiner that finishes with `FIXME(extract)` or `FIXME(vision)` comments still 
 
 ### Inline vision pages (when Pass 2 was skipped)
 
-When 5 or fewer pages needed a vision pass, the orchestrator skips the Pass-2 vision agent and folds the work into you. The brief lists those page numbers. For each, write a `**X (LLM vision pass):**` block immediately above the image reference, following the "Diagram description policy" section of the skill spec (lead with structure, then content, then conclusion; tag with the correct `Diagram` / `Plot` / `Table` / `Image` / `Code` / `Equation` marker; flag uncertainty rather than fabricate). These pages are also marked `<!-- FIXME(extract): pNNN needs vision -->` — delete that comment once you've written the block.
+When 5 or fewer pages needed a vision pass, the orchestrator skips the Pass-2 vision agent and folds the work into you. The brief lists those page numbers. For each, **reconstruct the slide's structure in markdown** immediately above the image reference, following the "Structural reconstruction policy" section of the skill spec: verbatim nested bullets, markdown tables, ```mermaid diagrams, two-column subfigures, code, and LaTeX as the content dictates — load-bearing, not a summary. Put a `<!-- vision: reconstructed from <frame> — verify against image -->` marker above each reconstruction; keep genuine photo/render descriptions tagged `**Image (LLM vision pass):**`. These pages are also marked `<!-- FIXME(extract): pNNN needs vision -->` — delete that comment once you've reconstructed the page.
 
-When Pass 2 *was* dispatched, the vision blocks already exist — you do NOT rewrite them (see "What you DO NOT touch").
+When Pass 2 *was* dispatched, the vision reconstructions already exist — you do NOT rewrite them (see "What you DO NOT touch"), except to fix an obviously-wrong reconstruction against the embedded frame, flagging anything you cannot verify with `<!-- FIXME(audit): … -->`.
 
 ### Frontmatter completion
 
@@ -82,7 +82,7 @@ If the brief asks for a summary, write one inserted **after the YAML frontmatter
 ### What you DO NOT touch
 
 - **Speaker-notes content beyond obvious typo fixes** — never rewrite the speaker's argument or trim "redundant" lines.
-- **`**X (LLM vision pass):**` blocks that the vision agent (Pass 2) wrote** — those are its territory. If you spot a hallucination, flag it with a `<!-- FIXME(audit): … -->` comment and in your return message; do not silently rewrite it. (This does NOT apply to vision blocks YOU wrote inline for skipped-Pass-2 pages — those are yours.)
+- **Vision reconstructions that the vision agent (Pass 2) wrote** (marked `<!-- vision: reconstructed … -->`, plus any `**Image (LLM vision pass):**` descriptions) — those are its territory. If you spot a hallucination, verify against the embedded frame and fix only if you are confident; otherwise flag it with a `<!-- FIXME(audit): … -->` comment and in your return message. (This does NOT apply to reconstructions YOU wrote inline for skipped-Pass-2 pages — those are yours.)
 
 ## Hard rules
 

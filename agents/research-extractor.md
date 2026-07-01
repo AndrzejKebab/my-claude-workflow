@@ -73,11 +73,15 @@ Place the comment on its own line **immediately above** the line it refers to (t
 
 **What to mark:**
 
-- **Pages that need a vision pass.** Every page carrying a figure, plot, diagram, schematic, photo, image-only table, or code listing needs a `**X (LLM vision pass):**` description that this pass does not write. Mark each one immediately above its `![pNNN-page.png](...)` / `![sNNN-slide.png](...)` reference:
+- **Pages/slides that need a vision reconstruction.** The vision pass is load-bearing: it reconstructs a slide's structure in markdown (verbatim bullets, tables, mermaid, subfigures, code — see the skill's "Structural reconstruction policy"), which this pass does not write. Mark each one immediately above its `![pNNN-page.png](...)` / `![sNNN-slide.png](...)` / `![frame-XXXX-NNNN.jpg](...)` reference:
   ```
-  <!-- FIXME(extract): p014 needs vision — cone-tracing geometry sketch with aperture angle labels -->
+  <!-- FIXME(extract): s014 needs vision — bullet hierarchy + slot-legend table + box-and-arrow pipeline diagram -->
   ```
-  Use the literal substring `needs vision` — the orchestrator counts these with `grep -c 'FIXME(extract):.*needs vision'` to decide whether to dispatch the vision agent (>5 pages) or fold the descriptions into the refiner (≤5 pages). Do NOT mark `pNNN-text.png` pure-prose reference embeds — they are out of vision-pass scope.
+  Scope differs by source:
+  - **Slide decks & videos** — flag **every content slide/scene**, including pure-text bullet slides (their bullets get reconstructed verbatim now that the raw OCR dump is gone). Skip only genuinely decorative slides (title / agenda / section divider / "Thanks!" / "References" / transition / pure chrome).
+  - **Paper PDFs** — flag only **figure-bearing** pages (`pNNN-page.png`); pure-prose pages keep their marker text-layer body and are NOT flagged. Do NOT mark `pNNN-text.png` reference embeds — out of scope.
+
+  Use the literal substring `needs vision` — the orchestrator counts these with `grep -c 'FIXME(extract):.*needs vision'` to decide whether to dispatch the vision agent (>5 pages) or fold the reconstructions into the refiner (≤5 pages).
 - **Garbled / suspect equations.** Marker's LLM equation processor occasionally drops an exponent, substitutes a symbol (`\rho` for `p`, `\gamma` for `\tau`), misses a subscript (`\mu 0` for `\mu_0`), or emits syntactically-valid-but-wrong LaTeX. Where the rendered page and the text-layer disagree, or the LaTeX looks off, mark it and say what the page render appears to show.
 - **OCR / text-layer corruption.** Acrobat-OCR artefacts (`Laborat6ry`, `see~s`, τ rendered as `~` or `7`), broken CID-mapped Unicode in equations, run-together author lines, de-hyphenation failures.
 - **Anything else the refiner should know**: under-detected scenes, missing speaker notes, regen sidecars the scripts produced.
