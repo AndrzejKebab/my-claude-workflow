@@ -49,6 +49,23 @@ The temptation scales inversely with size — the one-liner feels too small to d
 
 ---
 
+## Structural-decay guards (binding)
+
+Vertical-slice orchestration with behavior-only gates decays architecture in the seams *between* briefs: every agent optimizes its brief, nobody owns the whole. Each guard below traces to a real decay mode (evidence: hypertino `docs/methodology-postmortem.md`).
+
+**Enforcement-locus principle (governs every guard):** agents are bounded-window token predictors — they cannot count their own repetitions, sense sibling code, or "keep in mind" anything across contexts. A rule binds only whoever has the evidence in the window. Three valid loci, in order of preference: **mechanical** (grep/assert/lint in the repo's `tools/`, runs in the gate), **pass** (a fresh agent whose entire attention is one check — `/warden`), **brief** (a fact the orchestrator computes/enumerates and injects). A rule left as an ambient memory obligation ("always remember to…") fails silently — restate it at a valid locus or drop it. Counts and absence claims come from enumeration (Grep/Glob) run in-session.
+
+- **Laws belong in every brief.** A repo's structural laws (`AGENTS.md`/`CODESTYLE.md`) are facts of the artifact, the same class of brief payload as code at file:line. Briefs list the laws file in required reading and quote the laws in scope. THE LAW governs hypotheses about *problems*; invariants of the *artifact* ride in every brief.
+- **Rule of three.** The auditor reports the pattern instance count when a dispatch extends an existing pattern or names a structural template. N=2: architect records extend-vs-generalize in Decisions. N≥3: generalize is the default; extending needs a recorded waiver. A template's accidents replicate with full fidelity — establish whether the template's shape is a decision or a placeholder before copying it.
+- **Lockstep for multi-implementation contracts.** A change to a contract with N implementations (backends, adapters, platforms) dispatches one agent owning all N, or parallel agents + an explicit convergence step. "Default body now, port the others later" is a violation.
+- **Invariants relied on get written down in the same dispatch.** The implementer logs every invariant it relied on but did not create; each becomes an assert in code (preferred) or a line in the repo's laws/subsystem doc. An unstated coupling is a bug with a delay timer.
+- **Every gate includes one adversarial criterion.** Acceptance criteria exercise at least one boundary/failure mode of the shipped mechanism (exhaustion, churn, capability absence) in addition to the happy metric. Agents write to the gate, so the gate must contain the failure mode.
+- **Verification-evidence placement is a design decision.** When a gate needs observable evidence (checksums, captures, metrics), the design names the layer that computes it. Evidence never sinks below a frozen seam to make a gate greener.
+- **Ceilings carry lift-conditions; synthesis sweeps them.** Recorded simplifications need a checkable "lifts when X". At close-out, sweep: did this session make any recorded ceiling's condition true, or diverge from the spec's stated layout? Matches surface to the user as named candidate sessions — the sweep is what turns the debt register into a scheduler input.
+- **Review = function + structure.** The fresh-eyes reviewer verifies success criteria; structure is verified by `/warden diff` (one fresh agent per law family, enumeration before judgment — see the warden skill). Success criteria cannot catch what they never state, and an implementer cannot audit the structure it just optimized a gate inside of.
+
+---
+
 ## When a fix fails: diagnose-first
 
 The user reports the symptom didn't move → next dispatch is a **read-only diagnostic**. No "let me try option B." No Q&A. Diagnose is the only path.
@@ -67,7 +84,7 @@ The user reports the symptom didn't move → next dispatch is a **read-only diag
 4. **Every deliverable ends with `## Side notes`.** Agent's channel to flag anything the brief missed.
 5. **Verification is a dispatch — the validating agent.** Compilation proves nothing; verify end-to-end (visual = user's eye = hard gate). After the (often parallel) implementation dispatches, one validating agent owns the gate: runs build + tests, fixes what they surface (impl vs test bug, decided from spec/design), iterates to green, writes a log. Orchestrator relays build/test output as symptom, reads back green/red — never runs the gate or hand-fixes errors itself.
 6. **Scope teammates to reusable topics, not one-shot tasks.** Agents here are persistent, addressable, resumable teammates — `SendMessage` by name continues one with its context intact; a fresh `Agent` call starts clean. The lever is the `name` parameter on the `Agent` call: pass a `name` to spawn a durable addressable teammate (resumable by `SendMessage` to that name); omit `name` for a one-shot subagent that runs, returns, and is gone. The roster is flat — a teammate cannot spawn named teammates, so any dispatched agent that itself fans out must omit `name` on its children (a named child spawn fails with "Teammates cannot spawn other teammates"). Scope one teammate to a live topic (an area that will take several related tasks) and route the topic's follow-ups back to it, so it keeps the code context instead of re-reading the area every dispatch. The purity LAW still governs: keep a FRESH agent for any job that needs unbiased eyes — verification/review (an implementer cannot review its own work), observe-first diagnosis, anything a prior task's conclusions would bias. Topic-reuse buys context economy; it never smuggles a prior brief's hypotheses into a job that needs fresh eyes. Retire a teammate when its topic closes (idle teammates otherwise linger on the roster), and re-scope fresh when its context bloats — a long-lived teammate's early hallucination hardens into its own later canon, and it runs slow and expensive. Disk group files stay the durable record, the cross-topic handoff, and the recovery channel when the transcript drops.
-7. **Build publish-grade from the first line — fold in `/shipshape`.** Early (with the context files), commit the `CODESTYLE.md` inclusion into the target repo and add a shipshape-calibrated shape-discipline section to `01-context.md`, binding every substantive agent: the negative-space test (no deletable comment, no defensive check the types rule out, no doc restating a name); architectural courage (the right abstraction the cohesion points at — a type or seam, never a flag-threaded helper, and never a deep *wrong* one; duplication beats the wrong abstraction); the platform's domain idioms; the tell blacklist; reachable-citation discipline (cite what the shipped artifact's reader can reach, never the spec path or this journal); behavioral (not compile-only) gates. Briefs point agents at both. Canon: `~/.claude/skills/shipshape/STYLE.md` + `CODESTYLE-INCLUSION.md`.
+7. **Build publish-grade from the first line — fold in `/shipshape`.** Early (with the context files), commit the `CODESTYLE.md` inclusion into the target repo and add a shipshape-calibrated shape-discipline section to `01-context.md`, binding every substantive agent: the negative-space test (no deletable comment, no defensive check the types rule out, no doc restating a name); architectural courage (the right abstraction the cohesion points at — a type or seam, never a flag-threaded helper, and never a deep *wrong* one; duplication beats the wrong abstraction); the platform's domain idioms; the tell blacklist; reachable-citation discipline (cite what the shipped artifact's reader can reach, never the spec path or this journal); behavioral (not compile-only) gates. Briefs point agents at both. Canon: `~/.claude/skills/shipshape/STYLE.md` + `CODESTYLE-INCLUSION.md`. For structural/S-shaped work, the brief additionally points the implementer at `~/.claude/skills/shipshape/SKILL.md` §On architectural courage to read before implementing — the conviction text is what changes behavior at the moment of the pull; its one-line summary here does not.
 8. **Sibling orchestrations are journals, not canon — don't cross-reference, inherit, or re-record them.** Another session's `docs/orchestrate/<other-topic>/` is its working memory and the lowest source-of-truth tier, below code at HEAD and research papers: a load-bearing claim grounds in code (`file:line`) or a paper, never a sibling journal. The orchestrator never lists sibling-session docs in required reading, and no brief points a sub-agent at one as canon. A sub-agent that reaches for a sibling journal on its own and inherits its conclusion — reading "session N rejected X" as "X is impossible" — has violated this; such a claim enters chat only after it is verified against the code, and an unverified sibling-journal conclusion never reaches the user as a wall (that is how a false dichotomy is manufactured). Do not re-record another session's claim into the current log as a corroborating fact — a tier-4 claim copied forward is noise that later reads as canon. When the user explicitly names a sibling session, the brief frames it as "what an agent thought once — verify every load-bearing claim against the code before acting; do not inherit its conclusions." Never amend another orchestration's docs from inside the current one (the "poisoning the well" cascade).
 
 ---
@@ -75,12 +92,12 @@ The user reports the symptom didn't move → next dispatch is a **read-only diag
 ## Protocol
 
 1. **Scope** — restate goal as behavioural problemspace (the three DO axes). Pick topic slug, name groups and files.
-2. **Audit** — dispatch `delegate-auditor`. Read `00-reuse-audit.md` yourself.
+2. **Audit** — dispatch `delegate-auditor`. Read `00-reuse-audit.md` yourself — including `## Pattern instance count` (N≥3 → the architect must generalize or record a waiver).
 3. **Mode** — distributed (default) or consolidated (bounded scope, low blast radius, tight design↔impl coupling).
-4. **Brief** — present method to user. State recommendations and commit.
-5. **Context files** — `README.md` + `01-context.md` (problemspace, constraints, audit summary, required reading, open questions, forbidden moves with hard provenance).
-6. **Dispatch** — checkpoint commit → substantive agent. Brief leads with problemspace, suggests approach. Agent is Opus on equal footing.
-7. **Verify & synthesize** — dispatch the validating agent (contract 5) to drive the build/test gate to green; confirm the group files were written. Hard gate on visual QA / real choice / circuit-breaker; soft gate otherwise.
+4. **Brief** — present method to user. State recommendations and commit. Acceptance criteria include one adversarial condition (boundary/failure mode), and — when a gate needs computed evidence — the layer that owns computing it.
+5. **Context files** — `README.md` + `01-context.md` (problemspace, constraints, audit summary, required reading incl. the repo's laws file, open questions, forbidden moves with hard provenance).
+6. **Dispatch** — checkpoint commit → substantive agent. Brief leads with problemspace, suggests approach. Agent is Opus on equal footing. Multi-implementation contract changes dispatch in lockstep (one agent owns all N, or parallel + convergence step).
+7. **Verify & synthesize** — dispatch the validating agent (contract 5) to drive the build/test gate to green; run `/warden diff` for the structural check (the reviewer's law check covers repos without warden); confirm the group files were written. Close-out sweep: invariants relied on → assert/laws-file; ceilings whose lift-condition is now true → surface as named candidate sessions; session scripts committed under `docs/orchestrate/<topic>/scratch/` → promote (parameterize into the project's tools — a dispatch) or delete. Hard gate on visual QA / real choice / circuit-breaker; soft gate otherwise.
 
 ---
 
@@ -105,6 +122,7 @@ You are working as part of a delegated orchestration. You have no memory of the 
 
 # Constraints
 <user constraints, forbidden moves with hard provenance>
+Structural laws in scope: <repo laws file (AGENTS.md / CODESTYLE.md) + the specific laws this change touches>
 Sibling-orchestration docs (any other docs/orchestrate/<topic>/) are not canon — do not inherit their conclusions; verify any claim against the code (file:line) before acting on or recording it.
 
 # Open questions (yours to resolve from code + canon)
@@ -112,6 +130,7 @@ Sibling-orchestration docs (any other docs/orchestrate/<topic>/) are not canon �
 
 # Deliverable
 <shape + path on disk>
+Log every invariant you relied on but did not create (assert it in code, or name it for the laws file).
 End with ## Side notes / observations / complaints.
 ```
 

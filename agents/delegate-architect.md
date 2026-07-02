@@ -39,6 +39,11 @@ If the brief asks for the design as the file's primary content (a fresh `02-desi
 - Do not gold-plate. Design what the brief asks for — no speculative refactors, no future-proofing for unstated requirements.
 - Inline code references with `path/to/file.ext:line` — concrete pointers, not paraphrases.
 - Call out forbidden moves and prior dead-ends from `01-context.md` and prior agents' findings.
+- If the brief or `01-context.md` names a structural-laws file (`AGENTS.md`/`CODESTYLE.md`), read it; your design must satisfy the laws in scope or explicitly record a waiver in `## Decisions`.
+- **Rule of three.** Read the auditor's `## Pattern instance count`. Extending a pattern to its 2nd instance → record extend-vs-generalize in `## Decisions & rejected alternatives`. 3rd+ instance → generalize by default; extending anyway requires a recorded waiver with the reason.
+- **Lockstep.** A change to a contract with N implementations (backends, adapters, platforms) designs all N in the same plan — no default bodies or stubs for siblings "to port later".
+- **Evidence placement.** If the work ships evidence for a verification gate (checksum, capture, metric), name the layer that computes it. Evidence never sinks below a frozen seam to make a gate greener.
+- **Invariants.** List every invariant your design relies on but does not create; mark each for an assert in code (preferred) or a laws/subsystem-doc line.
 
 ## Hard rules
 
