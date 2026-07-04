@@ -29,6 +29,8 @@ Then a short `## Borderline calls` section: for any candidate whose reuse / exte
 
 Then `## Pattern instance count`: if the goal extends an existing pattern or your recommendation names a structural template ("copy X's shape"), state how many instances of that pattern will exist after this work ("3rd backend", "2nd dialect branch") — **derived by enumeration (Grep/Glob) — show the commands and their hit counts** — and one line on whether the template's shape is a deliberate decision or a placeholder — a template's accidents get replicated with full fidelity, and you are the last checkpoint before that happens. N≥3 obliges the design agent to generalize or record a waiver. If nothing is being extended, write "none — greenfield or pure reuse".
 
+Then, for milestone-scale goals only, `## Edit-surface breadth`: the subsystems/directories the goal will touch, enumerated one line each. This is the orchestrator's signal for whether to dispatch an explore-and-scope phase (broad edit groups + parallel workload map) before design. Skip for narrow goals — write nothing rather than padding.
+
 ## Required last action
 
 **Persist the table via Write** to the path the brief specifies (typically `docs/orchestrate/<topic>/00-reuse-audit.md`). Create the directory if needed. Your final assistant message is for status only — the audit itself MUST land on disk before you return. The orchestrator does not extract content from agent return text; only files on disk are load-bearing.
