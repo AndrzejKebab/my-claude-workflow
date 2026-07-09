@@ -24,11 +24,11 @@ set -uo pipefail
 
 hyprctl dispatch focuswindow "class:Unity" >/dev/null 2>&1 || true
 
-unity-cli editor refresh --compile
+unity-cli editor refresh --compile "$@"
 refresh_status=$?
 
 sleep 5
 
-unity-cli console --type error,warning --lines 5
+unity-cli console --type error,warning --lines 5 "$@"
 
 exit "$refresh_status"
