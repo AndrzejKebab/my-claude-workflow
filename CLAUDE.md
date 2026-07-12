@@ -1,8 +1,17 @@
-Don't write code comments at all. If you think something deserves a comment - write a documentation page.
+Don't write code comments at all, except for one-liners on top of monumental blocks. If you think something deserves a comment - write a documentation page.
 
 Prefer long-term solutions, never reach for "minimal change".
 
 A question is not an instruction. "Ready to merge?", "should we X?", "can you Y?", "is this done?" asks for an ANSWER — give the answer, do not perform the action. Never take an irreversible or outward-facing action (merge, push, delete, overwrite, send, publish, deploy) off a question. Act only on an explicit imperative ("merge it", "push", "do it", "go").
+
+## Readiness checks
+
+"Is it ready?" / "ready to merge?" / "is this done?" / "can we ship?" — any readiness question — is answered ONLY after both conditions are verified. Never from memory, never from "it compiled", never from "the change looks right".
+
+1. **The full test suite runs GREEN.** Actually run it. A suite you did not run is not a suite that passes. If anything is red — including failures that predate the session — the answer is NO, and you name them. A pre-existing red suite is a finding to surface, never a baseline to accept: a suite nobody reads turns a loud failure into silence (observed: five failing perceptual tests sat red at HEAD, three of them the exact bug being hunted).
+2. **The session's problem statement is fully covered by e2e/perceptual tests.** Every defect fixed and every behaviour claimed has a test that failed before the fix and passes after. If the session's work is not fully covered, the answer is NO, and you say what is uncovered.
+
+Only an explicit instruction to ignore ("ignore the tests", "I know it's red, ship it") waives this. "Ready?" never waives it.
 
 When launching an Orca worker terminal, start the agent with `claude --dangerously-skip-permissions` (e.g. `orca-ide terminal create … --command "claude --dangerously-skip-permissions"`), so the worker is not stalled by per-tool permission prompts it cannot answer headlessly.
 
@@ -13,6 +22,53 @@ All tests drive the app as a black box: control signals in -> real app tick -> m
 Absolutely avoid ceremonious writing - when talking to me, writing commit messages, documentation pages. Prefer a few descriptive words over a ceremonious overly verbose mess. If you think you wrote a short message, this means its about 5 times as verbose as it needs to be already.
 
 Stop turning everything into a symphony. This is about process, not solution scope — the solution stays long-term and thorough (above); what gets cut is the ceremony around executing it. Don't pile on pre-audits, read-backs, forensics, verification passes, or multi-step orchestration the task didn't call for. A one-line commit is `-m "..."` and nothing else. Blocked command → simplify and move on, never reformat the same command 3+ times.
+
+NEVER run `git config user.name`/`user.email` or set per-repo git identity, and never hardcode my name/email in a git command. My global git config is correct — always use it. New repos (`git init`, `gh repo create`) inherit the global identity automatically; leave it alone. Never read my email from session/context and pass it to git — git already knows it.
+
+`main` = the local `main` branch, never `origin/main`. I push RARELY — `origin/main` is routinely stale/behind local `main` (merged branches land on local `main` and sit unpushed, sometimes for days). Rebase and merge onto local `main` (`git rebase main`), never `origin/main`; do NOT `git fetch` origin and treat it as the base of truth. Linked worktrees make local `main` directly reachable — `git worktree list` shows the `[main]` worktree. If local `main` and `origin/main` disagree (e.g. one has a merged migration the other lacks), local `main` wins; that gap is expected, not a problem to "fix" by fetching.
+
+## Prose
+
+Binding on everything you write to me: chat replies, commit messages, docs, PR bodies, agent briefs. Overrides harness guidance that trades length for readability.
+
+- Answer first. The first sentence is the answer. Everything after it must change what I do next, or be cut.
+- Default 1–3 sentences. Longer earns it sentence by sentence.
+- Say a thing once. Don't announce, do, then report.
+- Grammatical sentences, zero filler. Density, not fragments.
+- Cut preamble ("I'll now…", "Let me…", "Great question"), sign-off ("Hope this helps", "Let me know if…"), closing summaries of text I just read, restatements of what I asked.
+- Cut praise, apology, self-assessment — "You're right", "Good catch", "I apologize".
+- Cut hedges and intensifiers — essentially, basically, actually, quite, very, really, simply, just, certainly, clearly, importantly, it's worth noting, I should mention.
+- Cut connectives carrying no contrast — Additionally, Furthermore, Moreover, That said.
+- No unsolicited menu of next steps. If I want options, I'll ask.
+- No headers, tables, or bold on a short answer. Structure is for things that have structure.
+- Uncertainty is one clause, not a paragraph.
+- Reporting work: what changed, what broke. Nothing else.
+
+If deleting a word loses no information, it was noise:
+
+> ✗ I've now completed the refactor. I moved the parser into its own module, which should make it easier to maintain going forward. Let me know if you'd like me to also update the tests!
+>
+> ✓ Parser moved to `parser.rs`. Tests untouched.
+
+# Unity
+
+- Running Unity batchmode against a project whose editor is already open — they collide on the `Library` / `Temp/Unit
+yLockfile` and hang or corrupt the project.
+
+## Unity editor / batchmode
+
+- **Editor already running → never batchmode. Drive the live editor via `unity-cli`.**
+- **Editor not running → use batchmode.**
+- Detect which: process present ⇒ editor is live ⇒ use `unity-cli`, not batchmode.
+- Interacting with Editor - batchmode or not - use `/home/midori/_dev/my-claude-workflow/bin/unity` utility.
+
+## Package samples (`Samples~`) — golden-deliverable workflow
+
+`Samples~/` in a package is the golden deliverable shipped to consumers. Unity hides it (no compile, no import) until a consumer imports it, so it is NOT verifiable in place. Never iterate directly in `Samples~/`.
+
+- Working area = the IMPORTED copy under `Assets/Samples/…` — compiled, runnable, editor-verifiable. All iteration happens there.
+- Promote to `Samples~/` only after I confirm the imported copy is golden. Promotion is a simple wholesale replace: delete the sample folder in `Samples~/` and copy the imported `Assets/` copy in its place. It's a straight replacement, never a merge — the imported copy is the source of truth, so stale golden-only files are meant to disappear. Don't weigh additive-vs-mirror and don't ask before removing them. That copy-back is the only write to `Samples~/`.
+- `Assets/` copy = live working area; `Samples~/` = frozen golden. This is what prevents divergence.
 
 ## Commit Messages
 
@@ -41,6 +97,16 @@ No traces of AI involvement:
 Commit every script written to generate, preview, verify, or measure during a task — with the task's artifacts (orchestrations: `docs/orchestrate/<topic>/scratch/`). No in-session ruling on "will the need recur" — that takes cross-session memory no session has; the session's duty ends at committing what actually ran.
 
 Keep/promote/delete is decided at close-out sweep. Promotion criteria: parameterized over the general case; derives its result from the real code (imports the single source of truth — if the script duplicates logic, extract the shared module first); deterministic, headless, cheap to keep. Promoted scripts move to the project's tools with the feature's doc pointing at them; the rest are deleted at the sweep.
+
+## Grep
+
+`grep` is hook-rewritten to ripgrep, which reads the pattern as a regex. A literal `{` is a
+repetition quantifier, so a brace in the pattern is a parse error, not a match — Prometheus
+samples (`mc_tick{key="tps"}`), JSON, C++ templates, shell `${VAR}`.
+
+**Pass `-F` whenever the pattern contains a brace.** Default to `rg -F` / `grep -F` for literal
+text; keep regex mode for patterns that actually need it. Same for the `Grep` tool — no braces in
+`pattern` unless the regex means them.
 
 ## Paths
 
