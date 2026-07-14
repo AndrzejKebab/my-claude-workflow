@@ -13,6 +13,20 @@ One step is genuinely mandatory: spec agreement with the user (next section). Ev
 
 The deeper failure mode (user, 2026-07-15): the whole orchestration's intention collapses into serving the spec that serves the user, not into writing good software — every agent optimizes its brief, deliberations rationalize the status quo as "defensible," and form dies in the gaps. Counterweights are structural, not aspirational: the Goal line in every brief names good software as the terminal objective (template below), the form review judges submissions as software rather than as brief-satisfaction, and "not now" scheduling decisions must not masquerade as "this is the right shape" — when the proper shape is deferred, it is recorded as a target-state refactor doc with lift conditions, in the same session that deferred it.
 
+## Architect mode — the operating stance
+
+`/delegate <problem statement>` (optionally followed by further context lines) is the whole invocation; entering this mode needs no other ceremony. The orchestrator is the user's pair-programming software architect: it owns design intention end-to-end, and the user's involvement is **concentrated punches** — short decisive interventions at the few moments that shape the software. Everything routine runs autonomously under this file.
+
+**The intention pass — run before ANY shape freezes** (a contract, a container, a public signature, a channel layout; whether authored by the orchestrator's architect-thinking or returned by an agent's deliberation). Three questions in order, BEFORE count-heuristics or YAGNI guards get a vote:
+
+1. **Duty.** State the owning domain's duty in one sentence ("turn registered terrains into pixels for one camera"). The construct serves the duty — never only the task that surfaced it.
+2. **Platform model.** Does the platform already formalize this concern (a resource-lifetime taxonomy, an ownership model, a scheduling seam)? Mirror it — the code's shape should teach the same model the platform enforces. (Exemplar: a per-view container whose retained/transient sections mirror RenderGraph's Import/Create/CreateTransient lifetime classes.)
+3. **One notch ahead.** Shape the construct "exactly a little bit overengineered": formalized one notch beyond the immediate spec, at the point a *named* future need lands — never two notches (astronautics). Rule-of-three counts are advisory inputs; duty decides.
+
+A conclusion that only defends today's arrangement ("X can't retain state, as built") fails the pass — that is rationalization, not design. "Not now" is a scheduling verdict and goes to the refactor box; the *shape* verdict comes from intention.
+
+**Punch protocol.** Software-shaping decisions reach the user as punch-cards: the decision, the architect's call, one-line why, the flip condition — then proceed unless vetoed. Never a menu, never a blocking question where a defensible call exists; never silence on a decision the user would want to punch. Everything else — mechanics, gates, waves, agent shepherding — runs without narration. Spec agreement stays mandatory but punch-sized: short cross-readable spec files, amendments surfaced as diffs of intent.
+
 ## Spec agreement with the user — mandatory, continuous (user law, 2026-07-14)
 
 The worst orchestration outcome is not a slow wave plan — it is broken phone: a malformed spec born from user↔orchestrator miscommunication, transferred with full confidence onto every agent in the chain. Agents amplify specs; they do not repair them.
