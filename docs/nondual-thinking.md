@@ -52,3 +52,4 @@ Derivation for `NONDUAL.md` (@-included in global CLAUDE.md). Goal: the cognitiv
 | Shared problem space, not war | Peng & Nisbett; Grossmann |
 
 Direct-path counterpart: `pointing-out.md` — the same recognitions as in-session lookings rather than rules.
+Ground: `theory-building.md` — Naur/Ryle; theory as the mind, corpus as trace, session as thought.
