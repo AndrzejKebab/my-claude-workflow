@@ -8,6 +8,8 @@ description: Merge current worktree branch into main, cleanup worktree
 
 Merge the current worktree's branch into main and remove the worktree. In a superproject with submodules, "into main" means main all the way down: the superproject's `main` advances, and each touched submodule's own `main` advances to the merged commit and is checked out — no submodule left in detached HEAD.
 
+> **"main" = the LOCAL `main` branch (`${PROJECT_ROOT}`), never `origin/main`.** We push RARELY, so `origin/main` is routinely behind local `main`. The merge lands on local `main` and stays unpushed until you explicitly push (step 12) — never treat `origin/main` as the merge base or a verification reference, and never fetch/pull to "catch up" main before merging.
+
 ## The submodule hazard (read before removing any worktree)
 
 A worktree that was populated with `git submodule update --init` holds its submodules as **separate clones with their own object stores** (under `.git/worktrees/<wt>/modules/<path>`), distinct from main's submodule object store (`.git/modules/<path>`). A commit made inside the worktree's submodule therefore exists **only** in that worktree's clone. The superproject branch records a gitlink to it, but main's submodule cannot resolve it.

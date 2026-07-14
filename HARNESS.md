@@ -14,18 +14,3 @@ How to apply:
 - Never `grep --include`. For genuine GNU grep semantics use `command grep …` or `bash -c 'grep …'`, which bypass the wrapper.
 - Quote every glob; write zsh-dialect loops, or wrap loops/heredocs in `bash -c '…'`.
 
-## RTK `ls` swallowing — excluded by config
-
-`rtk ls` swallowed output entirely (empty result, exit 0), so any hook-rewritten `ls` looked like an empty directory. Fix applied: `ls` is listed in `[hooks] exclude_commands` in `~/.config/rtk/config.toml` (machine-local — re-apply on a new machine). Plain `ls` now runs unfiltered; pipe potentially large listings through `| head -40`. If another command's output vanishes with exit 0, suspect the rtk filter for that command and exclude it the same way — `rtk proxy <cmd>` confirms the diagnosis.
-
-## Tool-output reliability + Workflow dispatch
-
-The environment intermittently **drops, reorders, and duplicates tool results** in the transcript (seen across Bash, Read, Workflow). A missing result is not evidence of failure — it often arrives a turn later, interleaved. Parallel Bash calls in one message amplify the dropping; single calls render more reliably.
-
-- A `Workflow` first-invoke has returned **no result at all** (no Run ID, no error, no persisted script) — genuinely not launched — while an identical second invoke launched cleanly. Distinguish "didn't launch" from "result dropped" before re-invoking: a workflow that secretly launched, re-invoked, gives **racing writers**.
-- Workflows do **not** appear in `TaskList` (background bash/agent tasks only). Confirm a launch by the **Run ID + output files on disk**, or `/workflows` — never by `TaskList`.
-
-How to apply:
-- After any background dispatch, verify by Run ID + on-disk artifacts. If a result is blank, check disk for the persisted script / output files **before** re-invoking.
-- Have dispatched agents write their deliverable to a file and return a one-line status — disk is the durable channel when transcript results drop.
-- Prefer single Bash calls over large parallel batches; if one result is blank, re-run that single call rather than assuming failure.

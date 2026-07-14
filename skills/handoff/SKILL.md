@@ -29,7 +29,7 @@ If you find yourself typing any of those — **delete it.**
 
 Two parts: a `.md` file on disk + a kickoff line you output in chat.
 
-### Part 1: the `.md` file
+### the `.md` file
 
 Path is **always absolute**: `/tmp/<short-kebab-topic>-handoff.md`. If a prior handoff exists at a similar name, append `-v2` / `-v3` — never overwrite (prior file is evidence of what didn't work).
 
@@ -41,46 +41,7 @@ Contents — minimal:
 
 No required-section template beyond the above. No prescribed headings. No "deliverable" section. No "investigation order" section. Write the link, stop.
 
-### Part 2: the kickoff line
-
-After writing the file, output the kickoff line in chat verbatim. **Pick exactly one launcher — `/delegate` or `execute` — never both as alternatives.**
-
-```
-/delegate /absolute/path/to/handoff.md [/worktree worktree-path]
-```
-
-OR
-
-```
-execute /absolute/path/to/handoff.md [/worktree worktree-path]
-```
-
-**Pick the launcher per this rule (binding):**
-- **`/delegate`** — complex tasks. Multi-phase, design-needs-architecting, broad blast radius, or otherwise won't land in one session.
-- **`execute`** — followups that can land in one session. Single-thread work that has clear context + a tractable scope.
-
-If you're tempted to write `[/delegate]|[execute]` to "let the user pick" — that's a sign you haven't decided. Make the call from the task scope yourself. The user can override at paste-time by editing one word; that's cheaper than reading both options every paste.
-
-Other formatting:
-- The handoff path is **always absolute** — `/tmp/<topic>-handoff.md`, never `~/...` or relative.
-- `[/worktree worktree-path]` is included **only if** the work lives in a worktree. Path is absolute or relative-from-repo-root, matching the project's convention.
-
-Both halves of the handoff are required: the file gives the next session context, the kickoff line gives the user the literal shell-paste-able command with one launcher already picked.
-
-## Why this matters
-
-A handoff that prescribes shape — investigation order, deliverable structure, ranked hypotheses, fix sites — **convinces the next session not to think**. The receiving Opus iterates inside the orchestrator's framing instead of forming its own from the code.
-
-This skill has addressed two failure modes in sequence:
-
-1. **Diagnosis-shaped handoffs** (`Mode: Diagnosed`, "Root cause: X", "fix sites: Y, Z"). The receiving session iterates on the dead-end theory until the user redirects. The §"Absolute prohibitions" first-half list is the cure.
-
-2. **Briefing-shaped handoffs** (`Deliverable: your reply must contain investigation + diagnosis + fix + verification, in that order`). Same anti-pattern at a higher level of abstraction — the orchestrator constrains the next session's deliverable shape instead of its hypothesis, but the constraint is still unverified, still forecloses the next session's own analytical surface, and still biases the work toward the orchestrator's mental model of "what the task is". The §"Absolute prohibitions" second-half list (no prescribed deliverable shape, no prescribed investigation shape) is the cure for this one.
-
-The next session is the same flagship Opus you are. Trust it. The handoff is the link; the session is the work.
-
 ## Filename + path discipline
 
 - File path: `/tmp/<short-kebab-topic>-handoff.md`. Absolute, always.
 - Kickoff line: include the absolute path verbatim. The user copy-pastes; relative paths break.
-- Prior handoffs at the same topic: append `-v2` / `-v3`. **Never overwrite** — the prior file is evidence of what didn't work for the prior session.
