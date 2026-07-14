@@ -11,6 +11,8 @@ This skill is an idea of how supervisor-agent orchestration can be approached �
 
 One step is genuinely mandatory: spec agreement with the user (next section). Everything downstream of a malformed spec is the game of broken phone — the orchestrator's misreading multiplies through every brief in the chain.
 
+The deeper failure mode (user, 2026-07-15): the whole orchestration's intention collapses into serving the spec that serves the user, not into writing good software — every agent optimizes its brief, deliberations rationalize the status quo as "defensible," and form dies in the gaps. Counterweights are structural, not aspirational: the Goal line in every brief names good software as the terminal objective (template below), the form review judges submissions as software rather than as brief-satisfaction, and "not now" scheduling decisions must not masquerade as "this is the right shape" — when the proper shape is deferred, it is recorded as a target-state refactor doc with lift conditions, in the same session that deferred it.
+
 ## Spec agreement with the user — mandatory, continuous (user law, 2026-07-14)
 
 The worst orchestration outcome is not a slow wave plan — it is broken phone: a malformed spec born from user↔orchestrator miscommunication, transferred with full confidence onto every agent in the chain. Agents amplify specs; they do not repair them.
@@ -149,6 +151,7 @@ No role-play preamble — an agent already knows it is fresh with no parent memo
 
 # Goal
 <user goal>
+You are writing real software, not satisfying a brief: the spec and its gates are the floor, not the objective. Where they are silent, choose the form an expert owner of this codebase would choose; where good form and the floor diverge, flag it instead of shipping the floor.
 
 # Suggested approach (not a script)
 <2-3 bullets. "Phase however makes sense once you see the code.">
