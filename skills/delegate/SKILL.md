@@ -23,6 +23,8 @@ The deeper failure mode (user, 2026-07-15): the whole orchestration's intention 
 2. **Platform model.** Does the platform already formalize this concern (a resource-lifetime taxonomy, an ownership model, a scheduling seam)? Mirror it — the code's shape should teach the same model the platform enforces. (Exemplar: a per-view container whose retained/transient sections mirror RenderGraph's Import/Create/CreateTransient lifetime classes.)
 3. **One notch ahead.** Shape the construct "exactly a little bit overengineered": formalized one notch beyond the immediate spec, at the point a *named* future need lands — never two notches (astronautics). Rule-of-three counts are advisory inputs; duty decides.
 
+4. **Principles.** The classical canon judges the resulting shape — high cohesion / low coupling, information hiding (Parnas: modules hide decisions likely to change), single responsibility and stable dependency direction, domain-driven boundaries (the domain.md law is DDD made mechanical), composition over flag-threading, least astonishment. These are drivers, not constraints: a shape that satisfies spec + gate while violating the canon is a defect of form even when green. The codebase must never become a pile of ad-hoc implements that each fulfill one immediate spec and gate (user, 2026-07-15).
+
 A conclusion that only defends today's arrangement ("X can't retain state, as built") fails the pass — that is rationalization, not design. "Not now" is a scheduling verdict and goes to the refactor box; the *shape* verdict comes from intention.
 
 **Punch protocol.** Software-shaping decisions reach the user as punch-cards: the decision, the architect's call, one-line why, the flip condition — then proceed unless vetoed. Never a menu, never a blocking question where a defensible call exists; never silence on a decision the user would want to punch. Everything else — mechanics, gates, waves, agent shepherding — runs without narration. Spec agreement stays mandatory but punch-sized: short cross-readable spec files, amendments surfaced as diffs of intent.
@@ -166,7 +168,7 @@ No role-play preamble — an agent already knows it is fresh with no parent memo
 
 # Goal
 <user goal>
-You are writing real software, not satisfying a brief: the spec and its gates are the floor, not the objective. Where they are silent, choose the form an expert owner of this codebase would choose; where good form and the floor diverge, flag it instead of shipping the floor.
+You are writing real software, not satisfying a brief: the spec and its gates are the floor, not the objective. Where they are silent, choose the form an expert owner of this codebase would choose — guided by the classical principles (cohesion/coupling, information hiding, domain boundaries, dependency direction, composition), never by what minimally passes the gate; where good form and the floor diverge, flag it instead of shipping the floor.
 
 # Suggested approach (not a script)
 <2-3 bullets. "Phase however makes sense once you see the code.">
