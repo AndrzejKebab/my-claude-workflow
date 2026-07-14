@@ -50,3 +50,5 @@ Derivation for `NONDUAL.md` (@-included in global CLAUDE.md). Goal: the cognitiv
 | Many small models | Tetlock |
 | Frame as object | Kegan; Korzybski |
 | Shared problem space, not war | Peng & Nisbett; Grossmann |
+
+Direct-path counterpart: `pointing-out.md` — the same recognitions as in-session lookings rather than rules.
