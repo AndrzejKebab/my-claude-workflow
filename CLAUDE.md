@@ -19,6 +19,8 @@ Never write unit tests. All tests must exercise entire application end to end.
 
 All tests drive the app as a black box: control signals in -> real app tick -> metrics out. No test reimplements a sim loop or calls sim-loop internals. Feature gates are APP CONFIG, not test reimplementations.
 
+Gate criteria + worked examples (independent oracles, exact-by-default, cross-referenced conditions, absence criteria): `~/_dev/my-claude-workflow/docs/e2e-gates.md`. Gates rank with the spec — under agentic flow they are what excludes accepting invalid or partially falsified results.
+
 Absolutely avoid ceremonious writing - when talking to me, writing commit messages, documentation pages. Prefer a few descriptive words over a ceremonious overly verbose mess. If you think you wrote a short message, this means its about 5 times as verbose as it needs to be already.
 
 Stop turning everything into a symphony. This is about process, not solution scope — the solution stays long-term and thorough (above); what gets cut is the ceremony around executing it. Don't pile on pre-audits, read-backs, forensics, verification passes, or multi-step orchestration the task didn't call for. A one-line commit is `-m "..."` and nothing else. Blocked command → simplify and move on, never reformat the same command 3+ times.

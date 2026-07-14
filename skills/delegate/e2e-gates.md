@@ -1,5 +1,7 @@
 # E2e gate authoring discipline (binding)
 
+General gate criteria + worked examples (global, all work): `~/_dev/my-claude-workflow/docs/e2e-gates.md`.
+
 Sidecar to `SKILL.md` — read this when an orchestration's scope includes adding or modifying an e2e gate that captures a **user-visible artefact** (a visual glitch, a runtime behaviour, anything whose ground-truth is "what the user sees"). The gate is NOT considered analytically valid until the user has visually confirmed that its captures show the artefact. A passing/failing variance ratio + a numerical threshold are **not sufficient** — they only prove the metric responds to the captured pixels, not that the captured pixels are the artefact.
 
 This rule exists because the dominant failure mode of this orchestration mode is: an agent builds an e2e gate that compiles and passes a pre-fix/post-fix smell test, but the captured framebuffers are smeary, mis-timed, off-camera, or otherwise not actually showing the symptom the user described. The fix lands, the gate is green, and the artefact is still there because the gate was measuring something else.
