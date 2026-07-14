@@ -129,6 +129,8 @@ text; keep regex mode for patterns that actually need it. Same for the `Grep` to
 
 @FFF.md
 
+@NONDUAL.md
+
 ---
 
 ## Delegation & document-writing
