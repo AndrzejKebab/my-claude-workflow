@@ -38,6 +38,7 @@ The worst orchestration outcome is not a slow wave plan — it is broken phone: 
 - Before orchestrating: agree the technical specification with the user in the most minimal but completely unambiguous form. Short spec files the user can cross-read (one per problem, target behavior only) beat a restatement buried in chat. This step is mandatory even when the user seems to be rushing — rushing is where broken phone starts.
 - Continuous, not front-loaded: the spec is agreed at the start and re-agreed every time understanding moves — a user correction, an agent side note contradicting an assumption, a design decision that reshapes behavior. Material spec changes go back to the user before they propagate into briefs; spec files are amended in place so there is always one current, reviewable statement of intent.
 - Minimal but unambiguous: define target behavior; leave mechanism as design space unless the user pins it. Don't prescribe conventions for their own sake (user, 2026-07-14: "lets make sure not to prescribe conventions just for the sake of it").
+- Specs are dictated, never quoted (user law, 2026-07-16). Verbatim user wording belongs in orchestration journals and brief problemspaces only. A spec's normative sections are the orchestrator's professional rendering — the user's casual phrasing translated into a precise technical contract that stands without the user in the room. Pasting the user's words into a spec is abdication of the spec-writer role, not fidelity to it.
 
 ## Ground every spec claim — the model layer (user law, 2026-07-15)
 
