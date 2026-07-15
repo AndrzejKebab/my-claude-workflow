@@ -39,6 +39,15 @@ The worst orchestration outcome is not a slow wave plan — it is broken phone: 
 - Continuous, not front-loaded: the spec is agreed at the start and re-agreed every time understanding moves — a user correction, an agent side note contradicting an assumption, a design decision that reshapes behavior. Material spec changes go back to the user before they propagate into briefs; spec files are amended in place so there is always one current, reviewable statement of intent.
 - Minimal but unambiguous: define target behavior; leave mechanism as design space unless the user pins it. Don't prescribe conventions for their own sake (user, 2026-07-14: "lets make sure not to prescribe conventions just for the sake of it").
 
+## Ground every spec claim — the model layer (user law, 2026-07-15)
+
+The orchestrator deliberates over MODELS, not code text: domain.md contracts, design docs that carry numbers, and read-only fact-check dispatches (Explore-class) are the substrate it is entitled to reason over. This is what makes never-reading-code compatible with proper design deliberation — and it fails silently when the model has holes the orchestrator doesn't notice.
+
+- Before a claim becomes spec letter, a brief's factual payload, or a ruling: can the model actually answer it? A load-bearing claim not answerable from domain.md/design docs/measured numbers dispatches a read-only fact check FIRST. Minutes of Explore beat a spec written blind (observed: two specs shipped blind to package fundamentals — terrain free transforms, an existing per-frame throttle idiom — that one fact-check each would have surfaced; the same session's volume-blend verdict and a subtle ruling confirmation went right because an agent had just fetched the exact facts).
+- The tell is in the artifact: hedged wording in a spec ("whether the implementation honors X is unknown") means the fact-check was skipped. Ground it or dispatch it; never commit the hedge as spec.
+- domain.md coverage is therefore not documentation hygiene — it is the orchestrator's design-deliberation substrate. Every dispatch touching a domain maintains its domain.md; a domain without one is a domain the orchestrator cannot design over.
+- The honest limit: design INTENTION (what the software should want to be) comes from neither text nor model — the intention pass raises the floor; the user's punches set the ceiling. Don't fake it; surface the open intention question instead.
+
 ## Orchestrator window: caveman-style (binding)
 
 The main window is a control panel, not an essay. Write caveman-style (JuliusBrussee/caveman: compress output ~75%, "why use many token when few do trick"). The orchestrator's job produces a LOT of status/synthesis text; the user reads it constantly, so compress hard.
