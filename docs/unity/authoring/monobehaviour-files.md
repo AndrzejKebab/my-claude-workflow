@@ -47,3 +47,19 @@ The fix is structural, not a YAML edit: move the offending type into its own fil
 | Multi-`MonoBehaviour` file → missing scripts (the defect) | `Packages/is.zori.entities.charactercontroller2d/Samples~/SideScrollerCharacter/SideScrollerAuthoring.cs` (five serialized types) |
 | Per-class split as the fix | `Assets/Samples/…/Side-Scroller Character/SideScroller{Character,Pushable,MovingPlatform}Authoring.cs`; Platformer `FrictionModifier2DAuthoring.cs` |
 | `AddComponent<T>` + `SaveScene`, no YAML post-processing | `Assets/Samples/…/Side-Scroller Character/Editor/SideScrollerSceneBuilder.cs` |
+
+## Unity 6000.7 alpha: scenes forgive, prefabs do not (observed 2026-07-21, swordgal)
+
+On `6000.7.0a1` the failure mode diverges between container types for a MonoBehaviour
+living in a file not named after it:
+
+- **Scenes** serialize the component with a non-canonical local `m_Script: {fileID: <hash>}`
+  plus `m_EditorClassIdentifier: <Assembly>::<Namespace>.<Class>` — and this **resolves**:
+  the component loads and its Baker runs during subscene import.
+- **Prefabs** write `m_Script: {fileID: 0}` (the `m_EditorClassIdentifier` is present but
+  ignored) — the component is a missing script and its Baker silently never runs. A ghost
+  prefab baked this way simply lacks the components, with no warning anywhere.
+
+So a scene-based smoke test can pass while every prefab embedding the same authoring type
+is broken. The rule stands unchanged: one MonoBehaviour per file, file named after the
+class — the alpha only makes the violation harder to notice.
