@@ -51,6 +51,8 @@ Refactoring runs are long; the model tier and the reading discipline are chosen 
 
 ## Protocol
 
+Agent names below are written bare (`shipshape-surveyor`). Installed as a plugin they are namespaced (`delegate:shipshape-surveyor`) — dispatch the exact string your available-agents list shows, not the one written here.
+
 ### Step 0 — Preflight
 Confirm target repo path; verify clean tree and note the branch; read the consuming project's CLAUDE.md for gates and conventions; identify the verification gates (exact commands) and whether the package has tests at all. Pick `<slug>`. Create the refactor branch `shipshape/<package-short-name>` from local `main`.
 
