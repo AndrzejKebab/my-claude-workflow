@@ -99,7 +99,9 @@ NEVER run `git config user.name`/`user.email` or set per-repo git identity, and 
 ## Paths
 
 - Unreal (reference): `/mnt/archive4/UNREAL/UE_5.8/`
-- Personal workflow repo: `/home/midori/_dev/my-claude-workflow` — `~/.claude/{skills,agents}` symlink in; edit canonicals in repo (`install.sh` reinstalls symlinks); launchers in `bin/` on PATH via fish config. Every methodology edit (skills, CLAUDE.md, docs) commits there immediately, one commit per edit — never left sitting in the tree.
+- Personal workflow repo (private): `/home/midori/_dev/my-claude-workflow` — `~/.claude/{skills,agents}` symlink in; edit canonicals in repo (`install.sh` reinstalls symlinks); launchers in `bin/` on PATH via fish config.
+- Shareable skills (public, plugin marketplace): `/home/midori/_dev/zori_skills` → `github.com/api-haus/zori_skills`. Skills that ship live HERE, not in the workflow repo — edit `plugins/<name>/skills/…` directly; installed as a local-directory marketplace it loads from the working tree, so edits apply next session, and `git push` is what releases them. `tools/validate.sh` gates self-containment. Currently the `delegate` plugin (delegate, warden, diagnose-first, shipshape + nine agents). Migrating a skill out of the workflow repo is the direction of travel; the symlinks are being retired.
+- Every methodology edit (skills, CLAUDE.md, docs) commits to whichever of the two owns it, immediately, one commit per edit — never left sitting in the tree.
 - Research corpus (cross-project, MegaSync, not git-tracked): `/mnt/archive4/PAPERS/Prepared` (extracted `<slug>.md` + `assets/<slug>/` + `index*.md`); raw sources in `/mnt/archive4/PAPERS/`.
 - Unity API canon (engine reference: RenderGraph/Jobs/Burst/Entities/authoring): `~/_dev/my-claude-workflow/docs/unity`.
 
