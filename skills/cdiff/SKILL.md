@@ -1,6 +1,6 @@
 ---
 name: cdiff
-description: Open a git diff in a new ghostty/kitty window for a chosen scope — the superproject root or a submodule. Use when the user asks to view/review a diff in a window, or to see a submodule's branch changes apart from the superproject. Usage: /cdiff [scope] [range].
+description: "Open a git diff in a new ghostty/kitty window for a chosen scope — the superproject root or a submodule. Use when the user asks to view/review a diff in a window, or to see a submodule's branch changes apart from the superproject. Usage: /cdiff [scope] [range]."
 ---
 
 # cdiff

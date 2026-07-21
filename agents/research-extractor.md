@@ -1,6 +1,6 @@
 ---
 name: research-extractor
-description: Pass-1 extractor for the /research skill. Runs `extract_research.py <source-path> --slug=<slug>` (and phase2 for PPTX) against the skill-local venv, archives the source to `/mnt/archive4/PAPERS/`, then reads the produced markdown and marks problematic areas inline with `<!-- FIXME(extract): … -->` comments. Operates in its own context window so the orchestrator stays clean.
+description: "Pass-1 extractor for the /research skill. Runs `extract_research.py <source-path> --slug=<slug>` (and phase2 for PPTX) against the skill-local venv, archives the source to `/mnt/archive4/PAPERS/`, then reads the produced markdown and marks problematic areas inline with `<!-- FIXME(extract): … -->` comments. Operates in its own context window so the orchestrator stays clean."
 tools: ["*"]
 model: claude-sonnet-4-6
 ---

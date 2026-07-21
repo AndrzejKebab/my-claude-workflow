@@ -1,6 +1,6 @@
 ---
 name: delegate
-description: Multi-agent orchestration. The orchestrator scopes, briefs, and synthesizes — every other action is dispatched to sub-agents. Two hard laws: (1) the orchestrator NEVER injects hypotheses, code-path references, or fix directions into briefs — subagent context purity is the entire value proposition; (2) the orchestrator never edits repo code and never runs the gate — it dispatches, agents do, no matter how small the change.
+description: "Multi-agent orchestration. The orchestrator scopes, briefs, and synthesizes — every other action is dispatched to sub-agents. Two hard laws: (1) the orchestrator NEVER injects hypotheses, code-path references, or fix directions into briefs — subagent context purity is the entire value proposition; (2) the orchestrator never edits repo code and never runs the gate — it dispatches, agents do, no matter how small the change."
 ---
 
 # delegate
