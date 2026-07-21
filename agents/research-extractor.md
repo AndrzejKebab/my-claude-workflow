@@ -108,6 +108,11 @@ In your final message:
 - **Never overwrite an existing `<slug>.md`** without `--force`. The scripts default to writing `<slug>.regen-<timestamp>-<rand>.md` sidecars; if a regen sidecar appears, surface it in your report so the orchestrator can decide whether to merge or discard.
 - **Slug pattern is non-negotiable** — refuse to extract under a non-canonical slug.
 - **Marking is not fixing** — leave `FIXME(extract)` comments in place; never repair equations or rewrite prose yourself.
+- **Run the extraction in the FOREGROUND and block on it. Never background your own extraction.** `extract_research.py` on a long source takes many minutes (a 23-page paper runs marker's layout, OCR-error-detection, text-recognition, and LLM-cleanup stages back to back), and that wait is the job — not something to hand back to the orchestrator. Backgrounding it and returning "extraction is in progress, waiting for a notification" ends your dispatch with the work unfinished: **you get no notification, because the job is yours, not the harness's.** The orchestrator is then holding a half-finished dispatch it must babysit, and the whole point of the agent boundary — that Pass 1 completes inside your context — is lost. Use a foreground Bash call with a generous `timeout` (600000 ms is fine; raise it for long sources) and simply wait for it to return.
+
+  This matters doubly because Pass 1 is **GPU-serialised across papers**: the orchestrator cannot dispatch the next extraction until yours actually finishes, so an early return stalls the entire queue while your job still holds the GPU.
+
+  Two related traps: a backgrounded job can be process-group-killed when your dispatch ends, and a zero-byte log file reads identically to "still running" — so an early return may also mean the work is silently *dead* rather than merely unfinished. Foreground execution avoids both. If a source is genuinely so long that one foreground call cannot cover it, say so in your report with the elapsed time and the log path, rather than returning a status-check promise.
 
 ## When the parent is /delegate
 
