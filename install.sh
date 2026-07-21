@@ -49,8 +49,8 @@ link_dir skills
 link_dir agents
 
 # Global config files — symlinked into ~/.claude so they travel with this repo.
-# RTK.md is intentionally excluded: it is private (mode 600) and this repo is public,
-# so it stays machine-local and its @import in CLAUDE.md resolves only where it exists.
+# RTK.md is intentionally excluded: it is private (mode 600) and stays machine-local,
+# so its @import in CLAUDE.md resolves only where it exists.
 link_file CLAUDE.md
 link_file negative-space-expanded.md
 link_file FFF.md
@@ -60,13 +60,16 @@ link_file HARNESS.md
 chmod +x "$SCRIPT_DIR/skills/claude-status/claude-status.sh"
 chmod +x "$SCRIPT_DIR/skills/cdiff/cdiff.sh"
 chmod +x "$SCRIPT_DIR/skills/enforce/enforce.sh"
-chmod +x "$SCRIPT_DIR/skills/shipshape/tools/"*.py "$SCRIPT_DIR/skills/shipshape/tools/"*.sh
 
 # Make launcher scripts in bin/ executable
 if [[ -d "$SCRIPT_DIR/bin" ]]; then
     chmod +x "$SCRIPT_DIR/bin"/*
 fi
 
+echo ""
+echo "delegate, warden, diagnose-first and shipshape are no longer here — they live in"
+echo "the zori marketplace (~/_dev/zori_skills) and install as a plugin:"
+echo "  claude plugin marketplace add ~/_dev/zori_skills && claude plugin install delegate@zori"
 echo ""
 echo "Installation complete!"
 echo ""
