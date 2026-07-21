@@ -25,6 +25,7 @@ import cv2
 import numpy as np
 from PIL import Image
 
+import scene_metrics
 from openocr_engine import ocr_numpy as _ocr_numpy_engine
 
 # The extracted markdown corpus lives at a single hardcoded global location,
@@ -163,21 +164,30 @@ def _ensure_cv2_decodable(video_path: Path) -> Path:
 
 
 def detect_scenes(video_path: Path, sample_interval: float = 1.0,
-                  threshold: float = 0.35) -> list[tuple[float, float]]:
-    """Detect scene transitions by histogram difference.
+                  threshold: float | None = None,
+                  metric: str = "luma") -> list[tuple[float, float]]:
+    """Detect scene transitions by frame difference.
+
+    `metric` selects the difference measure — see tools/scene_metrics.py for
+    why `luma` is the default and when `hsv` / `edge` are the right choice.
+    A `threshold` of None takes that metric's calibrated default.
 
     Returns list of (start_time, end_time) for each scene.
     """
+    if threshold is None:
+        threshold = scene_metrics.default_threshold(metric)
+
     cap = cv2.VideoCapture(str(video_path))
     fps = cap.get(cv2.CAP_PROP_FPS)
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     duration = total_frames / fps
 
     frame_interval = int(fps * sample_interval)
-    prev_hist = None
+    prev_sig = None
     transitions = [0.0]  # always start at 0
 
-    print(f"  Scanning {duration:.0f}s video at {sample_interval}s intervals...")
+    print(f"  Scanning {duration:.0f}s video at {sample_interval}s intervals "
+          f"(metric={metric}, threshold={threshold})...")
 
     frame_idx = 0
     while True:
@@ -186,20 +196,17 @@ def detect_scenes(video_path: Path, sample_interval: float = 1.0,
         if not ret:
             break
 
-        # Convert to HSV and compute histogram
-        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-        hist = cv2.calcHist([hsv], [0, 1], None, [32, 32], [0, 180, 0, 256])
-        cv2.normalize(hist, hist)
+        sig = scene_metrics.signature(frame, metric)
 
-        if prev_hist is not None:
-            diff = cv2.compareHist(prev_hist, hist, cv2.HISTCMP_BHATTACHARYYA)
+        if prev_sig is not None:
+            diff = scene_metrics.distance(prev_sig, sig, metric)
             if diff > threshold:
                 time_sec = frame_idx / fps
                 # Don't add transitions too close together (< 2s)
                 if time_sec - transitions[-1] > 2.0:
                     transitions.append(time_sec)
 
-        prev_hist = hist
+        prev_sig = sig
         frame_idx += frame_interval
 
     transitions.append(duration)
@@ -446,8 +453,8 @@ def format_timestamp(seconds: float) -> str:
 
 
 def process_video(video_path: Path, info: VideoInfo, srt_path: Path,
-                  scene_threshold: float = 0.35, merge: bool = True,
-                  all_slides: bool = False) -> str:
+                  scene_threshold: float | None = None, merge: bool = True,
+                  all_slides: bool = False, scene_metric: str = "luma") -> str:
     """Full pipeline: detect scenes, classify, OCR, transcribe, emit markdown.
 
     `merge=False` skips the consecutive-scene merge pass. The merge heuristic
@@ -470,7 +477,8 @@ def process_video(video_path: Path, info: VideoInfo, srt_path: Path,
     print(f"  Loaded {len(captions)} caption entries")
 
     # Detect scene transitions
-    scene_intervals = detect_scenes(video_path, threshold=scene_threshold)
+    scene_intervals = detect_scenes(video_path, threshold=scene_threshold,
+                                    metric=scene_metric)
 
     # Classify and process each scene
     scenes = []
@@ -623,14 +631,20 @@ def process_video(video_path: Path, info: VideoInfo, srt_path: Path,
 def main():
     if len(sys.argv) < 2:
         print("Usage: research_video.py <url-or-local-path> [--title='...'] [--slug='...'] "
-              "[--threshold=0.35] [--no-merge] [--all-slides]")
+              "[--metric=luma|hsv|edge] [--threshold=...] [--no-merge] [--all-slides]")
         sys.exit(1)
 
     url = sys.argv[1]
     extra_title = next((a.split("=", 1)[1] for a in sys.argv[2:] if a.startswith("--title=")), None)
     extra_slug = next((a.split("=", 1)[1] for a in sys.argv[2:] if a.startswith("--slug=")), None)
+    metric_arg = next((a.split("=", 1)[1] for a in sys.argv[2:] if a.startswith("--metric=")), None)
+    scene_metric = metric_arg or "luma"
+    if scene_metric not in scene_metrics.METRICS:
+        print(f"Unknown --metric={scene_metric!r}; expected one of "
+              f"{', '.join(scene_metrics.METRICS)}")
+        sys.exit(1)
     threshold_arg = next((a.split("=", 1)[1] for a in sys.argv[2:] if a.startswith("--threshold=")), None)
-    scene_threshold = float(threshold_arg) if threshold_arg else 0.35
+    scene_threshold = float(threshold_arg) if threshold_arg else None
     merge = "--no-merge" not in sys.argv[2:]
     all_slides = "--all-slides" in sys.argv[2:]
     work_dir = Path(tempfile.mkdtemp(prefix="research-"))
@@ -672,7 +686,7 @@ def main():
 
     print(f"Processing: {info.title} ({format_timestamp(info.duration)})")
     md_path = process_video(video_path, info, srt_path, scene_threshold=scene_threshold,
-                            merge=merge, all_slides=all_slides)
+                            merge=merge, all_slides=all_slides, scene_metric=scene_metric)
 
     print(f"\nDone: {md_path}")
 

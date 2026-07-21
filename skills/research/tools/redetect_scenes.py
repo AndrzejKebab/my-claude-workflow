@@ -1,15 +1,24 @@
 #!/usr/bin/env python3
 """Aggressive scene redetection for slide-heavy talk videos.
 
-`research_video.py` uses a 0.35 Bhattacharyya histogram threshold tuned for
-recorded-talk video, which under-detects when consecutive slides share a lot of
-chrome (same template, slight text-only changes). This helper re-runs detection
-with a tighter threshold and finer interval, writes one representative frame
-per scene under the asset directory, and prints a TSV of `(start, end, path)`.
+This helper re-runs scene detection with a finer interval and a chosen metric,
+writes one representative frame per scene under the asset directory, and prints
+a TSV of `(start, end, path)`.
+
+Reach for it when `research_video.py`'s own detection still under-segments —
+typically a deck whose consecutive slides share a template and differ only in
+body text. Note that since the `luma` metric became the default, plain
+under-detection is much rarer; the histogram metric it replaced was blind to
+black-text-on-white changes by construction (see tools/scene_metrics.py for the
+measured comparison), and lowering `--threshold` could never fix that.
 
 Usage:
     tools/redetect_scenes.py <video.mp4> <slug> \\
-        [--threshold 0.18] [--interval 1.0] [--min-gap 1.5] [--width 1280]
+        [--metric luma|hsv|edge] [--threshold ...] [--interval 1.0] \\
+        [--min-gap 1.5] [--width 1280]
+
+`--threshold` defaults to the chosen metric's calibrated value rather than a
+single number, because the metrics are on different scales.
 
 Output:
     /mnt/archive4/PAPERS/Prepared/assets/<slug>/scene-NNN-SSSS.jpg   (one per detected scene)
@@ -26,6 +35,8 @@ import sys
 from pathlib import Path
 
 import cv2
+
+import scene_metrics
 
 # The extracted markdown corpus lives at a single hardcoded global location,
 # independent of cwd / which project invoked /research.
@@ -65,7 +76,8 @@ def ensure_cv2_decodable(video: Path) -> Path:
     return h264
 
 
-def detect_scenes(video: Path, threshold: float, interval: float, min_gap: float):
+def detect_scenes(video: Path, threshold: float, interval: float, min_gap: float,
+                  metric: str = "luma"):
     cap = cv2.VideoCapture(str(video))
     fps = cap.get(cv2.CAP_PROP_FPS)
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -76,10 +88,11 @@ def detect_scenes(video: Path, threshold: float, interval: float, min_gap: float
 
     frame_interval = max(1, int(fps * interval))
     transitions = [0.0]
-    prev_hist = None
+    prev_sig = None
 
     print(
-        f"Scanning {duration:.0f}s @ {interval}s intervals, threshold {threshold}",
+        f"Scanning {duration:.0f}s @ {interval}s intervals, "
+        f"metric {metric}, threshold {threshold}",
         file=sys.stderr,
     )
 
@@ -90,18 +103,16 @@ def detect_scenes(video: Path, threshold: float, interval: float, min_gap: float
         if not ret:
             break
 
-        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-        hist = cv2.calcHist([hsv], [0, 1], None, [48, 48], [0, 180, 0, 256])
-        cv2.normalize(hist, hist)
+        sig = scene_metrics.signature(frame, metric)
 
-        if prev_hist is not None:
-            diff = cv2.compareHist(prev_hist, hist, cv2.HISTCMP_BHATTACHARYYA)
+        if prev_sig is not None:
+            diff = scene_metrics.distance(prev_sig, sig, metric)
             if diff > threshold:
                 t = frame_idx / fps
                 if t - transitions[-1] > min_gap:
                     transitions.append(t)
 
-        prev_hist = hist
+        prev_sig = sig
         frame_idx += frame_interval
 
     cap.release()
@@ -113,7 +124,10 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("video", type=Path)
     ap.add_argument("slug")
-    ap.add_argument("--threshold", type=float, default=0.18)
+    ap.add_argument("--metric", choices=scene_metrics.METRICS, default="luma",
+                    help="frame-difference measure (see tools/scene_metrics.py)")
+    ap.add_argument("--threshold", type=float, default=None,
+                    help="override the chosen metric's calibrated default")
     ap.add_argument("--interval", type=float, default=1.0)
     ap.add_argument("--min-gap", type=float, default=1.5)
     ap.add_argument("--width", type=int, default=1280)
@@ -130,7 +144,10 @@ def main():
     # Detect on an H.264-decodable copy (cv2 can't read AV1/VP9); extract frames
     # below from the original for best quality.
     cv_video = ensure_cv2_decodable(args.video)
-    scenes = detect_scenes(cv_video, args.threshold, args.interval, args.min_gap)
+    threshold = (args.threshold if args.threshold is not None
+                 else scene_metrics.default_threshold(args.metric))
+    scenes = detect_scenes(cv_video, threshold, args.interval, args.min_gap,
+                           metric=args.metric)
     print(f"Found {len(scenes)} scenes", file=sys.stderr)
 
     tsv_path = Path(f"/tmp/scenes_{args.slug}.tsv")
