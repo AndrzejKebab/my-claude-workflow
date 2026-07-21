@@ -285,6 +285,23 @@ Reconstructed content is the lossy stage — it can carry vision errors — so i
 - **Verbatim first, gloss second.** Transcribe the slide's own words and structure exactly; do not paraphrase or compress. Add a one-line interpretive gloss only where meaning isn't self-evident from the slide's text.
 - **Preserve order and hierarchy** — a reader must be able to reconstruct the slide's layout from the markdown alone.
 - **Do not merge or drop bullets.** Every load-bearing line on the slide appears in the reconstruction.
+- **Cross-check every data table against its render, even when Pass 1 already produced one.** This is not optional polish — it is the vision pass's second job, and empirically its highest-value one.
+
+**Marker corrupts multi-column data tables at a high rate, and nothing else in the pipeline catches it.** Measured over one 9-paper batch (2026-07-21), **three of the four papers whose results are carried in tables** came out of Pass 1 with cells merged, dropped, or scrambled:
+
+| Paper | Corruption |
+|---|---|
+| Timonen & Westerholm 2010 | Table 1: the φN=16 and φN=32 columns merged into one cell on the header row and both 512² rows |
+| Kämpe et al. 2015 | Table 3: "render maps" row lost its 16K³/64K³ cells; "Total" row lost 4K³/16K³ |
+| Sintorn et al. 2014 | Fig. 9 resolution-vs-memory grid: cells scrambled and merged |
+
+The failure mode is what makes it dangerous: **the surviving table is still well-formed markdown with plausible numbers in it.** Pass 2.5 cannot see it (no LaTeX, no mermaid), the refiner reading only the text layer cannot see it, and a downstream reader quotes it as fact. The *only* thing that catches it is a human-or-vision read of the page render beside the extracted table — which is precisely why paper-mode renders every page, including prose-only ones.
+
+Therefore:
+
+- **Vision agents** must treat a table that already exists in the body text as *suspect input*, not as done work. Retranscribe it cell-by-cell from the render (zoom in — these grids are small), and where it disagrees with Pass 1, place the corrected version in the reconstruction and mark the original `<!-- FIXME(vision): … -->` in place, pointing the refiner at the correction.
+- **Refiner briefs** must say "spot-check every table against its render, not only the flagged ones" whenever the source carries tabular results. One corrupt table found means the others are not trustworthy either.
+- **Orchestrators** should name the paper's known result tables in the vision brief when they can, so the agent knows what to look for.
 
 ### Invisible PUA glyphs defeat the Edit tool — expect this on Office-exported decks
 
