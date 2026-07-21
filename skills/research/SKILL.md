@@ -284,6 +284,25 @@ Reconstructed content is the lossy stage — it can carry vision errors — so i
 - **Preserve order and hierarchy** — a reader must be able to reconstruct the slide's layout from the markdown alone.
 - **Do not merge or drop bullets.** Every load-bearing line on the slide appears in the reconstruction.
 
+### Invisible PUA glyphs defeat the Edit tool — expect this on Office-exported decks
+
+PowerPoint bullet lists exported to PDF carry their Wingdings bullet through as a **Private-Use-Area codepoint** — `U+F0A7` for the bullet, `U+F0E0` for the "→" arrow are the common pair. PyMuPDF extracts them raw, so they sit invisibly at the head of nearly every extracted bullet line. The Read tool renders them as nothing, which means **an `old_string` typed from what you see on screen can never match** and every Edit call fails with a confusing "string not found" against text that looks character-identical.
+
+Recognise it early: if Edit fails repeatedly on a slide-deck document whose text looks exactly right, dump codepoints before trying anything else —
+
+```bash
+~/.claude/skills/research/.venv/bin/python -c "
+t=open('/mnt/archive4/PAPERS/Prepared/<slug>.md',encoding='utf-8').read()
+print('U+F0A7:', t.count(''), 'U+F0E0:', t.count(''))"
+```
+
+Two ways through, in preference order:
+
+1. **Strip first, then edit normally.** One scripted pass replacing `` → `` (drop, the markdown `-` already carries the bullet) and `` → `→` over the whole file, after which Edit works as usual for the rest of the pass. Preferred — it fixes the defect for every later pass instead of routing around it.
+2. **Script the substitutions** with `` / `` escapes in the match strings. If you do this, assert each `old_string` matches exactly once before writing, so a silent zero-match or multi-match cannot corrupt the document.
+
+Either way the finished document must contain **zero** PUA codepoints — verify with the count above before reporting. Never leave them for the refiner: they will break its Edit calls the same way.
+
 ### Skip rules
 
 A slide gets **no reconstruction** ONLY when it is:
