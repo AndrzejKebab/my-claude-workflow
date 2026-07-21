@@ -44,6 +44,69 @@ the general criteria; that page is the visual-capture dispatch shape.
     representatives), then human-eye PNG review tops off visual claims
     (verification-representatives protocol).
 
+## Shapes that work
+
+Ordered by how much they survive *not knowing what correct looks like* — the situation you are
+usually in when chasing a reported defect.
+
+1. **Invariance.** The output must not depend on X: ordering, timing, batching, position,
+   partitioning, an unrelated setting, what else is in the same request. Asserts nothing about
+   correctness, so it cannot be argued with on content grounds, and one such gate covers a whole
+   class of defects at once. Reach for this first.
+2. **Differential A/B.** One subject, exactly one variable changed, the two outputs compared.
+   Content-agnostic: it never claims which output is right, only that this variable must not have
+   moved it.
+3. **Round trip / identity.** What went in comes out; `decode ∘ encode = id`. Exact by default.
+4. **Analytical oracle.** Closed form where the domain has one.
+5. **Real content.** When the defect may be content-dependent, a synthetic stand-in is a
+   *hypothesis*, not a control. Drive the real asset, the real scene, the real payload.
+6. **Absence.** Something that must not happen (criterion 7 above).
+
+## Why a gate comes back falsely green
+
+**A green gate is a claim about the fixture as much as about the code.** Nearly every false green
+is a fixture that *could not have failed*. Red-first is therefore not paperwork — it is the only
+evidence the fixture can express the defect at all. When a gate is green while the reported symptom
+persists, suspect this list before concluding the report was wrong.
+
+1. **Regime removed by scaling down.** The defect exists only past a threshold — size, count,
+   distance, duration, concurrency, memory pressure, cache capacity. A fixture shrunk to run fast
+   is a *different system*, and the shrunk dimension is often exactly the one the defect needs.
+   Reproduce the regime, not the shape; if real scale is expensive, pay it once behind a category
+   rather than shrinking it into vacuity.
+2. **Degenerate content.** The data has no variation along the axis the code branches on: a flat
+   field under slope-dependent logic, one material under selection logic, one element under
+   ordering logic, one client under contention logic. The branch under test never executes.
+   *Tell:* every arm produces identical output.
+3. **Settled away.** The defect lives in a transient — in flight, mid-stream, pre-convergence — and
+   the fixture flushes, awaits, sleeps or converges before measuring, closing exactly the window
+   under test. Never force-flush the subsystem you are gating.
+4. **Measured at the wrong layer.** An internal artifact compares equal while the symptom lives
+   downstream of a path that does not read that artifact. *Tell:* an internal diff reports 100%
+   identical while the end-to-end symptom persists. Measure at the boundary where the symptom is
+   observed, then work inward.
+5. **Blind oracle.** The metric does not respond to the symptom's channel — brightness where the
+   symptom is hue, mean where it is distribution, presence where it is order, total where it is
+   the tail. Feed the oracle a known-bad input and confirm it fires; an oracle that has never
+   fired is not an oracle.
+6. **Two variables.** The arm and its control differ in more than the thing under test, so a
+   difference cannot be attributed and an equality is coincidence.
+7. **Leaked fixture state.** Shared instances, statics, caches or on-disk residue carry
+   configuration between cases. *Tell:* results depend on execution order. Reset in setup, not
+   teardown.
+8. **Vacuous pass.** The assertion ran over an empty or degenerate sample. Guard the preconditions
+   as assertions and log the witness counts, so a green states what it actually examined.
+
+## Confirming a cause, and confirming a fix
+
+- **Predict, then move it.** A hypothesis that merely explains the observation is a story. State
+  how the symptom must *move* if the hypothesis holds, then move the suspected cause and check.
+  A cause that survives a prediction is confirmed; one that cannot be predicted from is not.
+- **Measure the fix.** A change that does not move the metric is not the fix. Revert it rather
+  than shipping a no-op with a confident comment attached.
+- **Never loosen an assertion to reach green.** If the assertion is wrong, the claim was wrong —
+  restate the claim and say so; do not widen the epsilon.
+
 ## Worked examples (miniheightfields testbed, shadow rework 2026-07)
 
 - **Two-camera isolation** (criteria 3, 4, 5): cameras A and B at different poses; three runs —
