@@ -45,8 +45,16 @@ Before trusting green, establish the fixture can go red:
 - **Measure where the symptom is.** An internal artifact can compare 100% identical while the
   symptom lives downstream of a path that never reads it. Start at the reported boundary, then
   work inward.
-- **Validate the oracle.** Feed it a known-bad input and confirm it fires. A metric blind to the
-  symptom's channel (brightness vs hue, mean vs distribution, presence vs order) passes everything.
+- **Validate the oracle by sabotage.** Do not reason about whether the gate would catch a
+  regression — break the subject on purpose (overwrite the output with a constant, skip the pass,
+  zero a coefficient, shift an index) and confirm it goes red. This is the *criterion* for "could
+  it have failed", and unlike red-first it is available before the symptom is reproducible. Record
+  the result in the gate: "poisoning X moves this metric 0.03 → 0.71" is its demonstrated
+  sensitivity and what makes the threshold defensible rather than invented.
+- **Separate signal from noise before choosing a threshold.** Measure the metric good-vs-good
+  (repeat runs) for the noise floor and good-vs-sabotaged for the signal; require signal >> noise
+  and put the threshold in the gap. If they are comparable the metric is blind — change the metric,
+  not the threshold.
 - **One variable.** If the arm and its control differ in more than the thing under test, a
   difference cannot be attributed and an equality is coincidence.
 - **Guard the preconditions.** Assert and log what the run actually examined, so a pass cannot be
@@ -56,6 +64,21 @@ Prefer shapes that survive not knowing what "correct" looks like, in this order:
 (output must not depend on X) → **differential A/B** (one variable moved) → **round trip** →
 **analytical oracle**. When a defect may be content-dependent, a synthetic stand-in is a hypothesis,
 not a control — drive the real asset.
+
+**When you cannot build an oracle, capture what the user sees.** Capture the artifact at the
+boundary they perceive (final frame, rendered page, response body — never an internal buffer that
+seems related), capture the same artifact from a known-good configuration, and **have the user say
+which is wrong before choosing any metric**. Their eye is the oracle you lack. Then pick a metric
+that separates that pair with margin. Order is **capture → confirm → threshold**; inventing the
+threshold first yields a metric that agrees with your hypothesis instead of the artifact. And grade
+in the reporter's vocabulary — "washed out" is saturation, "stutter" is the frame-interval
+distribution, "out of order" is order. A metric from the wrong channel sits at its noise floor
+while the defect is fully present.
+
+A good gate, in one sentence: **it captures the user-visible artifact under two configurations that
+must agree, with a metric demonstrated to separate a sabotaged capture from a good one, and it
+prints what it examined.** Sanity check any gate by naming three plausible regressions in the area
+it guards — if none would trip it, it is decoration.
 
 Confirm a cause by **prediction**: state how the symptom must move if the hypothesis holds, then
 move the suspected cause. A hypothesis that only explains the observation is a story. Confirm a fix
