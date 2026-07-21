@@ -97,6 +97,87 @@ persists, suspect this list before concluding the report was wrong.
 8. **Vacuous pass.** The assertion ran over an empty or degenerate sample. Guard the preconditions
    as assertions and log the witness counts, so a green states what it actually examined.
 
+## How you know a fixture could have failed: the negative control
+
+Do not reason about whether the gate *would* catch a regression. **Sabotage the subject and watch
+it go red.** If deliberately corrupting the thing under test does not turn the gate red, the gate
+is not measuring that thing, whatever its assertions say.
+
+Cheap sabotage, in rough order of how little you need to know about the code: overwrite the output
+with a constant; skip the pass or return early; zero a coefficient; drop or duplicate every other
+element; shift an index by one; feed the stage an empty input. Any of these is a *known-bad input*,
+which is the thing an oracle must be validated against.
+
+Red-first is the special case where the pre-change code is the sabotage. When the symptom cannot
+be reproduced yet — the usual situation when chasing a report — sabotage is the only proof of
+capability available, and it is available immediately.
+
+**Record the result in the gate.** "Poisoning the X buffer moves this metric 0.03 → 0.71" is the
+gate's demonstrated sensitivity, it is what makes the threshold defensible instead of invented, and
+it tells the next reader what the gate is for. A gate whose comment cannot state what it caught, or
+what it was seen to catch, is decorative.
+
+### The separation criterion — for any threshold
+
+Before choosing a number, measure two spreads:
+
+- **Noise floor N** — the metric between repeated *good* runs (re-run, re-render, reseed).
+- **Signal S** — the metric between a good run and a sabotaged one.
+
+Require `S >> N` — an order of magnitude is a sound default — and put the threshold in the gap. If
+`S ≈ N` the metric is blind to the defect class: **change the metric, not the threshold.** A
+threshold chosen without knowing N is a coin flip that will either flake or never fire.
+
+### Witness — a pass must state what it examined
+
+Print the evidence: sample count, how many samples were non-degenerate, how many crossed the branch
+under test, the value of the metric on each arm. A gate that prints only pass/fail cannot be
+distinguished from a gate that examined nothing, and a vacuous pass looks exactly like a real one
+in a suite summary.
+
+## When you cannot build an oracle: capture what the user sees
+
+The last resort, and frequently the fastest route to a real gate. It applies whenever "correct" is
+easier to recognise than to define — rendered output, audio, layout, generated documents, anything
+perceptual.
+
+1. **Capture at the boundary the user perceives.** The final frame, the rendered page, the played
+   buffer, the response body. Not an internal artifact that seems related — an internal buffer can
+   compare identical while the symptom lives downstream of a path that never reads it.
+2. **Capture the same artifact under a configuration known to be good** — before the change, a
+   working peer, the live path, the other backend. Now you have a pair.
+3. **Show the pair to the user and have them say which is wrong, before choosing any metric.**
+   Their eye is the oracle you do not have. This is the step that cannot be skipped: it is what
+   converts a hypothesis into a labelled example.
+4. **Only then pick the metric**, and pick it so it separates *those two captures* with margin
+   (the separation criterion above). Re-run to confirm the margin is stable.
+5. **Keep both captures as gate artifacts**, so the next reader sees what it guards.
+
+Order matters: **capture → confirm → threshold**. Inventing a threshold first and then looking at
+the output is how you get a metric that agrees with your hypothesis instead of with the artifact.
+
+### Grade in the reporter's vocabulary
+
+When a symptom is described in words, measure the quantity those words name. "Washed out" is
+saturation, not brightness. "Wrong colour" is hue, not difference. "Stutter" is the frame-interval
+distribution, not the mean. "Out of order" is order, not content. "Truncated" is length. A metric
+borrowed from a different channel than the complaint will sit at its noise floor while the defect
+is fully present — and it will report green with a plausible-looking number attached.
+
+## What a good gate looks like
+
+Concretely, and in one sentence: **it captures the user-visible artifact under two configurations
+that must agree, with a metric demonstrated to separate a sabotaged capture from a good one, and it
+prints what it examined.** Around that core:
+
+- **Provably red on demand** — sabotage turns it red, and the gate says so in its comment.
+- **Invariance-shaped where possible** — asserts that X must not change the result, so it needs no
+  definition of correct and cannot be argued with on content grounds.
+- **Wide margin** — the failing and passing states are separated far beyond run-to-run noise.
+- **Names its catch** — the comment states the defect it exists for, in mechanism terms.
+- **Answers "what would this catch?"** — name three plausible regressions in the guarded area; if
+  none of them would trip it, it is decoration regardless of how it is written.
+
 ## Confirming a cause, and confirming a fix
 
 - **Predict, then move it.** A hypothesis that merely explains the observation is a story. State
