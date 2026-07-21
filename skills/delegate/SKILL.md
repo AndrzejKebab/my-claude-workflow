@@ -207,9 +207,6 @@ End with ## Side notes / observations / complaints.
 
 ## Reference sections (load on demand)
 
-- `execution-modes.md` — distributed vs consolidated, dispatch shapes, eligibility criteria
-- `circuit-breakers.md` — diagnose-first, loop-detection, consolidated-mode handoff, brute-force protocol
-- `context-boundaries.md` — what subagents can/cannot see, image protocol
-- `askuserquestion.md` — when to ask vs brief, sticky amplification
+- `brute-force.md` — the brute-force protocol: one sub-agent owning a whole hypothesise-test-iterate loop against a deterministic probe-gate, with a private progress file the orchestrator never reads
 - `e2e-gates.md` — gate authoring discipline for visual-capture gates
 - `~/_dev/my-claude-workflow/docs/e2e-gates.md` — global gate criteria + worked examples; gates rank with the spec (applies to all work, not just delegate)
