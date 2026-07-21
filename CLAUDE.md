@@ -109,9 +109,21 @@ NEVER run `git config user.name`/`user.email` or set per-repo git identity, and 
 repetition quantifier, so a brace in the pattern is a parse error, not a match — Prometheus
 samples (`mc_tick{key="tps"}`), JSON, C++ templates, shell `${VAR}`.
 
-**Pass `-F` whenever the pattern contains a brace.** Default to `rg -F` / `grep -F` for literal
-text; keep regex mode for patterns that actually need it. Same for the `Grep` tool — no braces in
-`pattern` unless the regex means them.
+**Parentheses are worse than braces, because they fail silently.** A brace errors out and you
+notice. A literal `(` is a capture group, so `FIXME(vision)` compiles fine and matches `FIXMEvision`
+— i.e. nothing — then exits `0` with no output, indistinguishable from "no matches in this file".
+Measured 2026-07-21 on one file: `/usr/bin/grep -c` (BRE, parens literal) → **5**,
+`rg -c` → **0**. Anything that counts occurrences to decide whether work remains will conclude
+there is none. Same trap for `\|` alternation, which is BRE-only — in ERE it matches a literal pipe.
+
+Affected in practice: annotation markers like `FIXME(scope)` / `TODO(name)`, function call sites
+(`foo(bar)`), Rust/C++ turbofish and generics, shell `$(cmd)`.
+
+**Pass `-F` whenever the pattern contains a brace or a paren.** Default to `rg -F` / `grep -F` for
+literal text; keep regex mode for patterns that actually need it, and escape the literals there
+(`grep -cE 'FIXME\(extract\):.*needs vision'`). Same for the `Grep` tool — no braces or parens in
+`pattern` unless the regex means them. **A zero count from an unescaped pattern is not evidence of
+absence** — re-run with `-F` before concluding anything from it.
 
 @FFF.md
 
