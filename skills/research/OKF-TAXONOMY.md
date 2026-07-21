@@ -14,6 +14,7 @@ Every tag in the `tags` field of a corpus document must be drawn from this list.
 - **alias-free-shadow-maps** — shadow maps that project visible eye-space pixels into light space to eliminate sampling-rate mismatch (Aila & Laine 2004, Johnson 2005 IZB, Sintorn 2008 shadow volumes).
 - **soft-shadows** — techniques that approximate area-light penumbrae, including PCSS, SMRT, and analytically filtered variants.
 - **deep-shadow-maps** — per-texel transmittance curves recording partial occlusion through volumes (Salvi 2010 AVSM, Lokovic-Veach lineage).
+- **horizon-mapping** — precomputed per-texel directional visibility used to self-shadow surface detail without rendering depth from the light: a horizon angle tabulated per azimuthal direction, or any compressed stand-in for that function (Max 1988 origin, Rushmeier 2001 capture, Kautz 2000 per-texel ellipse fit, Onoue 2004 curvature correction, Wang 2003 view-dependent displacement, Fritsch 2025 Fourier compression, Snyder-Nowrouzezahrai 2008 height-field self-shadowing). Distinct from **soft-shadows**, which is area-light penumbrae — a horizon-map paper is usually a *hard*-shadow paper, and most of this family predates or sidesteps shadow maps entirely.
 ## Volumetrics & Participating Media
 
 - **volumetric-fog** — real-time fog computed in a froxel (frustum-aligned voxel) grid, covering Wronski 2014, Hillaire 2015 Frostbite, Feller 2024, Krause 2025, and Wickedengine variants.
