@@ -27,6 +27,41 @@ All tests drive the app as a black box: control signals in -> real app tick -> m
 
 Gate criteria + worked examples (independent oracles, exact-by-default, cross-referenced conditions, absence criteria): `~/_dev/my-claude-workflow/docs/e2e-gates.md`. Gates rank with the spec — under agentic flow they are what excludes accepting invalid or partially falsified results.
 
+### A green gate is a claim about the fixture, not only about the code
+
+A gate that has never been observed red proves nothing. Nearly every false green is a fixture that
+**could not have failed**, so a green while a reported symptom persists is evidence about the
+fixture first. Never conclude from green that the report was wrong.
+
+Before trusting green, establish the fixture can go red:
+
+- **Regime, not shape.** A defect gated on scale — size, count, distance, duration, concurrency,
+  capacity — vanishes in a fixture shrunk to run fast. Shrinking makes a different system. Pay real
+  scale once behind a category rather than shrinking it into vacuity.
+- **Non-degenerate content.** The data must vary along the axis the code branches on, or the branch
+  never executes. A flat field cannot test slope logic; one element cannot test ordering.
+- **Do not settle the transient.** If the defect lives in flight or pre-convergence, flushing,
+  awaiting or converging before measuring closes exactly the window under test.
+- **Measure where the symptom is.** An internal artifact can compare 100% identical while the
+  symptom lives downstream of a path that never reads it. Start at the reported boundary, then
+  work inward.
+- **Validate the oracle.** Feed it a known-bad input and confirm it fires. A metric blind to the
+  symptom's channel (brightness vs hue, mean vs distribution, presence vs order) passes everything.
+- **One variable.** If the arm and its control differ in more than the thing under test, a
+  difference cannot be attributed and an equality is coincidence.
+- **Guard the preconditions.** Assert and log what the run actually examined, so a pass cannot be
+  vacuous over an empty or degenerate sample.
+
+Prefer shapes that survive not knowing what "correct" looks like, in this order: **invariance**
+(output must not depend on X) → **differential A/B** (one variable moved) → **round trip** →
+**analytical oracle**. When a defect may be content-dependent, a synthetic stand-in is a hypothesis,
+not a control — drive the real asset.
+
+Confirm a cause by **prediction**: state how the symptom must move if the hypothesis holds, then
+move the suspected cause. A hypothesis that only explains the observation is a story. Confirm a fix
+by **measuring it** — a change that does not move the metric is not the fix; revert it rather than
+shipping a no-op. Never loosen an assertion to reach green.
+
 NEVER run `git config user.name`/`user.email` or set per-repo git identity, and never hardcode my name/email in a git command. My global git config is correct — always use it. New repos (`git init`, `gh repo create`) inherit the global identity automatically; leave it alone. Never read my email from session/context and pass it to git — git already knows it.
 
 ## When Stuck
