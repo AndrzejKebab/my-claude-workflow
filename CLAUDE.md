@@ -127,6 +127,20 @@ literal text; keep regex mode for patterns that actually need it, and escape the
 `pattern` unless the regex means them. **A zero count from an unescaped pattern is not evidence of
 absence** — re-run with `-F` before concluding anything from it.
 
+## Diff
+
+`diff` is hook-rewritten too, and its failure mode is worse than grep's: it reports a **false PASS**.
+Measured 2026-07-22 on two manifest files whose *every line* differed — the rewritten `diff a b`
+printed `[ok] Files are identical`, while `/usr/bin/diff` and `sha256sum` both correctly reported
+them different. Reproducible, and content-dependent, so it cannot be ruled out by one spot check.
+
+A wrong "no differences" is the dangerous direction: it silently converts "the artifact changed" into
+"nothing to see", and anything deciding whether work is needed will conclude there is none.
+
+**Use `/usr/bin/diff` or `sha256sum` for any comparison whose answer you intend to act on** —
+regression checks, before/after captures, generated-output equality, "did the fix change anything".
+Never accept a bare `diff`'s silence as evidence of equality.
+
 @FFF.md
 
 @NONDUAL.md
