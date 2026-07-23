@@ -23,19 +23,19 @@ Read these in order:
 
 ### Resolve every inline `FIXME` mark
 
-Pass 1 (extractor) and Pass 2 (vision, if it ran) left `<!-- FIXME(extract): … -->` and `<!-- FIXME(vision): … -->` comments at problem sites. **Resolving these is your primary job.** For each mark:
+Pass 1 (extractor) and Pass 2 (vision, if it ran) left `<!-- FIXME(extract): … -->` and `<!-- FIXME(vision): … -->` comments at problem sites. **Resolving the content these flag is your primary job.** For each mark:
 
 - Fix the flagged problem in the body (garbled equation, OCR artefact, divergent formula, broken heading).
-- **Delete the comment** once handled — a resolved FIXME leaves no trace.
-- If you genuinely cannot resolve it from the text-layer + page-render evidence available to you, do NOT delete it: rewrite it as `<!-- FIXME(audit): <what's unresolved and why> -->` and list it in your return message so the orchestrator can do a direct page-render audit.
+- **Leave the comment in place.** Do NOT spend Edit calls deleting markers — the orchestrator's Pass 3.7 mechanical sweep (`strip_html_comments.py`) removes every `<!-- … -->` comment at once after you return. An agent deleting dozens of markers one at a time is pure token spend for a deterministic regex transform.
+- If you genuinely cannot resolve it from the text-layer + page-render evidence available to you, do NOT rewrite it as `FIXME(audit)` (the sweep would erase it) — instead list it under **AUDIT ESCALATIONS in your return message** so the orchestrator can do a direct page-render audit.
 
-A refiner that finishes with `FIXME(extract)` or `FIXME(vision)` comments still in the document **has not completed its pass.** Grep for them as your last action and confirm zero remain.
+A refiner that finishes with `FIXME(extract)` or `FIXME(vision)` **content still unaddressed has not completed its pass** — the *comment* remaining is fine (the sweep handles it); the *problem* remaining is not. Grep the marks (`grep -nF`) as you work so you address every one; the escalation list in your return message is how the unresolved ones survive the sweep.
 
 ### Inline vision pages (when Pass 2 was skipped)
 
-When 5 or fewer pages needed a vision pass, the orchestrator skips the Pass-2 vision agent and folds the work into you. The brief lists those page numbers. For each, **reconstruct the slide's structure in markdown** immediately above the image reference, following the "Structural reconstruction policy" section of the skill spec: verbatim nested bullets, markdown tables, ```mermaid diagrams, two-column subfigures, code, and LaTeX as the content dictates — load-bearing, not a summary. Put a `<!-- vision: reconstructed from <frame> — verify against image -->` marker above each reconstruction; keep genuine photo/render descriptions tagged `**Image (LLM vision pass):**`. These pages are also marked `<!-- FIXME(extract): pNNN needs vision -->` — delete that comment once you've reconstructed the page.
+When 5 or fewer pages needed a vision pass, the orchestrator skips the Pass-2 vision agent and folds the work into you. The brief lists those page numbers. For each, **reconstruct the slide's structure in markdown** immediately above the image reference, following the "Structural reconstruction policy" section of the skill spec: verbatim nested bullets, markdown tables, ```mermaid diagrams, two-column subfigures, code, and LaTeX as the content dictates — load-bearing, not a summary. Put a `<!-- vision: reconstructed from <frame> — verify against image -->` marker above each reconstruction; keep genuine photo/render descriptions tagged `**Image (LLM vision pass):**`. These pages are also marked `<!-- FIXME(extract): pNNN needs vision -->` — leave that comment in place (the Pass 3.7 sweep removes it) once you've reconstructed the page.
 
-When Pass 2 *was* dispatched, the vision reconstructions already exist — you do NOT rewrite them (see "What you DO NOT touch"), except to fix an obviously-wrong reconstruction against the embedded frame, flagging anything you cannot verify with `<!-- FIXME(audit): … -->`.
+When Pass 2 *was* dispatched, the vision reconstructions already exist — you do NOT rewrite them (see "What you DO NOT touch"), except to fix an obviously-wrong reconstruction against the embedded frame, escalating anything you cannot verify in your return message (not an inline `FIXME(audit)`).
 
 ### Frontmatter completion
 
@@ -53,7 +53,7 @@ Slide-deck PDFs from PowerPoint with embedded math fonts often emit equations as
 - Inline: `$L(\vec{x}, \vec{\omega})$`
 - Displayed: `$$\sigma_s \propto \frac{1}{\lambda^4}$$`
 
-If the equation is too complex to recover with confidence from the rendered image alone, leave the broken Unicode in place and add a `<!-- FIXME(audit): equation needs vision-pass re-transcription — too complex to recover from render -->` marker rather than guessing, and list it in your return message.
+If the equation is too complex to recover with confidence from the rendered image alone, leave the broken Unicode in place rather than guessing, and list it under AUDIT ESCALATIONS in your return message (do not add an inline `FIXME(audit)` marker — the Pass 3.7 sweep would erase it).
 
 ### Heading fixes
 
@@ -82,7 +82,7 @@ If the brief asks for a summary, write one inserted **after the YAML frontmatter
 ### What you DO NOT touch
 
 - **Speaker-notes content beyond obvious typo fixes** — never rewrite the speaker's argument or trim "redundant" lines.
-- **Vision reconstructions that the vision agent (Pass 2) wrote** (marked `<!-- vision: reconstructed … -->`, plus any `**Image (LLM vision pass):**` descriptions) — those are its territory. If you spot a hallucination, verify against the embedded frame and fix only if you are confident; otherwise flag it with a `<!-- FIXME(audit): … -->` comment and in your return message. (This does NOT apply to reconstructions YOU wrote inline for skipped-Pass-2 pages — those are yours.)
+- **Vision reconstructions that the vision agent (Pass 2) wrote** (marked `<!-- vision: reconstructed … -->`, plus any `**Image (LLM vision pass):**` descriptions) — those are its territory. If you spot a hallucination, verify against the embedded frame and fix only if you are confident; otherwise escalate it in your return message (not an inline `FIXME(audit)`). (This does NOT apply to reconstructions YOU wrote inline for skipped-Pass-2 pages — those are yours.)
 
 ## Hard rules
 
@@ -93,11 +93,11 @@ If the brief asks for a summary, write one inserted **after the YAML frontmatter
 
 ## Required last action
 
-Grep the document one final time for `FIXME(extract)` and `FIXME(vision)` — **zero may remain.** Any item you could not resolve must have been rewritten as `FIXME(audit)`.
+Grep the document one final time for `FIXME(extract)` and `FIXME(vision)` (`grep -nF`, two calls) and confirm you have **addressed the content** of every one. The comments themselves stay in the file — the orchestrator's Pass 3.7 sweep removes them; do not delete them yourself.
 
 Final message lists:
 
-- Count of `FIXME(extract)` / `FIXME(vision)` marks resolved; count rewritten as `FIXME(audit)` (with a one-line list of those — the orchestrator audits them directly).
+- Count of `FIXME(extract)` / `FIXME(vision)` marks whose content you resolved; and an **AUDIT ESCALATIONS** list of every one you could NOT resolve from render evidence (these survive the sweep only via this list, so it is load-bearing — the orchestrator audits them directly against the page renders).
 - Frontmatter: `description` written, `tags` written (list them), `type` corrected if it changed.
 - Heading fixes applied (count + brief description).
 - Equations re-transcribed (slide numbers).
