@@ -327,18 +327,41 @@ def starts_from_tsv(path: str) -> dict[int, float]:
     return starts
 
 
-def emit_windows(starts: dict[int, float], srt: str, out: str) -> None:
+def emit_windows(
+    starts: dict[int, float], srt: str, out: str, n_slides: int | None = None
+) -> None:
+    """Write one transcript window per slide.
+
+    A slide's window runs from when it first appears on screen to when the next
+    *seen* slide appears. When n_slides is given, emit a block for EVERY slide
+    1..n_slides in order (empty for slides never shown) so a positional folder
+    like fold_narration.py can zip windows to `## Slide N` sections without
+    drift; otherwise emit only the slides that were seen.
+    """
     cues = parse_srt(srt)
-    bounds = sorted(starts.items())
+    seen = sorted(starts.items())
+    ends = {slide: (seen[i + 1][1] if i + 1 < len(seen) else 1e9) for i, (slide, _) in enumerate(seen)}
+    total = n_slides or (seen[-1][0] if seen else 0)
+    written = 0
     with open(out, "w", encoding="utf-8") as fh:
-        for idx, (slide, start) in enumerate(bounds):
-            end = bounds[idx + 1][1] if idx + 1 < len(bounds) else 1e9
-            text = " ".join(
-                c[2] for c in cues if c[0] >= start - 0.01 and c[0] < end - 0.01
-            )
-            fh.write(f"## [{int(start) // 60}:{int(start) % 60:02d}] slide {slide}\n")
-            fh.write(text.strip() + "\n\n")
-    print(f"wrote {out} ({len(bounds)} slide windows)", file=sys.stderr)
+        for slide in range(1, total + 1):
+            if slide in starts:
+                start = starts[slide]
+                text = " ".join(
+                    c[2]
+                    for c in cues
+                    if c[0] >= start - 0.01 and c[0] < ends[slide] - 0.01
+                ).strip()
+                fh.write(f"## [{int(start) // 60}:{int(start) % 60:02d}] slide {slide}\n")
+                fh.write(text + "\n\n")
+                if text:
+                    written += 1
+            elif n_slides:
+                fh.write(f"## [--] slide {slide}\n\n")
+    print(
+        f"wrote {out} ({total} slide blocks, {written} with narration)",
+        file=sys.stderr,
+    )
 
 
 def main() -> int:
@@ -364,6 +387,12 @@ def main() -> int:
         help="emit windows from an existing alignment TSV; skips all scoring",
     )
     ap.add_argument(
+        "--pad-slides",
+        type=int,
+        default=None,
+        help="emit one window per slide 1..N (empty for unseen) for positional folding",
+    )
+    ap.add_argument(
         "--control",
         choices=["shuffle"],
         default=None,
@@ -377,7 +406,11 @@ def main() -> int:
         if not (args.srt and args.emit_windows):
             raise SystemExit("--from-tsv needs --srt and --emit-windows")
         starts = starts_from_tsv(args.from_tsv)
-        emit_windows(starts, args.srt, args.emit_windows)
+        pad = args.pad_slides
+        if pad is None:
+            renders = glob.glob(os.path.join(assets, "s*-slide.png"))
+            pad = len(renders) or None
+        emit_windows(starts, args.srt, args.emit_windows, pad)
         return 0
 
     deck_paths, deck = load_deck(assets)
