@@ -112,6 +112,16 @@ Red-first is the special case where the pre-change code is the sabotage. When th
 be reproduced yet — the usual situation when chasing a report — sabotage is the only proof of
 capability available, and it is available immediately.
 
+**The red must land at the gate's own oracle, not at a precondition.** A sabotage arm that fails an
+earlier assertion — a settle check, a fixture steering step, an arm-equality precondition — proves
+the fixture noticed *something*, not that the oracle measures the subject. Check *where* the arm
+went red before crediting it. Observed 2026-07-23 (swordgal locomotion-D, three iterations lost to
+this): a sabotage installed before the fixture's own steering cancelled that steering and reddened a
+precondition 30 m from the thing under test; moved after the steer, both arms reached the identical
+start state and the red moved to the oracle, which is what made the one moved variable the subject.
+Corollary: install the sabotage at the last point before the measured window, so both arms share
+every precondition.
+
 **Record the result in the gate.** "Poisoning the X buffer moves this metric 0.03 → 0.71" is the
 gate's demonstrated sensitivity, it is what makes the threshold defensible instead of invented, and
 it tells the next reader what the gate is for. A gate whose comment cannot state what it caught, or
