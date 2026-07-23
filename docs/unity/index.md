@@ -16,7 +16,11 @@ This canon is the shared, project-agnostic home in the workflow repo, merged fro
   `IComputeRenderGraphBuilder`, `IUnsafeRenderGraphBuilder`), pass-type
   restrictions, global-state propagation, depth-target selection,
   camera-state isolation, samplers, shadow-sampling-from-compute,
-  shader-globals-vs-compute-kernel binding, empirical examples.
+  shader-globals-vs-compute-kernel binding, empirical examples. Also:
+  Surface Cache GI's scene-discovery mechanism and its integration gap
+  with GPU-driven/indirect-draw geometry (`surface-cache-gi.md`), and the
+  `[ResourcePath]`/`IRenderPipelineGraphicsSettings`/`ObjectDispatcher`
+  family of SRP resource-organization idioms (`resource-attributes.md`).
 
 - [`jobs/`](jobs/index.md) — Unity.Jobs (`IJob`, `IJobFor`, `IJobParallelFor`,
   `IJobParallelForBatch`, `IJobParallelForDefer`, `IJobParallelForTransform`,
@@ -45,6 +49,8 @@ This canon is the shared, project-agnostic home in the workflow repo, merged fro
 | Author a `MonoBehaviour` / `ScriptableObject`, or build a scene/prefab programmatically | [`authoring/monobehaviour-files.md`](authoring/monobehaviour-files.md) |
 | Develop, test, or publish a package sample (`Samples~/` ↔ `Assets/Samples/…`) | [`authoring/package-samples.md`](authoring/package-samples.md) |
 | Write or modify a `ScriptableRendererFeature` / RG pass     | [`rendergraph/`](rendergraph/index.md)  |
+| Give a `ScriptableRendererFeature` its own shaders/materials as versioned Editor assets | [`rendergraph/resource-attributes.md`](rendergraph/resource-attributes.md) |
+| Make custom/procedural geometry participate in (or understand why it's invisible to) Surface Cache GI | [`rendergraph/surface-cache-gi.md`](rendergraph/surface-cache-gi.md) |
 | Write `job.Schedule(...)`, `job.ScheduleParallel(...)`      | [`jobs/scheduling-overloads.md`](jobs/scheduling-overloads.md) |
 | Tag a struct or method `[BurstCompile]`                     | [`burst/attributes.md`](burst/attributes.md) and [`burst/compilation-context.md`](burst/compilation-context.md) |
 | Write or order an `ISystem` / `ComponentSystemGroup`        | [`entities/systems.md`](entities/systems.md) and [`entities/system-groups.md`](entities/system-groups.md) |

@@ -26,6 +26,10 @@ All file:line citations refer to those two roots verbatim. Every line citation h
 
 - [`empirical-examples.md`](empirical-examples.md) — survey of every RG pass in URP 17.5 source and in this project's atmospherics + heightfields packages. Bucketed: compute passes that read URP globals, raster passes that publish globals, transient texture patterns, shadow-receiver patterns. Each entry has file:line + builder-method list. Use as a copy-from canon: "find the closest existing pass and mirror its declarations".
 
+- [`surface-cache-gi.md`](surface-cache-gi.md) — Unity's realtime Surface Cache GI renderer feature: how it discovers scene geometry (`ObjectDispatcher`-driven `MeshRenderer`/`Terrain`/`Light`/`Material` sync, one-shot `GeometryPool` ingest, the Meta-pass material requirement), why the raw-heightfield `AddTerrainInstance` ingestion path exists but isn't wired to the realtime cache, and a concrete integration verdict for a GPU-driven/indirect-draw heightfield renderer (`is.zori.miniheightfields`) that has none of the component shapes the discovery path looks for.
+
+- [`resource-attributes.md`](resource-attributes.md) — the attribute/class vocabulary for organizing a `ScriptableRendererFeature`'s own shader/material/compute dependencies as versioned, categorized Editor assets: `[ResourcePath]` + `IRenderPipelineGraphicsSettings`, `[SupportedOnRenderPipeline]`, `[Categorization.CategoryInfo]` + `[HideInInspector]`, `[DisallowMultipleRendererFeature]`, the `Handle<T>`/`HandleSet<T>` strongly-typed-handle idiom, `ObjectDispatcher` for incremental scene-object change tracking, and the cached-`ShaderIDs` pattern.
+
 - [`unity-docs-fetched.md`](unity-docs-fetched.md) — curated extracts from `docs.unity3d.com/6000.3` Manual + ScriptReference for the RenderGraph API surface. Many of the ScriptReference URLs return 404 against the 6.3 doc tree; the Core RP package `17.0` ScriptReference (`docs.unity3d.com/Packages/com.unity.render-pipelines.core@17.0/api/...`) is the working source for method signatures and is what is captured here. Use when you need an externally citable signature.
 
 ## Reading order for the cascade-shadow-from-compute bug
