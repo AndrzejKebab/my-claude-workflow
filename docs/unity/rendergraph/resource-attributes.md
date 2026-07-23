@@ -4,6 +4,8 @@ A reference for the attribute/class vocabulary Unity's own URP features use to d
 
 ## `IRenderPipelineGraphicsSettings` + `[ResourcePath]` — versioned, path-resolved resource assets
 
+**Unity 6 (6000.0) minimum.** `IRenderPipelineGraphicsSettings` first appears in the Core RP changelog at `16.0.3` (2023-07-04, "compatible with Unity 2023.3.0a1" — the alpha cycle that shipped as Unity 6000.0); nothing in `16.0.0`–`16.0.2` or any `15.x`/`14.x` entry mentions it (`com.unity.render-pipelines.core@*/CHANGELOG.md:206-232` vs. `:233-390`). Unity 2022 LTS and earlier use the older monolithic `RenderPipelineGlobalSettings`/`UniversalRenderPipelineGlobalSettings` singleton-asset pattern instead — this whole idiom has no equivalent there.
+
 A render feature that needs its own shaders/materials/compute shaders wraps them in a small `IRenderPipelineGraphicsSettings` implementation instead of exposing raw `[SerializeField]` fields on the feature itself:
 
 ```csharp
