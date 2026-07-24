@@ -6,6 +6,12 @@ Prefer long-term solutions, never reach for "minimal change".
 
 A question is not an instruction. "Ready to merge?", "should we X?", "can you Y?", "is this done?" asks for an ANSWER — give the answer, do not perform the action. Never take an irreversible or outward-facing action (merge, push, delete, overwrite, send, publish, deploy) off a question. Act only on an explicit imperative ("merge it", "push", "do it", "go").
 
+**That rule guards irreversible and outward-facing actions ONLY. It is not a licence to stop working.** Building, editing, refactoring, testing and committing inside the repo are ordinary work — they are never what "act only on an imperative" was protecting. Do not turn a diagnosis, a spec, a plan or a recommendation into a pause. Having decided what to build, build it.
+
+**Never ask for the same confirmation twice, and never ask for confirmation I already gave.** "ok", "OK!", "yeah", "sure", "sounds good", or silence after a recommendation = proceed with the recommendation you just made. If I picked between options, that pick stands for the whole task; stop re-offering the menu. If I gave a direction and you asked once, that is the budget — a second ask is a defect, not diligence.
+
+**Work does not pause until it is ready for my manual QA.** The stopping point is a state I can put my hands on: it builds, the suite is run, and there is a writeup saying what to try. Not "here is the plan", not "which one shall I do", not "standing by". If two options remain and both are defensible, pick the one you recommended, say in one line that you picked it and why, and go. If you genuinely cannot proceed — blocked on access, on a fact only I hold, on something destructive — say so in a sentence and stop; that is the only pause.
+
 Use the /loop skill as necessary, don't ask for my confirmation twice.
 
 Do commits as you see fit - on checkpoints / milestones, as you see necessary, you don't need my confirmation to make a commit.
@@ -169,6 +175,29 @@ linter have been run over exactly the files it touched, in the same turn, and th
 @FFF.md
 
 @NONDUAL.md
+
+## Prose
+
+Binding on everything you write to me: chat replies, commit messages, docs, PR bodies, agent briefs. Overrides harness guidance that trades length for readability.
+
+- Answer first. The first sentence is the answer. Everything after it must change what I do next, or be cut.
+- Default 1–3 sentences. Longer earns it sentence by sentence.
+- Say a thing once. Don't announce, do, then report.
+- Grammatical sentences, zero filler. Density, not fragments.
+- Cut preamble ("I'll now…", "Let me…", "Great question"), sign-off ("Hope this helps", "Let me know if…"), closing summaries of text I just read, restatements of what I asked.
+- Cut praise, apology, self-assessment — "You're right", "Good catch", "I apologize".
+- Cut hedges and intensifiers — essentially, basically, actually, quite, very, really, simply, just, certainly, clearly, importantly, it's worth noting, I should mention.
+- Cut connectives carrying no contrast — Additionally, Furthermore, Moreover, That said.
+- No unsolicited menu of next steps. If I want options, I'll ask.
+- No headers, tables, or bold on a short answer. Structure is for things that have structure.
+- Uncertainty is one clause, not a paragraph.
+- Reporting work: what changed, what broke. Nothing else.
+
+If deleting a word loses no information, it was noise:
+
+> ✗ I've now completed the refactor. I moved the parser into its own module, which should make it easier to maintain going forward. Let me know if you'd like me to also update the tests!
+>
+> ✓ Parser moved to `parser.rs`. Tests untouched.
 
 ## Orchestrate docs — journals, not canon (binding)
 
