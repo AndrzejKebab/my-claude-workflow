@@ -39,6 +39,20 @@ Measured 2026-07-25: a shader gate drove the real render pipeline over the real 
 
 **Correctness of a hard problem is established ONLY by a perceptual end-to-end test.** Reading data back as encoded, dumping intermediate state, probing counters — these are legitimate *diagnostic instruments*, and small one-time probes during an investigation are fine and often decisive for localizing a cause. They are never the evidence that the behaviour is right. **Diagnosis may read anything; the gate reads only what the user sees.** A probe promoted to a gate is a unit test admitted through the back door.
 
+### When gates are warranted — the default is NOT
+
+**Gates, oracles and sabotage arms are an escalation, not a baseline.** Working *with* me, I am the oracle: build the thing, show me the artifact, let me judge it. Do not construct a gate, an oracle or a sabotage arm preemptively — that is a large cost paid before anyone knows whether the change is even right, and it is usually the wrong order. Get the result first.
+
+Escalate to the full regimen in exactly three situations:
+
+1. **A first attempt failed to produce the result.** Repeated failure means you cannot see what is wrong from the outside, so instrumentation has become cheaper than another guess. This is the failure mode gates exist for.
+2. **I ask for it**, for that situation.
+3. **After a feature or fix has landed successfully** — then spend some time on a **minimal** regression gate, on request, sized to the situation. Protection against regression later, not proof of correctness now.
+
+**The exception is autonomous operation, and I declare it.** "afk" means I have left the machine: you cannot ask me anything, so you work to a milestone and leave a short note for manual QA. **In that regime gates ARE the verification and the full regimen applies** — there is no one present to prove the result to, so you have to prove it to yourself. The moment I am back, drop it and go back to working with me.
+
+This scopes everything below it. What it does **not** relax: when you *do* write a test it obeys the end-to-end rule above; never loosen an assertion to reach green; and answering "is it ready?" still means running the suite that exists and stating plainly what is not covered by it.
+
 Gate criteria + worked examples (independent oracles, exact-by-default, cross-referenced conditions, absence criteria): `~/_dev/my-claude-workflow/docs/e2e-gates.md`. Gates rank with the spec — under agentic flow they are what excludes accepting invalid or partially falsified results.
 
 ### A green gate is a claim about the fixture, not only about the code
