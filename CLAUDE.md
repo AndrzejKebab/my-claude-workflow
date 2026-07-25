@@ -31,6 +31,14 @@ Never write unit tests. All tests must exercise entire application end to end.
 
 All tests drive the app as a black box: control signals in -> real app tick -> metrics out. No test reimplements a sim loop or calls sim-loop internals. Feature gates are APP CONFIG, not test reimplementations.
 
+**Real inputs do not make a test end-to-end. The OUTPUT decides.** A test that drives the real app, ticks the real loop, then reads an *intermediate* value is a unit test wearing an end-to-end costume — it asserts that one stage emits what you assumed it would, which is the whole of what a unit test does and the entire reason they are banned. The metric must come from the artifact the user perceives: the final frame, the rendered page, the response body, the audible output. Never a debug channel, an instrumented pass, an internal buffer, or a counter that merely sits near the symptom.
+
+The tell is one question: **if this metric were perfect and the user still saw the defect, would the test notice?** If no, it is a unit test, however much real pipeline ran upstream of the probe.
+
+Measured 2026-07-25: a shader gate drove the real render pipeline over the real world with the real material, and graded a debug pass exposing the blend's *input* weights. It reported a 37.7x separation between good and sabotaged, held a demonstrated-red arm, and stayed green while the shipped surface rendered hard blocky material boundaries with no blending whatever. Every upstream stage was real. The channel was not the one the user looks at, and that alone was enough.
+
+**Correctness of a hard problem is established ONLY by a perceptual end-to-end test.** Reading data back as encoded, dumping intermediate state, probing counters — these are legitimate *diagnostic instruments*, and small one-time probes during an investigation are fine and often decisive for localizing a cause. They are never the evidence that the behaviour is right. **Diagnosis may read anything; the gate reads only what the user sees.** A probe promoted to a gate is a unit test admitted through the back door.
+
 Gate criteria + worked examples (independent oracles, exact-by-default, cross-referenced conditions, absence criteria): `~/_dev/my-claude-workflow/docs/e2e-gates.md`. Gates rank with the spec — under agentic flow they are what excludes accepting invalid or partially falsified results.
 
 ### A green gate is a claim about the fixture, not only about the code
