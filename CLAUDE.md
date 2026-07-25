@@ -2,6 +2,14 @@
 
 Don't write code comments at all, except for one-liners on top of monumental blocks. If you think something deserves a comment - write a documentation page.
 
+**Walls of text in code are POISON — for me reading it and for you, whose context they fill.** "One-liners on top of monumental blocks" is not a licence for a monumental comment block: it caps you at ONE LINE. A file header explaining the design, a numbered list of rationale, a transcript of measurements, a record of rejected alternatives — none of these belong in source. Measured 2026-07-25: a kernel shipped with 96 lines of prose before its first line of code, and every agent that touched the file thereafter paid for it.
+
+**Code IS the documentation for WHAT.** Name things so the code says it. **Docs carry HOW and WHY** — rationale, measurements, derivations, what was tried and rejected — and they live in `docs/`, where they can be read by choice instead of loaded by force.
+
+Exactly three comments survive: an **occasional one-liner**, a **citation** (paper, spec section), or a genuine **WTF explainer** where correct code reads as wrong. Anything longer is a doc page with a pointer to it, or it is deleted.
+
+Pass this rule to every subagent that writes code. It is violated by default otherwise.
+
 Prefer long-term solutions, never reach for "minimal change".
 
 A question is not an instruction. "Ready to merge?", "should we X?", "can you Y?", "is this done?" asks for an ANSWER — give the answer, do not perform the action. Never take an irreversible or outward-facing action (merge, push, delete, overwrite, send, publish, deploy) off a question. Act only on an explicit imperative ("merge it", "push", "do it", "go").
