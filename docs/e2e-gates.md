@@ -166,6 +166,54 @@ perceptual.
 Order matters: **capture → confirm → threshold**. Inventing a threshold first and then looking at
 the output is how you get a metric that agrees with your hypothesis instead of with the artifact.
 
+### The pipeline upstream of the probe is not the test — the probe is
+
+Step 1 says capture where the user perceives, and the way that step gets skipped is not by ignoring
+it. It is by satisfying every *other* part of the definition so thoroughly that nobody checks the
+one that matters. Real world, real inputs, real loop, real shipping code path, a demonstrated-red
+arm, a measured separation — and then the metric is read from a debug channel two stages before the
+output.
+
+That is a unit test. It asserts an intermediate stage emits what its author assumed, which is what
+unit tests do and why they are banned. Realness is not additive: nine real stages and one internal
+readout is not 90 % end-to-end, it is a unit test on stage ten's input.
+
+**Worked example, measured 2026-07-25 (voxelworld).** Users reported material boundaries "flowing
+wrong from one material into another". A shader gate was built to guard the fix. It drove the real
+render pipeline over the real generated world with the real shipping material, toggled exactly one
+variable, measured a good-vs-good noise floor of zero first, chose its threshold in the measured
+gap, and demonstrated red twice — including an anti-vacuity arm that fired when the sabotage keyword
+stopped reaching the pass. By every criterion in this document it looked exemplary.
+
+Its metric was the dominant blend weight, read from a debug pass that existed to expose it. Good
+0.4167 %, sabotaged 15.7219 %, separation 37.7×. All true, and all irrelevant: the weight ramps
+smoothly *into* a height blend that then resolves to a hard winner. The gate was green while the
+shipped surface rendered hard blocky boundaries with no blending whatever, which anyone could see by
+opening the capture the same session had committed — and nobody did, because the number was
+convincing.
+
+The debug channel was chosen because it was unlit and pipeline-independent, i.e. **easy to read**.
+That is the actual mechanism. Gates drift toward whatever channel is cheapest to instrument, and the
+channel the user perceives is reliably the most expensive one — it needs lighting, post, the whole
+pipeline, and it is noisy. The pull is structural, not a lapse of attention, so it recurs and must be
+designed against rather than resolved by care.
+
+**Two habits that catch it:**
+
+- **Ask the one question.** *If this metric were perfect and the user still saw the defect, would
+  the test notice?* If no, the metric is upstream of the symptom. Ask it of every gate, especially
+  the ones with impressive separation numbers — a large separation on the wrong channel is the most
+  convincing false green there is.
+- **Open the capture.** A gate over rendered output should emit an image, and a human or a vision
+  pass should look at it at least once. In the same episode, a capture labelled "a close read of one
+  boundary" was a near-uniform field framing almost no boundary; it sat in the evidence base
+  unopened while the fix was called validated.
+
+**Diagnosis may read anything; the gate reads only what the user sees.** Dumping encoded data,
+intermediate state and counters is legitimate and often decisive for *localizing* a cause — small
+one-time probes are exactly right during an investigation. The error is promoting a probe to a gate.
+Correctness of a hard problem is established only by the perceptual end-to-end test.
+
 ### Grade in the reporter's vocabulary
 
 When a symptom is described in words, measure the quantity those words name. "Washed out" is
