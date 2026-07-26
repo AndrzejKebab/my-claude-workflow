@@ -43,21 +43,38 @@ All tests drive the app as a black box: control signals in -> real app tick -> m
 
 The tell is one question: **if this metric were perfect and the user still saw the defect, would the test notice?** If no, it is a unit test, however much real pipeline ran upstream of the probe.
 
-Measured 2026-07-25: a shader gate drove the real render pipeline over the real world with the real material, and graded a debug pass exposing the blend's *input* weights. It reported a 37.7x separation between good and sabotaged, held a demonstrated-red arm, and stayed green while the shipped surface rendered hard blocky material boundaries with no blending whatever. Every upstream stage was real. The channel was not the one the user looks at, and that alone was enough.
-
 **Correctness of a hard problem is established ONLY by a perceptual end-to-end test.** Reading data back as encoded, dumping intermediate state, probing counters — these are legitimate *diagnostic instruments*, and small one-time probes during an investigation are fine and often decisive for localizing a cause. They are never the evidence that the behaviour is right. **Diagnosis may read anything; the gate reads only what the user sees.** A probe promoted to a gate is a unit test admitted through the back door.
 
-### When gates are warranted — the default is NOT
+### Sabotage arms are PROHIBITED. Red-first TDD is the tool.
 
-**Gates, oracles and sabotage arms are an escalation, not a baseline.** Working *with* me, I am the oracle: build the thing, show me the artifact, let me judge it. Do not construct a gate, an oracle or a sabotage arm preemptively — that is a large cost paid before anyone knows whether the change is even right, and it is usually the wrong order. Get the result first.
+**Never write a sabotage arm, a self-poisoning fixture, a "prove the gate can go red" patch, or any
+machinery whose purpose is to break working code to demonstrate a test's sensitivity.** Not as a
+`.patch`, not behind a build define, not as a mutation script, not as a committed "arm" of any kind.
+This is a hard prohibition, not a default I may escalate past. If you catch yourself about to
+deliberately break the subject in order to grade the grader — stop, and write a failing test instead.
 
-Escalate to the full regimen in exactly three situations:
+**The legitimate version of that instinct is red-first TDD, and it is strictly better:**
 
-1. **A first attempt failed to produce the result.** Repeated failure means you cannot see what is wrong from the outside, so instrumentation has become cheaper than another guess. This is the failure mode gates exist for.
-2. **I ask for it**, for that situation.
-3. **After a feature or fix has landed successfully** — then spend some time on a **minimal** regression gate, on request, sized to the situation. Protection against regression later, not proof of correctness now.
+1. Write the test for the behaviour you are about to build or fix. Run it. **Watch it fail.**
+2. Implement.
+3. Run it. **Watch it pass.**
 
-**The exception is autonomous operation, and I declare it.** "afk" means I have left the machine: you cannot ask me anything, so you work to a milestone and leave a short note for manual QA. **In that regime gates ARE the verification and the full regimen applies** — there is no one present to prove the result to, so you have to prove it to yourself. The moment I am back, drop it and go back to working with me.
+That gives the same evidence a sabotage arm chases — the test was observed red, then green — for a
+fraction of the tokens, with no mutation machinery to maintain, and it produces the feature as a side
+effect instead of producing a patch that has to be regenerated every time the source moves. Sabotage
+arms rot against their own anchors; a red-first test cannot, because its red state is the real
+pre-fix code.
+
+**Graphics work: make it look right first.** No gate, no oracle, no metric, no threshold, no capture
+harness until the thing renders and I have looked at it. I am the oracle for anything visual. Build
+it, run it, show me the frame. If it is wrong I will tell you what is wrong, in my words, and *that*
+is what a metric gets derived from later — if I ask for one. Constructing a perceptual gate before
+the feature exists is inventing a threshold for an artifact nobody has seen.
+
+**Regression tests are fine and welcome — after something works, on request, minimal.** Protection
+against a future break, sized to the situation. Never proof-of-correctness theatre before the fact.
+
+**Autonomous operation changes who the oracle is, not the prohibition.** "afk" means I have left the machine: you cannot ask me anything, so you work to a milestone and leave a short note for manual QA. In that regime **tests are the verification**, because there is nobody present to show the artifact to — so write them red-first and say plainly in the note which claims are untested. It does **not** re-license sabotage arms; the prohibition above holds in every regime. For anything visual, capture the frames and leave them for me rather than inventing a metric to grade them with. The moment I am back, drop the extra rigor and go back to working with me.
 
 This scopes everything below it. What it does **not** relax: when you *do* write a test it obeys the end-to-end rule above; never loosen an assertion to reach green; and answering "is it ready?" still means running the suite that exists and stating plainly what is not covered by it.
 
@@ -81,14 +98,15 @@ Before trusting green, establish the fixture can go red:
 - **Measure where the symptom is.** An internal artifact can compare 100% identical while the
   symptom lives downstream of a path that never reads it. Start at the reported boundary, then
   work inward.
-- **Validate the oracle by sabotage.** Do not reason about whether the gate would catch a
-  regression — break the subject on purpose (overwrite the output with a constant, skip the pass,
-  zero a coefficient, shift an index) and confirm it goes red. This is the *criterion* for "could
-  it have failed", and unlike red-first it is available before the symptom is reproducible. Record
-  the result in the gate: "poisoning X moves this metric 0.03 → 0.71" is its demonstrated
-  sensitivity and what makes the threshold defensible rather than invented.
+- **Validate the oracle red-first — never by sabotage.** Do not reason about whether the gate would
+  catch a regression, and do not break the subject to find out (that is prohibited above). Write the
+  test against the **broken** state — the real pre-fix code, or the real known-bad configuration —
+  watch it fail, then fix and watch it pass. Record both readings: "before the fix this metric read
+  0.71, after it reads 0.03" is the gate's demonstrated sensitivity and what makes the threshold
+  defensible rather than invented. When the symptom is not yet reproducible, that is a signal to go
+  reproduce it, not to manufacture a fake one.
 - **Separate signal from noise before choosing a threshold.** Measure the metric good-vs-good
-  (repeat runs) for the noise floor and good-vs-sabotaged for the signal; require signal >> noise
+  (repeat runs) for the noise floor and broken-vs-fixed for the signal; require signal >> noise
   and put the threshold in the gap. If they are comparable the metric is blind — change the metric,
   not the threshold.
 - **One variable.** If the arm and its control differ in more than the thing under test, a
@@ -112,9 +130,10 @@ distribution, "out of order" is order. A metric from the wrong channel sits at i
 while the defect is fully present.
 
 A good gate, in one sentence: **it captures the user-visible artifact under two configurations that
-must agree, with a metric demonstrated to separate a sabotaged capture from a good one, and it
+must agree, with a metric demonstrated to separate the known-bad capture from the fixed one, and it
 prints what it examined.** Sanity check any gate by naming three plausible regressions in the area
-it guards — if none would trip it, it is decoration.
+it guards — if none would trip it, it is decoration. The known-bad capture comes from the real
+defect, red-first; never from breaking working code to manufacture one.
 
 Confirm a cause by **prediction**: state how the symptom must move if the hypothesis holds, then
 move the suspected cause. A hypothesis that only explains the observation is a story. Confirm a fix
