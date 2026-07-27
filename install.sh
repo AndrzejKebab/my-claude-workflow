@@ -55,6 +55,10 @@ link_file CLAUDE.md
 link_file negative-space-expanded.md
 link_file FFF.md
 link_file HARNESS.md
+link_file VERIFY.md
+link_file NONDUAL.md
+link_file PROSE.md
+link_file MODEL.md
 
 # Make shell scripts executable
 chmod +x "$SCRIPT_DIR/skills/claude-status/claude-status.sh"
