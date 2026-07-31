@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Kill all Unity editor and worker processes (not Unity Hub)
 
-pids=$(pgrep -f 'Unity.*-projectPath|Unity.*-batchMode|UnityShaderCompiler|Unity.ILPP.Runner|VBCSCompiler.dll' | grep -v $$)
+pids=$(pgrep -f 'Unity.*-projectPath|Unity.*-batchMode|UnityShaderCompiler|Unity.ILPP.Runner|VBCSCompiler.dll|AssetImportWork' | grep -v $$)
 
 if [ -z "$pids" ]; then
     echo "No Unity processes found."

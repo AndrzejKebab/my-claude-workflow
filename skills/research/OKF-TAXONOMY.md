@@ -128,6 +128,13 @@ Every tag in the `tags` field of a corpus document must be drawn from this list.
 - **mobile-rendering** — rendering techniques targeting mobile GPUs: tile-based architectures, bandwidth limits, hybrid ray tracing (gdc24-arm-mobile-raytracing).
 - **instanced-rendering** — submitting many instances of the same mesh in a single draw call for CPU/GPU efficiency (Persson 2012 merge-instancing, aaltonen-haar-2015-gpu-driven).
 
+## Geometry Processing & Discrete Differential Geometry
+
+- **geometry-processing** — algorithms operating on triangle meshes and other surface representations as the object of study rather than as render input: parameterization, remeshing, smoothing, field design, discrete operators (Liu 2026 Phong-Rodrigues, Knöppel 2013, Stein 2020).
+- **discrete-differential-geometry** — discretizations of differential-geometric structure on meshes: connections, covariant derivatives, holonomy and curvature, Hodge/connection Laplacians, DEC and Whitney/Crouzeix-Raviart element families (Liu 2026, Hirani 2003 DEC, de Goes 2016 course).
+- **vector-fields** — representation, interpolation, smoothing and singularity handling of tangent vector-, frame- and N-RoSy fields on surfaces (Liu 2026, Vaxman 2016 survey, Knöppel 2013, Azencot 2015 operator approach).
+- **finite-element-method** — basis-function discretizations that assemble mass and stiffness matrices per element by quadrature, and the energies built from them (Liu 2026, Stein 2020, Gatica 2014).
+
 ## CS Theory & Systems
 
 - **memory-allocation** — dynamic storage allocation algorithms: fragmentation, free-list strategies, garbage collection (Johnstone-Wilson 1998, Wilson 1995).

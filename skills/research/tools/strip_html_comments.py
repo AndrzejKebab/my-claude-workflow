@@ -51,15 +51,48 @@ import time
 PREPARED = "/mnt/archive4/PAPERS/Prepared"
 
 COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
-LINE_COMMENT_RE = re.compile(r"(?m)^[ \t]*<!--.*?-->[ \t]*\n", re.DOTALL)
 
 
 def strip_comments(text: str) -> str:
-    # First remove comments that occupy whole lines (single- or multi-line
-    # blocks), taking their trailing newline so no blank line is left behind.
-    without = LINE_COMMENT_RE.sub("", text)
-    # Then remove any remaining inline comments, keeping the rest of the line.
-    without = COMMENT_RE.sub("", without)
+    """Remove every <!-- ... --> span.
+
+    A comment that occupies its own line (nothing but whitespace before it and
+    after it, up to the surrounding newlines) has its whole line — including
+    the trailing newline — removed, so no blank line is left behind. A comment
+    sharing its line with real content (e.g. inserted mid-sentence, splitting
+    a paragraph) has just the comment span removed, leaving the surrounding
+    prose untouched.
+
+    Deliberately NOT implemented as a second whole-line regex pass: an anchored
+    `^[ \t]*<!--.*?-->[ \t]*\n` pattern backtracks past a comment whose own
+    `-->` is followed by same-line trailing text, and keeps searching for the
+    next `-->` that IS immediately followed by end-of-line — silently
+    swallowing every real line in between (headings, images, whole sections)
+    as "comment". Matching once via the plain non-backtracking COMMENT_RE and
+    then classifying each match's own line post-hoc avoids that hazard
+    entirely. (Observed 2026-07-29 on a real document: a FIXME(vision) comment
+    inserted mid-sentence — `<!-- ... --> trailing prose` — caused the old
+    regex to swallow the rest of that section, the next heading, and the start
+    of the following comment before finding a line-terminating `-->`. The
+    self-check correctly refused to write, but the root cause was in this
+    function, not the document.)
+    """
+    out = []
+    last = 0
+    for m in COMMENT_RE.finditer(text):
+        start, end = m.span()
+        line_start = text.rfind("\n", 0, start) + 1
+        nl = text.find("\n", end)
+        line_end = nl if nl != -1 else len(text)
+        whole_line = text[line_start:start].strip() == "" and text[end:line_end].strip() == ""
+        if whole_line:
+            out.append(text[last:line_start])
+            last = line_end + 1 if nl != -1 else line_end
+        else:
+            out.append(text[last:start])
+            last = end
+    out.append(text[last:])
+    without = "".join(out)
     without = re.sub(r"[ \t]+\n", "\n", without)
     without = re.sub(r"\n{3,}", "\n\n", without)
     return without
