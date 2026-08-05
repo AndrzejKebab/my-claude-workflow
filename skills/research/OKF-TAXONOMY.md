@@ -142,3 +142,41 @@ Every tag in the `tags` field of a corpus document must be drawn from this list.
 - **compiler-theory** — code generation, SSA form, and compiler optimisations (Braun 2013, Millikin v8, Dybvig 1990, Knuth 1974, Ansari 2016, Vattani 2015).
 - **data-structures-theory** — foundational data structure papers: persistent search trees, OBDDs, chazelle filtering search (Bryant 1986, Sarnak-Tarjan 1986, Chazelle 1986).
 - **signal-processing** — audio and digital signal processing techniques applied to synthesis or rendering (Brandt 2001 hard sync aliasing, Williams 1983 mipmaps).
+
+## Gameplay AI
+
+- **gameplay-ai** — parent cluster tag for game-specific NPC decision-making and sensory systems, distinct from general AI/ML research (Souza 2020 Behavior Trees).
+- **behavior-trees** — hierarchical, node-based AI decision structures that select and run child tasks/composites by reading shared state from a Blackboard (Souza 2020).
+- **environment-query-system** — Unreal Engine's EQS: generates a set of candidate points or actors and scores them against context-aware tests to drive spatial AI decisions (Souza 2020).
+- **ai-perception** — simulated sensory systems (sight, hearing, and other senses) that feed stimulus events into an NPC's decision-making layer (Souza 2020).
+
+## Character Animation & Rigging
+
+- **character-animation** — parent cluster tag for techniques that drive character motion, deformation, and expression, covering both runtime animation (locomotion, blending) and the rigs that make it possible (Clavet 2016 motion matching, Pagoria 2026 facial rigs, Cooper-VanAllen 2026, Nilsson-Cooper 2026, Falconer 2026 crowds).
+- **control-rig** — Unreal Engine's node-graph rig-evaluation system for building forward/inverse-kinematics and deformation logic as a reusable, inspectable graph rather than hand-scripted animation (Pagoria 2026, Cooper-VanAllen 2026, Nilsson-Cooper 2026).
+- **procedural-rigging** — generating skeleton hierarchies and rig structure algorithmically from a node graph or parametric description rather than hand-placing joints (Cooper-VanAllen 2026 Dataflow-to-Control-Rig).
+- **facial-rigging** — deformation systems, morph targets, and blend-shape pipelines purpose-built for expressive facial animation (Pagoria 2026).
+- **cloth-simulation** — garment authoring, physical simulation, and import pipelines for real-time simulated clothing on characters (Raichstat-Deloe 2026 CLO/Marvelous Designer to Dataflow cloth assets).
+- **character-crowd-rendering** — rendering large populations of visually diverse, skinned characters at scale via per-instance attribute variation rather than a unique draw per character (Falconer 2026 MetaHuman crowds).
+- **motion-matching** — a brute-force per-frame nearest-pose search over a flat motion-capture database, driven by a cost function over current pose and future trajectory, replacing hand-authored state machines and blend trees for locomotion (Clavet 2016).
+
+## Audio & Procedural Music Systems
+
+- **procedural-audio** — parent cluster tag for sound generated or arranged algorithmically at runtime from gameplay state, rather than played back from fixed audio files (Dörfler 2023, Hart 2025).
+- **metasounds** — Unreal Engine's node-graph real-time audio synthesis and DSP system, used to build custom sound-generation, mixing, and signal-processing graphs (Dörfler 2023, Hart 2025, O'Neal 2026 Audio Insights signal-flow debugging).
+- **generative-music** — algorithmic composition techniques — layered stem randomization, procedural chord/melody generation — that produce indefinite, non-repeating musical output (Dörfler 2023, Hart 2025).
+- **audio-scheduling** — sample-accurate, tempo-quantized scheduling of audio events against a musical clock, so triggered sounds land on the beat/bar grid instead of playing immediately (Unreal's Quartz Clock) (Dörfler 2023, Hart 2025).
+- **audio-profiling** — tools and workflows for diagnosing real-time audio-mix issues: voice counts, virtualization/loop culling, modulation state, submix loudness (O'Neal 2026).
+
+## Performance Profiling & Frame Pacing
+
+- **performance-profiling** — parent cluster tag for measuring and diagnosing runtime performance bottlenecks with engine-native or platform profiling tools (Epic 2026 Frame Timing & Latency, Oztalay 2026 60fps, Arnbjörnsson-Oztalay 2026 Profiling with Pirates, Neelakantan 2026 mobile optimization).
+- **frame-pacing** — the synchronization contract between the Game/Render/RHI/GPU pipeline stages, and the trade-off between input latency and hitch resiliency it creates (Epic 2026 Frame Timing & Latency).
+- **input-latency** — the delay chain from input sampling to displayed photon, and the cvars/techniques used to measure and reduce it (Epic 2026 Frame Timing & Latency).
+- **cpu-profiling** — measuring and reducing CPU-side bottlenecks: game-thread cost, UObject counts, garbage collection, and Slate/UI overhead (Arnbjörnsson-Oztalay 2026, Oztalay 2026).
+
+## Point Cloud & Photogrammetry Pipelines
+
+- **photogrammetry** — reconstructing 3D geometry and texture from photographs via structure-from-motion / multi-view stereo capture (Andersson 2025 cave capture, Merchant 2026 as one of the source formats it streams).
+- **point-cloud-streaming** — out-of-core streaming and level-of-detail selection for massive point-cloud datasets, e.g. Potree/Entwine-style octrees, inside a real-time engine (Merchant 2026).
+- **digital-twin** — large-scale, real-world-accurate 3D reconstructions of physical spaces built for real-time engine visualization (Merchant 2026 campus-scale digital twin).
