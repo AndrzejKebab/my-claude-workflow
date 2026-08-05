@@ -1,0 +1,1 @@
+- [No invented dichotomies](no-invented-dichotomies.md) — apply the universal rule; don't manufacture per-project forks

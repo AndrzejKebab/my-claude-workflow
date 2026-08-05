@@ -1,0 +1,1 @@
+- [kajiya DLSS Linux build](project_kajiya_dlss_linux_build.md) — how kajiya was patched to compile with DLSS on Linux against the modern NGX SDK + Rust 1.93 (com-rs stdcall patch, ngx_dlss Linux build.rs, dlss.rs API drift).

@@ -1,0 +1,1 @@
+- [Env: numpy/OpenCV constraints](env-numpy-opencv-constraints.md) — numpy must stay <2.4 (numba), OpenCV single headless-contrib variant; launch via run.sh only

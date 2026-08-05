@@ -1,0 +1,2 @@
+- [DLSS-RR on Linux setup](reference_dlss_linux.md) — SDK-shipped plugins, signed-load env var, and conf JSON needed to make NGX RR actually load on consumer Linux.
+- [Blender DLSS build location](project_blender_dlss_build.md) — built PR #153077 at /mnt/archive4/BLENDER, paths and CMake flags.

@@ -1,0 +1,1 @@
+- [feedback_no_inflating_mechanisms.md](feedback_no_inflating_mechanisms.md) — Don't promote simple plumbing (cache flush, config reload) into CV-worthy features

@@ -107,6 +107,19 @@ print(f"  {event}({matcher}) {cmd} — installed (backup at {bak})")
 PY
 }
 
+# Per-project memories. Same reasoning as the hooks: they live under
+# ~/.claude/projects/<slug>/memory/, which nothing tracks, so every memory ever
+# written is one machine rebuild from gone. cc-memory-link moves them into
+# memory/ here and symlinks them back; it copies-then-verifies before removing
+# anything, and refuses to overwrite a differing file.
+echo ""
+echo "Memories:"
+if [[ -x "$SCRIPT_DIR/bin/cc-memory-link" ]]; then
+    "$SCRIPT_DIR/bin/cc-memory-link" | sed 's/^/  /'
+else
+    echo "  bin/cc-memory-link missing — skipped"
+fi
+
 echo ""
 echo "Hooks:"
 # Refuses no-op spin loops (`echo .`, `true`) and any command repeated 7+ times
