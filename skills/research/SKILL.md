@@ -834,3 +834,46 @@ Node modules at `~/.claude/skills/research/node_modules/` (managed by `npm insta
 System: `node` (>=20), `yt-dlp`, `ffmpeg`, `libreoffice` (PPTX rendering)
 
 OCR engine: [OpenOCR](https://github.com/Topdu/OpenOCR) (mobile/ONNX backend, auto-downloads models to `~/.cache/openocr/` on first run). Wrapped behind `tools/openocr_engine.py` as a singleton — model load happens once per process and is shared between phase 1 (body-text fallback for image-only sources) and the video pipeline (`research_video.py` per-frame OCR). Override behaviour via env vars: `OPENOCR_MODE=server` (higher accuracy, requires `pip install torch torchvision`), `OPENOCR_BACKEND=torch`, `OPENOCR_DROP_SCORE=0.5`.
+
+## A GPU pass that looks dead for ~90 s, and one that really is dead
+
+Two failure modes look identical — a zero-byte log and no process in `ps` — and need opposite
+responses, so separate them before acting.
+
+**Not a failure: the CUDA bootstrap window.** `transcribe_to_srt.py` preloads the CUDA-12 cublas
+stack and builds the faster-whisper model before it writes anything or appears under its own name in
+`ps` — roughly **90 seconds of looking completely dead**. A `run_in_background` job launched from the
+orchestrator *does* survive; concluding otherwise once produced two concurrent whisper runs on one
+file, competing for VRAM (~4.5 GiB each) and racing on the same output SRT. Check
+`nvidia-smi --query-compute-apps=pid,used_memory` first — it shows the python PID while
+`ps | grep python` still shows nothing. Wait out at least two minutes before calling a GPU job dead,
+and kill the original if you do relaunch.
+
+**A real failure: a sub-agent that returns.** A `research-extractor` that launches a long job in
+*its* background and then returns takes the job down with it. Either run the long script from the
+orchestrator, or require the sub-agent to block in the foreground until the artifact exists.
+
+## Pass 1 is GPU-only by policy — make the runner resilient, never force CPU
+
+`_require_marker_gpu()` rejects an explicitly-empty `CUDA_VISIBLE_DEVICES` and `extract_research.py`
+refuses the PyMuPDF span-walker fallback. Both refusals are the point: the previous silent CPU
+downgrade read downstream as "marker worked but produced poor output". **Never work around this by
+forcing CPU** — a VRAM shortfall is meant to be a loud operator-visible failure.
+
+The gate samples free VRAM **once**, before torch imports, and needs only 3072 MiB, while the policy
+comment expects ~15 GiB free. A live Unity editor plus the usual Electron GPU processes hold ~6 GiB
+steady, so a batch **passes the gate and then OOMs mid-run on a later paper**. Poll until free VRAM
+clears ~6 GiB before each paper and retry one that OOMs rather than continuing past it.
+
+Three traps that cost real time:
+
+- `pkill -f extract-batch` matches the Bash tool's *own* command line and kills the calling shell
+  (exit 144), and any Monitor watching the log. Bracket it: `pkill -f 'extract[-]batch'`.
+- A PDF in `/mnt/archive4/PAPERS/` is **not** evidence the extraction succeeded — check `marker: yes`
+  and a non-zero md line count per paper.
+- **The inverse bites harder: a present `<slug>.md` is not evidence the PDF was archived.** A resume
+  guard of the form `[ -s "$PREP/$slug.md" ] && skip` short-circuits *every* later step for that
+  paper, including the archive copy. Verify the archive as a separate closing sweep
+  (`for s in $slugs; do [ -f "$ARC/$s.pdf" ] || echo MISS $s; done`), never as a side effect of the
+  extraction loop, and repoint `source:` at `/mnt/archive4/PAPERS/<slug>.pdf` rather than a staging
+  path.

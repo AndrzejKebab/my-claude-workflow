@@ -74,3 +74,23 @@ run to megabytes and will bury the reader's context. Count with `grep -oF`, or a
 that parses each line and filters on `tool_use.name == "Bash"`. Note that `grep -o` with a
 `.\{0,60\}` context window is catastrophic on those very long JSON lines and will time out; and that
 `stat -c%s` on the `tasks/` entry reports 145 bytes, which is the symlink, not the file.
+
+## The Bash tool runs zsh, and that breaks globs
+
+The tool executes `/usr/bin/zsh -c 'source ~/.claude/shell-snapshots/… && eval "<command>"'` —
+despite the tool's name and despite a session brief reporting the shell as `/bin/fish`.
+
+- **An unmatched glob aborts the whole command.** `grep --include=*.cs …` dies with
+  `(eval):1: no matches found` before grep ever runs; so does `[ -f /tmp/dir-*/x.xml ]`. Quote the
+  pattern or use `find`/explicit paths.
+- Errors prefixed `(eval):N:` are the tell you are in zsh.
+- `#!/usr/bin/env bash` scripts are unaffected — they are executed, not sourced. Anything
+  non-trivial is safer written to a file and run than inlined.
+
+## `ps aux | grep` under-reports Unity runs
+
+The inverse of the `pgrep -f` phantom: `ps aux | grep -i unity` once reported **zero** processes
+while **four** batchmode runs were live and contending for one project. Batchmode children get
+re-parented and renamed in ways the naive grep misses, and the grep also loses to its own quoting in
+zsh. Before assuming a project is free, check `Temp/UnityLockfile` and the run's own log tail — never
+a bare `ps | grep`. A run you believe is dead can still hold the lockfile and hang the next one.
