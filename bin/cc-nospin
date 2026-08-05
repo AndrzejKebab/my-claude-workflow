@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+# PreToolUse(Bash) hook: refuse no-op spin loops.
+#
+# Why this exists: a dispatched subagent waiting on a long Unity run polls itself
+# awake with no-op commands instead of just stopping. One agent ran `echo .` 205
+# times in 12 minutes (17/min, ~3s apart). Each one renders in the owner's
+# terminal as `● Background command "Idle" completed (exit code 0)`, so the spam
+# is his problem, not the agent's. The polling also buys nothing — the harness
+# re-invokes an agent when a background command or tracked task finishes.
+#
+# Two rules, deliberately asymmetric:
+#
+#   1. A whole command that does nothing (`echo .`, `echo idle`, `true`, `:`)
+#      is denied on the FIRST use. There is no legitimate reason to run one as
+#      an entire command, so this has no false positives.
+#
+#   2. Any command repeated >= $MAX_REPEATS times inside $WINDOW seconds is
+#      denied as a spin. The threshold is set high enough that ordinary repeated
+#      work (a few `git status`es while iterating) never trips it. This is the
+#      rule that catches spins the first rule cannot enumerate.
+#
+# Denies are advisory in effect: the agent is told what to do instead, and any
+# different command goes through immediately. Fails OPEN — if jq is missing or
+# anything errors, the command is allowed, because a broken PreToolUse hook
+# would block every Bash call in every session.
+#
+# Uninstall: remove the cc-nospin entry from ~/.claude/settings.json's
+# hooks.PreToolUse, or just delete this file (the hook then fails open).
+
+set -uo pipefail
+
+WINDOW=120     # seconds
+MAX_REPEATS=6  # identical commands inside WINDOW before it counts as a spin
+
+allow() { exit 0; }
+
+deny() {
+	# jq -n keeps the reason correctly escaped whatever is in it.
+	jq -n --arg r "$1" '{
+		hookSpecificOutput: {
+			hookEventName: "PreToolUse",
+			permissionDecision: "deny",
+			permissionDecisionReason: $r
+		}
+	}' 2>/dev/null || allow
+	exit 0
+}
+
+command -v jq >/dev/null 2>&1 || allow
+
+payload=$(cat) || allow
+cmd=$(printf '%s' "$payload" | jq -r '.tool_input.command // empty' 2>/dev/null) || allow
+[[ -z $cmd ]] && allow
+
+ADVICE='Do not poll with no-op commands to stay awake — when a background command or tracked task finishes, the harness re-invokes you automatically. If you must block, wait on the subject in ONE call, e.g. `while unity-ps -q <project>; do sleep 30; done`. Use unity-ps for liveness, never pgrep -f (it matches the checking shell). Bare foreground sleep is blocked; wait on a condition.'
+
+# --- Rule 1: the whole command is a no-op ------------------------------------
+# Trim surrounding whitespace and one trailing semicolon before matching.
+trimmed=$(printf '%s' "$cmd" | sed -E 's/^[[:space:]]+//; s/[[:space:]]*;?[[:space:]]*$//')
+if [[ $trimmed =~ ^(true|:|echo|printf)([[:space:]]+[^|;\&\<\>\$\`]{0,12})?$ ]]; then
+	deny "Refused: \`$trimmed\` does no work. $ADVICE"
+fi
+
+# --- Rule 2: the same command, over and over ---------------------------------
+state_dir="/tmp/cc-nospin-${UID:-$(id -u)}"
+mkdir -p "$state_dir" 2>/dev/null || allow
+key=$(printf '%s' "$cmd" | md5sum 2>/dev/null | cut -d' ' -f1) || allow
+[[ -z $key ]] && allow
+f="$state_dir/$key"
+now=$(date +%s)
+
+# Keep only timestamps inside the window, then add this one.
+recent=0
+if [[ -f $f ]]; then
+	while read -r t; do
+		[[ -n $t ]] && (( now - t <= WINDOW )) && (( recent++ ))
+	done < "$f"
+	# Rewrite the file with just the surviving stamps, bounded.
+	awk -v now="$now" -v w="$WINDOW" 'NF && now-$1 <= w' "$f" | tail -n 64 > "$f.tmp" 2>/dev/null &&
+		mv "$f.tmp" "$f" 2>/dev/null
+fi
+printf '%s\n' "$now" >> "$f" 2>/dev/null
+
+if (( recent >= MAX_REPEATS )); then
+	deny "Refused: this exact command has run $((recent + 1)) times in the last ${WINDOW}s, which is a spin, not work. $ADVICE (If it is genuinely needed, vary it or wait on the real condition.)"
+fi
+
+allow

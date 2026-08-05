@@ -70,6 +70,49 @@ if [[ -d "$SCRIPT_DIR/bin" ]]; then
     chmod +x "$SCRIPT_DIR/bin"/*
 fi
 
+# Hooks. settings.json is NOT a symlink — Claude Code writes to it (permissions,
+# model choice, MCP state), so replacing it with a link into this repo would make
+# the repo churn on every session. Instead each hook this repo owns is MERGED in
+# idempotently, keyed by its command string, leaving everything else untouched.
+#
+# Without this step a hook lives only in ~/.claude/settings.json, which no repo
+# tracks and no machine rebuild restores.
+install_hook() {
+    local event="$1" matcher="$2" cmd="$3"
+    python3 - "$event" "$matcher" "$cmd" <<'PY'
+import json, os, sys
+event, matcher, cmd = sys.argv[1:4]
+p = os.path.expanduser('~/.claude/settings.json')
+try:
+    d = json.load(open(p))
+except FileNotFoundError:
+    d = {}
+except json.JSONDecodeError as e:
+    print(f"  settings.json is not valid JSON ({e}); refusing to touch it"); sys.exit(0)
+
+entries = d.setdefault('hooks', {}).setdefault(event, [])
+if any(h.get('command') == cmd for e in entries for h in e.get('hooks', [])):
+    print(f"  {event}({matcher}) {cmd} — already installed"); sys.exit(0)
+
+# First, so a refusal short-circuits before other hooks do any work.
+entries.insert(0, {"matcher": matcher, "hooks": [{"type": "command", "command": cmd}]})
+bak = p + '.bak'
+if os.path.exists(p):
+    with open(p) as f, open(bak, 'w') as g:
+        g.write(f.read())
+with open(p, 'w') as f:
+    json.dump(d, f, indent=2, ensure_ascii=False)
+    f.write('\n')
+print(f"  {event}({matcher}) {cmd} — installed (backup at {bak})")
+PY
+}
+
+echo ""
+echo "Hooks:"
+# Refuses no-op spin loops (`echo .`, `true`) and any command repeated 7+ times
+# in 120s. See docs/no-op-spin.md for why. Fails open if jq is missing.
+install_hook PreToolUse Bash cc-nospin
+
 echo ""
 echo "delegate, warden, diagnose-first and shipshape are no longer here — they live in"
 echo "the zori marketplace (~/_dev/zori_skills) and install as a plugin:"

@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# List running Unity editors, one per line: "<pid>  <project-path>".
+#
+# Why this exists: `pgrep -f "Editor/Unity -projectPath …"` matches the shell that
+# is running the pgrep, because that pattern is in the shell's own command line.
+# Every "is Unity running?" check written that way reports a phantom.
+#
+# The fix is to match the executable name rather than the command line. Unity's
+# process comm is exactly "Unity", so `pgrep -x` cannot match a shell.
+#
+# Usage:
+#   unity-ps                 # list every running editor; exit 1 if none
+#   unity-ps <substring>     # only editors whose project path contains <substring>
+#   unity-ps -q [<substr>]   # print nothing; exit 0 if any matched, 1 if none
+#
+# Exit status is the thing to branch on:
+#   until unity-ps -q myrepo; do sleep 30; done     # wait for a run to start
+#   while  unity-ps -q myrepo; do sleep 30; done    # wait for a run to finish
+
+set -uo pipefail
+
+quiet=0
+if [[ ${1-} == "-q" ]]; then
+	quiet=1
+	shift
+fi
+filter="${1-}"
+
+found=1
+while read -r pid args; do
+	[[ -z $pid ]] && continue
+	# -projectPath's value; Unity always passes it for a project run.
+	project="${args##*-projectPath }"
+	project="${project%% *}"
+	[[ $project == "$args" ]] && project="(no -projectPath)"
+	[[ -n $filter && $project != *"$filter"* ]] && continue
+	found=0
+	[[ $quiet -eq 1 ]] && break
+	printf '%s\t%s\n' "$pid" "$project"
+done < <(pgrep -x Unity -a 2>/dev/null)
+
+exit $found
