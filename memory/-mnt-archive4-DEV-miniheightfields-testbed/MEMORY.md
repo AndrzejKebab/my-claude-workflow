@@ -51,4 +51,5 @@ Working-style rules live in the repo, not here: `AGENTS.md` + `docs/agent-workin
 - [Probe code goes in the package Tests tree](probe-code-belongs-in-package-test-tree.md) — scratch/ is outside every Unity compilation root, so no gate can inherit it
 - [A settle waits on the subject, never a frame count](render-gate-settle-must-wait-on-subject.md) — a frozen terrain holds a stable WRONG frame for ~15 frames at pending==0
 - [Pixel error is a player axis](pixel-error-is-a-player-axis.md) — baked artifacts serve the whole quality range; one-setting capture QA proves nothing
+- [Binding assertions beat surface readback](binding-assertions-beat-surface-readback.md) — a wrong pool origin still lands in some painted slot; grade the MPB for addressing claims
 
