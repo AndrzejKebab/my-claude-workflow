@@ -107,6 +107,31 @@ print(f"  {event}({matcher}) {cmd} — installed (backup at {bak})")
 PY
 }
 
+# `unity` now collides with Unity Technologies' own unity-cli, which their
+# installer drops at ~/.local/bin/unity (134 MB, a completely different tool).
+# Whichever bin dir comes first on PATH wins, so a machine that orders them the
+# other way silently sends every gate through the wrong binary — same args, no
+# error, different semantics.
+#
+# unity-editor is the unambiguous name; `unity` is kept as a symlink for the
+# call sites and docs that already use it. Bind ZORI_UNITY_BIN=unity-editor to
+# be immune to PATH order entirely (the zori_skills unity plugin reads it).
+echo ""
+echo "Unity launcher:"
+if resolved=$(command -v unity 2>/dev/null); then
+    if [[ "$(readlink -f "$resolved")" == "$(readlink -f "$SCRIPT_DIR/bin/unity-editor")" ]]; then
+        echo "  unity -> $resolved (ours) — OK"
+    else
+        echo "  WARNING: 'unity' resolves to $resolved, NOT this repo's launcher."
+        echo "           That is probably Unity's unity-cli. Gates invoking bare"
+        echo "           'unity' will run the wrong tool. Fix either by putting"
+        echo "           $SCRIPT_DIR/bin earlier on PATH, or by exporting"
+        echo "           ZORI_UNITY_BIN=unity-editor"
+    fi
+else
+    echo "  WARNING: no 'unity' on PATH — add $SCRIPT_DIR/bin"
+fi
+
 # Per-project memories. Same reasoning as the hooks: they live under
 # ~/.claude/projects/<slug>/memory/, which nothing tracks, so every memory ever
 # written is one machine rebuild from gone. cc-memory-link moves them into
