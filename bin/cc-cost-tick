@@ -109,12 +109,30 @@ PY
   [ -s "$wav" ]
 }
 
+# Yours first, then the register shipped beside this script, then the synthesised
+# bell — which exists so the script still rings for anyone who copied it out of
+# the repo on its own.
+find_sound() {
+  if [ -n "${CC_CACHING_SOUND:-}" ]; then
+    [ -s "$CC_CACHING_SOUND" ] && printf '%s' "$CC_CACHING_SOUND" && return 0
+    return 1
+  fi
+
+  local here shipped cached
+  here=$(dirname "$(readlink -f "$0" 2>/dev/null || printf '%s' "$0")")
+  shipped="$here/../share/ca-ching.wav"
+  [ -s "$shipped" ] && printf '%s' "$shipped" && return 0
+
+  cached="${XDG_CACHE_HOME:-$HOME/.cache}/cc-ca-ching.wav"
+  [ -s "$cached" ] || make_sound "$cached" || return 1
+  printf '%s' "$cached"
+}
+
 play_sound() {
   [ "${CC_CACHING:-1}" != "0" ] || return 0
-  local wav="${CC_CACHING_SOUND:-${XDG_CACHE_HOME:-$HOME/.cache}/cc-ca-ching.wav}"
-  [ -s "$wav" ] || make_sound "$wav" || return 0
 
-  local player
+  local wav player
+  wav=$(find_sound) || return 0
   for player in pw-play paplay aplay; do
     if command -v "$player" >/dev/null 2>&1; then
       # Detached, so a stalled audio server never holds up the turn.

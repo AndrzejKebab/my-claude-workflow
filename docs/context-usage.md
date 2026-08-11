@@ -117,10 +117,16 @@ counting from zero is right. An old one is being joined mid-flight, and announci
 total as a single turn would be a lie, so the ticker adopts the figure quietly and starts counting
 from there.
 
-The bell is synthesised on first use into `$XDG_CACHE_HOME/cc-ca-ching.wav` rather than shipped as a
-blob: two strikes on inharmonic partials with a noise transient at each onset, the second higher and
-longer than the first. Generating it costs 78ms once; every tick after that is 11ms. Playback goes
-through `pw-play`, `paplay`, or `aplay`, detached, so a stalled audio server never holds up a turn.
+The sound is a real cash register — CC0, from the Sound Effects Library, prepared for per-turn use
+and shipped in `share/ca-ching.wav`. See [share/ATTRIBUTION.md](../share/ATTRIBUTION.md) for the
+source and the exact conversion. It is mono, trimmed to 1.4s, and levelled to a -6 dBFS peak, since
+the original is normalised to full scale and full scale several times an hour is punishing.
+
+`CC_CACHING_SOUND` beats it, and if neither is there the script synthesises a bell into
+`$XDG_CACHE_HOME/cc-ca-ching.wav` — two strikes on inharmonic partials with a noise transient at each
+onset. That fallback exists so the script still rings when it has been copied out of the repo alone.
+Playback goes through `pw-play`, `paplay`, or `aplay`, detached, so a stalled audio server never
+holds up a turn.
 
 ```
 CC_CACHING=0            keep the figure, drop the sound

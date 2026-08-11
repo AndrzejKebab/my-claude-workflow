@@ -138,6 +138,9 @@ my-claude-workflow/
 │   ├── tdd/
 │   ├── webstorm/
 │   └── worktree/
+├── share/                    # data the hooks use
+│   ├── ca-ching.wav          #   cash register, CC0 — see ATTRIBUTION.md
+│   └── ATTRIBUTION.md
 ├── agents/                   # sub-agent definitions for the orchestrator skills
 │   ├── delegate-*.md
 │   ├── refactor-*.md
