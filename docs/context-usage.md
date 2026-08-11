@@ -1,5 +1,10 @@
 # Context usage, and why you want to see it early
 
+> These scripts grew up into **[cha-ching](https://github.com/api-haus/cha-ching)**, a plugin that
+> chains to an existing statusline instead of taking the slot. `install.sh` no longer wires the ones
+> described here — install the plugin. They stay in `bin/` because this document explains its
+> findings through them, and because they are the smallest working version of the idea.
+
 Claude Code shows a context indicator only when the window is nearly full. That is not a setting.
 The component returns before it renders anything:
 
@@ -19,21 +24,35 @@ the volume you pay for. Measured on one real session:
 | | |
 |---|---|
 | context at the end | 831k tokens |
-| requests | 938 |
-| average context re-read per request | 493k tokens |
-| cache reads billed | 462.5M tokens |
-| cache writes | 4.29M tokens |
-| output | 0.89M tokens |
-| cost | $168.34 |
+| API calls | 572 |
+| average context re-read per call | 539k tokens |
+| cache reads billed | 308.4M tokens |
+| cache writes | 2.23M tokens |
+| output | 0.43M tokens |
+| cost | $178.89 |
 
-The window held 831k tokens. The session billed 466.8M input-side tokens. The context you can see is
-0.18% of the tokens you paid for.
+The window held 831k tokens. The session billed 310.7M input-side tokens. The context you can see is
+0.27% of the tokens you paid for.
 
-The blended rate works out at $0.361 per million input-side tokens, which is cheap — cache reads bill
-at a fraction of fresh input, and almost everything here was a cache read. Nothing was mispriced. The
-cost came from volume, and the volume is the product of context size and request count. Both grow
-together as a session runs, so the spend curve bends upward while the visible number moves slowly.
-That is the case for watching the gauge from the start instead of from 90%.
+Count API calls, not transcript records. One response writes a record per content block — text,
+thinking, each tool_use — and every one of them carries the same `usage` object. Summing records
+instead of grouping by `message.id` inflates the total by roughly half.
+
+Nothing was mispriced. The rates are compiled into the CLI binary, per million tokens:
+
+```
+inputTokens:5, outputTokens:25, promptCacheWriteTokens:6.25, promptCacheReadTokens:0.5
+```
+
+Run the deduplicated tokens through that and you get $178.89 against the $178.60 the CLI reported at
+the same moment — 0.16% apart. So `total_cost_usd` is not a bill and never touches a server: it is
+the CLI multiplying tokens by a hardcoded list price. On a subscription no money moves at all, and
+what actually governs you is the rolling 5-hour and 7-day rate-limit windows, which burn on the same
+token volume.
+
+The cost, real or notional, came from volume, and volume is context size times request count. Both
+grow together as a session runs, so the spend curve bends upward while the visible number moves
+slowly. That is the case for watching the gauge from the start instead of from 90%.
 
 ## `cc-statusline`
 

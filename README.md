@@ -94,15 +94,21 @@ writes to it — so without this step a hook lives only on the machine that crea
 | Command | Wired as | Role |
 |---------|----------|------|
 | `cc-nospin` | `PreToolUse(Bash)` | Refuses no-op spin loops — see [docs/no-op-spin.md](docs/no-op-spin.md) |
-| `cc-context-warn` | `UserPromptSubmit` | Announces each 10% band of context consumed |
-| `cc-cost-tick` | `Stop`, `UserPromptSubmit` | Announces what each turn cost, with a cash-register bell |
-| `cc-statusline` | `statusLine` | Model, effort, context gauge, session cost |
+| `cc-context-warn` | *retired* | Announced each 10% band of context consumed — superseded by cha-ching |
+| `cc-cost-tick` | *retired* | Announced what each turn cost, with a bell — superseded by cha-ching |
+| `cc-statusline` | *retired* | Context gauge and session cost — superseded by cha-ching |
 | `cc-memory-link` | run by `install.sh` | Moves per-project memories into `memory/` and links them back |
 
 The built-in context indicator stays hidden until the window is nearly full, and that
 threshold is not configurable. [docs/context-usage.md](docs/context-usage.md) covers why
 seeing it earlier is worth the trouble — a measured session ended at 831k of context and
-billed 466.8M input-side tokens, because the window is re-sent on every request.
+billed 310.7M input-side tokens, because the window is re-sent on every request.
+
+The three retired commands grew up into **[cha-ching](https://github.com/api-haus/cha-ching)**,
+which chains to an existing statusline rather than taking the slot, and reads its figures from
+the payload rather than parsing transcripts. `install.sh` no longer wires them — install the
+plugin instead. They stay in `bin/` because the doc explains its findings through them, and
+because they are the smallest working version of the idea.
 
 ## Directory Structure
 

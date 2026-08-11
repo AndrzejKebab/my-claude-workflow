@@ -193,21 +193,21 @@ echo "Hooks:"
 # in 120s. See docs/no-op-spin.md for why. Fails open if jq is missing.
 install_hook PreToolUse Bash cc-nospin
 
-# Announces each 10% band of the context window as it is consumed. The built-in
-# indicator stays hidden until the window is nearly full, and that threshold is
-# not configurable. See docs/context-usage.md.
-install_hook UserPromptSubmit "" cc-context-warn
-
-# Announces what each turn cost, with a cash-register bell. Both events are
-# wired because either may be the first to see the money land; whichever does
-# reports it and the other stays quiet. CC_CACHING=0 keeps the figure, drops the
-# sound.
-install_hook Stop "" cc-cost-tick
-install_hook UserPromptSubmit "" cc-cost-tick
-
-echo ""
-echo "Statusline:"
-install_statusline cc-statusline
+# cc-context-warn, cc-cost-tick and cc-statusline are deliberately NOT wired any
+# more. They grew up into cha-ching, which does the same job better: it chains to
+# an existing statusline instead of taking the slot, reads cost and context from
+# the payload rather than parsing transcripts, and rate-limits the bell so a
+# tool-heavy turn lands as a few weighty numbers instead of a stream of small
+# ones.
+#
+#   claude plugin marketplace add api-haus/cha-ching
+#   claude plugin install cha-ching@cha-ching
+#   /cha-ching:setup
+#
+# The scripts stay in bin/ because docs/context-usage.md explains its findings
+# through them, and because they are the smallest working version of the idea —
+# useful to read, and to fall back on. Wiring both would give you two statuslines
+# fighting for one slot and two bells for one turn.
 
 echo ""
 echo "delegate, warden, diagnose-first and shipshape are no longer here — they live in"
