@@ -198,6 +198,13 @@ install_hook PreToolUse Bash cc-nospin
 # not configurable. See docs/context-usage.md.
 install_hook UserPromptSubmit "" cc-context-warn
 
+# Announces what each turn cost, with a cash-register bell. Both events are
+# wired because either may be the first to see the money land; whichever does
+# reports it and the other stays quiet. CC_CACHING=0 keeps the figure, drops the
+# sound.
+install_hook Stop "" cc-cost-tick
+install_hook UserPromptSubmit "" cc-cost-tick
+
 echo ""
 echo "Statusline:"
 install_statusline cc-statusline

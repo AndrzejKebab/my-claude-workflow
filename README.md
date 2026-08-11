@@ -95,6 +95,7 @@ writes to it — so without this step a hook lives only on the machine that crea
 |---------|----------|------|
 | `cc-nospin` | `PreToolUse(Bash)` | Refuses no-op spin loops — see [docs/no-op-spin.md](docs/no-op-spin.md) |
 | `cc-context-warn` | `UserPromptSubmit` | Announces each 10% band of context consumed |
+| `cc-cost-tick` | `Stop`, `UserPromptSubmit` | Announces what each turn cost, with a cash-register bell |
 | `cc-statusline` | `statusLine` | Model, effort, context gauge, session cost |
 | `cc-memory-link` | run by `install.sh` | Moves per-project memories into `memory/` and links them back |
 
@@ -143,6 +144,7 @@ my-claude-workflow/
 │   └── research-*.md
 └── bin/                      # launchers and hook commands (add to PATH)
     ├── cc-context-warn       #   UserPromptSubmit hook — context band warnings
+    ├── cc-cost-tick          #   Stop/UserPromptSubmit hook — +$0.42 and a ca-ching
     ├── cc-memory-link
     ├── cc-nospin             #   PreToolUse(Bash) hook — refuses spin loops
     ├── cc-statusline         #   statusLine — model, context gauge, cost

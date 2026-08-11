@@ -10,15 +10,22 @@ set -u
 
 payload=$(cat)
 
-IFS=$'\t' read -r model effort used size cost < <(
+IFS=$'\t' read -r model effort used size cost session < <(
   printf '%s' "$payload" | jq -r '
     [ (.model.display_name // "?"),
       (.effort.level // "-"),
       (.context_window.total_input_tokens // 0),
       (.context_window.context_window_size // 0),
-      (.cost.total_cost_usd // 0)
+      (.cost.total_cost_usd // 0),
+      (.session_id // "")
     ] | @tsv' 2>/dev/null
 )
+
+# Cost bridge. total_cost_usd is given to the statusline and to nothing else —
+# hook payloads carry no cost at all — so park it where cc-cost-tick can read it.
+if [ -n "${session:-}" ]; then
+  printf '%s' "$cost" > "${XDG_RUNTIME_DIR:-/tmp}/cc-cost-${session}" 2>/dev/null || true
+fi
 
 # Bad payload: print nothing rather than stray escape codes.
 [ -n "${model:-}" ] || exit 0

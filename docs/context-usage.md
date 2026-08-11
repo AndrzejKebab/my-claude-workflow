@@ -95,6 +95,39 @@ session that compacts and climbs again re-announces from wherever it lands.
 The window defaults to 1M. Export `CC_CONTEXT_WINDOW=200000` for a session that is not on the long
 window.
 
+## `cc-cost-tick`
+
+Wired on `Stop` and on `UserPromptSubmit`. It announces what the turn cost and rings a cash
+register:
+
+```
++$0.42 — $179.07 this session
+```
+
+Hook payloads carry no cost field at all. `total_cost_usd` goes to the statusline and nowhere else,
+so `cc-statusline` parks it in `$XDG_RUNTIME_DIR/cc-cost-<session_id>` and `cc-cost-tick` reads it
+there. Install a different statusline and the ticker goes quiet rather than guessing at prices.
+
+The figure the CLI gives is a running total, so the ticker reports the difference since it last
+spoke. Both events are wired because either may be the first to see the money land, and whichever
+does claims the delta — so a turn is announced once, not twice. Anything under a cent is held back.
+
+First sight of a session is handled by its size. A young session has spent nearly nothing, so
+counting from zero is right. An old one is being joined mid-flight, and announcing its accumulated
+total as a single turn would be a lie, so the ticker adopts the figure quietly and starts counting
+from there.
+
+The bell is synthesised on first use into `$XDG_CACHE_HOME/cc-ca-ching.wav` rather than shipped as a
+blob: two strikes on inharmonic partials with a noise transient at each onset, the second higher and
+longer than the first. Generating it costs 78ms once; every tick after that is 11ms. Playback goes
+through `pw-play`, `paplay`, or `aplay`, detached, so a stalled audio server never holds up a turn.
+
+```
+CC_CACHING=0            keep the figure, drop the sound
+CC_CACHING_SOUND=<wav>  play your own
+CC_CACHING_MIN=0.01     floor below which nothing is said
+```
+
 ## A plugin cannot do the statusline half
 
 A plugin can carry the hook. It cannot register a statusline — there is no plugin-statusline path in

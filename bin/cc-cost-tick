@@ -1,0 +1,130 @@
+#!/usr/bin/env bash
+# Announces the money as it is spent — "+$0.42" and a cash-register bell.
+#
+# Wired on Stop and on UserPromptSubmit. Cost arrives through the bridge file
+# cc-statusline writes, because hook payloads carry no cost field of any kind:
+# total_cost_usd is handed to the statusline and to nothing else. The figure is
+# a running total, so this reports the difference since it last spoke. Whichever
+# event sees a real delta reports it and the other stays quiet, which means a
+# turn is announced once no matter which fires first.
+#
+#   CC_CACHING=0            keep the figure, drop the sound
+#   CC_CACHING_SOUND=<wav>  play your own
+#   CC_CACHING_MIN=0.01     floor below which nothing is said
+set -u
+
+payload=$(cat)
+session=$(printf '%s' "$payload" | jq -r '.session_id // empty' 2>/dev/null)
+[ -n "$session" ] || exit 0
+
+run="${XDG_RUNTIME_DIR:-/tmp}"
+bridge="$run/cc-cost-${session}"
+seen="$run/cc-cost-seen-${session}"
+
+# No statusline, no cost. Stay silent rather than guess at prices.
+[ -r "$bridge" ] || exit 0
+
+now=$(cat "$bridge" 2>/dev/null)
+
+# First sight of a session. A young one has spent nearly nothing, so counting
+# from zero is right and the first turn announces properly. An old one is being
+# joined mid-flight — adopt its total quietly instead of announcing the whole
+# backlog as a single turn.
+if [ ! -r "$seen" ]; then
+  if awk -v n="$now" 'BEGIN { exit !(n ~ /^[0-9]*\.?[0-9]+$/ && n >= 1) }'; then
+    printf '%s' "$now" > "$seen" 2>/dev/null || true
+    exit 0
+  fi
+  last=0
+else
+  last=$(cat "$seen" 2>/dev/null)
+fi
+
+# One pass validates both sides and takes the difference. A non-numeric or
+# backwards reading yields nothing, and nothing is announced.
+delta=$(awk -v n="$now" -v l="$last" -v min="${CC_CACHING_MIN:-0.01}" 'BEGIN {
+  if (n == "" || n !~ /^[0-9]*\.?[0-9]+$/) exit
+  if (l == "" || l !~ /^[0-9]*\.?[0-9]+$/) l = 0
+  d = n - l
+  if (d < min) exit
+  printf "%.2f", d
+}')
+[ -n "$delta" ] || exit 0
+
+printf '%s' "$now" > "$seen" 2>/dev/null || true
+
+# A cash register, synthesised rather than shipped: two inharmonic strikes with
+# a noise transient on each onset. Built once into the cache, then reused.
+make_sound() {
+  local wav="$1"
+  command -v python3 >/dev/null 2>&1 || return 1
+  mkdir -p "$(dirname "$wav")" 2>/dev/null || return 1
+  python3 - "$wav" <<'PY' 2>/dev/null || return 1
+import math, random, struct, sys, wave
+
+SR = 44100
+LENGTH = 0.75
+buf = [0.0] * int(SR * LENGTH)
+random.seed(7)
+
+# Ratios of a struck bell — deliberately not integer multiples, which is what
+# separates metal from a flute.
+PARTIALS = [(1.0, 1.0), (2.76, 0.62), (5.40, 0.34), (8.93, 0.20), (13.34, 0.11)]
+
+
+def strike(start, f0, tau, dur, gain):
+    base = int(start * SR)
+    for i in range(int(dur * SR)):
+        idx = base + i
+        if idx >= len(buf):
+            break
+        t = i / SR
+        s = 0.0
+        for ratio, amp in PARTIALS:
+            # Higher partials die first, which is why a bell dulls as it rings.
+            s += amp * math.sin(2 * math.pi * f0 * ratio * t) * math.exp(-t / (tau / (1 + ratio * 0.32)))
+        if t < 0.004:
+            s += random.uniform(-1, 1) * 2.2 * (1 - t / 0.004)
+        buf[idx] += s * math.exp(-t / tau) * gain
+
+
+strike(0.000, 920.0, 0.070, 0.20, 0.55)   # ca-
+strike(0.085, 1380.0, 0.230, 0.62, 0.85)  # -ching
+
+peak = max(abs(v) for v in buf) or 1.0
+fade = int(0.02 * SR)
+with wave.open(sys.argv[1], 'w') as w:
+    w.setnchannels(1)
+    w.setsampwidth(2)
+    w.setframerate(SR)
+    frames = bytearray()
+    for i, v in enumerate(buf):
+        v = v / peak * 0.82
+        tail = len(buf) - i
+        if tail < fade:
+            v *= tail / fade
+        frames += struct.pack('<h', int(max(-1.0, min(1.0, v)) * 32767))
+    w.writeframes(bytes(frames))
+PY
+  [ -s "$wav" ]
+}
+
+play_sound() {
+  [ "${CC_CACHING:-1}" != "0" ] || return 0
+  local wav="${CC_CACHING_SOUND:-${XDG_CACHE_HOME:-$HOME/.cache}/cc-ca-ching.wav}"
+  [ -s "$wav" ] || make_sound "$wav" || return 0
+
+  local player
+  for player in pw-play paplay aplay; do
+    if command -v "$player" >/dev/null 2>&1; then
+      # Detached, so a stalled audio server never holds up the turn.
+      (setsid "$player" "$wav" >/dev/null 2>&1 &) 2>/dev/null
+      return 0
+    fi
+  done
+}
+
+play_sound
+
+total=$(awk -v n="$now" 'BEGIN { printf "%.2f", n }')
+jq -n --arg m "+\$${delta} — \$${total} this session" '{systemMessage: $m}'
