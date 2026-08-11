@@ -85,6 +85,24 @@ context windows.
 | `research-vision` | `research` | Vision pass — describes slide/figure images inline |
 | `research-refiner` | `research` | Pass 3 — resolves FIXME marks and cleans up the document |
 
+## Hooks & statusline
+
+`install.sh` merges these into `~/.claude/settings.json` by command string, leaving the
+rest of the file untouched. `settings.json` is deliberately not a symlink — Claude Code
+writes to it — so without this step a hook lives only on the machine that created it.
+
+| Command | Wired as | Role |
+|---------|----------|------|
+| `cc-nospin` | `PreToolUse(Bash)` | Refuses no-op spin loops — see [docs/no-op-spin.md](docs/no-op-spin.md) |
+| `cc-context-warn` | `UserPromptSubmit` | Announces each 10% band of context consumed |
+| `cc-statusline` | `statusLine` | Model, effort, context gauge, session cost |
+| `cc-memory-link` | run by `install.sh` | Moves per-project memories into `memory/` and links them back |
+
+The built-in context indicator stays hidden until the window is nearly full, and that
+threshold is not configurable. [docs/context-usage.md](docs/context-usage.md) covers why
+seeing it earlier is worth the trouble — a measured session ended at 831k of context and
+billed 466.8M input-side tokens, because the window is re-sent on every request.
+
 ## Directory Structure
 
 ```
@@ -123,9 +141,15 @@ my-claude-workflow/
 │   ├── delegate-*.md
 │   ├── refactor-*.md
 │   └── research-*.md
-└── bin/                      # launcher scripts (add to PATH)
+└── bin/                      # launchers and hook commands (add to PATH)
+    ├── cc-context-warn       #   UserPromptSubmit hook — context band warnings
+    ├── cc-memory-link
+    ├── cc-nospin             #   PreToolUse(Bash) hook — refuses spin loops
+    ├── cc-statusline         #   statusLine — model, context gauge, cost
     ├── killunity
-    ├── unity
+    ├── unity -> unity-editor
+    ├── unity-cli-recompile
+    ├── unity-editor
     ├── unity-launch
-    └── unity-recompile
+    └── unity-ps
 ```

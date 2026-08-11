@@ -94,8 +94,14 @@ entries = d.setdefault('hooks', {}).setdefault(event, [])
 if any(h.get('command') == cmd for e in entries for h in e.get('hooks', [])):
     print(f"  {event}({matcher}) {cmd} — already installed"); sys.exit(0)
 
+# Events that carry no tool name (UserPromptSubmit, SessionStart) take no matcher,
+# and an empty one would be a field the CLI never reads.
+entry = {"hooks": [{"type": "command", "command": cmd}]}
+if matcher:
+    entry = {"matcher": matcher, **entry}
+
 # First, so a refusal short-circuits before other hooks do any work.
-entries.insert(0, {"matcher": matcher, "hooks": [{"type": "command", "command": cmd}]})
+entries.insert(0, entry)
 bak = p + '.bak'
 if os.path.exists(p):
     with open(p) as f, open(bak, 'w') as g:
@@ -104,6 +110,42 @@ with open(p, 'w') as f:
     json.dump(d, f, indent=2, ensure_ascii=False)
     f.write('\n')
 print(f"  {event}({matcher}) {cmd} — installed (backup at {bak})")
+PY
+}
+
+# statusLine is a single slot, not a list, so installing ours would silently
+# destroy whatever is already there. Claim it only when it is free or already
+# ours; otherwise say so and leave it alone.
+install_statusline() {
+    local cmd="$1"
+    python3 - "$cmd" <<'PY'
+import json, os, sys
+cmd = sys.argv[1]
+p = os.path.expanduser('~/.claude/settings.json')
+try:
+    d = json.load(open(p))
+except FileNotFoundError:
+    d = {}
+except json.JSONDecodeError as e:
+    print(f"  statusline — settings.json is not valid JSON ({e}); refusing to touch it"); sys.exit(0)
+
+current = d.get('statusLine', {}).get('command')
+if current == cmd:
+    print(f"  {cmd} — already installed"); sys.exit(0)
+if current:
+    print(f"  statusline slot is taken by: {current}")
+    print(f"  leaving it alone. To switch, set statusLine.command to {cmd}")
+    sys.exit(0)
+
+d['statusLine'] = {"type": "command", "command": cmd}
+bak = p + '.bak'
+if os.path.exists(p):
+    with open(p) as f, open(bak, 'w') as g:
+        g.write(f.read())
+with open(p, 'w') as f:
+    json.dump(d, f, indent=2, ensure_ascii=False)
+    f.write('\n')
+print(f"  {cmd} — installed (backup at {bak})")
 PY
 }
 
@@ -150,6 +192,15 @@ echo "Hooks:"
 # Refuses no-op spin loops (`echo .`, `true`) and any command repeated 7+ times
 # in 120s. See docs/no-op-spin.md for why. Fails open if jq is missing.
 install_hook PreToolUse Bash cc-nospin
+
+# Announces each 10% band of the context window as it is consumed. The built-in
+# indicator stays hidden until the window is nearly full, and that threshold is
+# not configurable. See docs/context-usage.md.
+install_hook UserPromptSubmit "" cc-context-warn
+
+echo ""
+echo "Statusline:"
+install_statusline cc-statusline
 
 echo ""
 echo "delegate, warden, diagnose-first and shipshape are no longer here — they live in"

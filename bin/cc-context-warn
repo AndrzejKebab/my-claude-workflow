@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# UserPromptSubmit hook. Emits a systemMessage each time context usage crosses a
+# 10% band of the model window.
+#
+# The hook payload carries no context_window field — only the statusline gets that —
+# so this reads the most recent main-thread usage record out of the transcript and
+# applies the same formula the CLI uses:
+#   used = input_tokens + cache_creation_input_tokens + cache_read_input_tokens
+#
+# Window size defaults to 1M. Override with CC_CONTEXT_WINDOW for a 200k session.
+set -u
+
+payload=$(cat)
+transcript=$(printf '%s' "$payload" | jq -r '.transcript_path // empty' 2>/dev/null)
+session=$(printf '%s' "$payload" | jq -r '.session_id // "unknown"' 2>/dev/null)
+[ -n "$transcript" ] && [ -r "$transcript" ] || exit 0
+
+window=${CC_CONTEXT_WINDOW:-1000000}
+
+# Walk the transcript backwards and stop at the first main-thread usage record.
+# Subagent turns carry isSidechain, and their usage is not our context.
+line=$(tac "$transcript" 2>/dev/null \
+  | grep '"cache_read_input_tokens"' \
+  | grep -v '"isSidechain":true' \
+  | head -1)
+[ -n "$line" ] || exit 0
+
+used=$(printf '%s' "$line" | jq -r '
+  (.message.usage // {}) as $u
+  | (($u.input_tokens // 0)
+     + (($u.cache_creation_input_tokens // 0)
+        | if type == "object" then (([.[]] | add) // 0) else . end)
+     + ($u.cache_read_input_tokens // 0))
+' 2>/dev/null)
+
+case "$used" in ''|*[!0-9]*) exit 0 ;; esac
+
+band=$(( used * 10 / window ))
+[ "$band" -ge 1 ] || exit 0
+
+state="${XDG_RUNTIME_DIR:-/tmp}/cc-ctx-band-${session}"
+last=0
+[ -r "$state" ] && last=$(cat "$state" 2>/dev/null)
+case "$last" in ''|*[!0-9]*) last=0 ;; esac
+
+# Fire once per band, on the way up only.
+[ "$band" -gt "$last" ] || exit 0
+printf '%s' "$band" > "$state"
+
+fmt() {
+  if [ "$1" -ge 1000000 ]; then
+    awk -v n="$1" 'BEGIN { printf "%.2fM", n / 1000000 }'
+  elif [ "$1" -ge 1000 ]; then
+    awk -v n="$1" 'BEGIN { printf "%dk", n / 1000 }'
+  else
+    printf '%d' "$1"
+  fi
+}
+
+pct=$(( used * 100 / window ))
+msg="context $pct% used — $(fmt "$used") of $(fmt "$window") tokens"
+jq -n --arg m "$msg" '{systemMessage: $m}'

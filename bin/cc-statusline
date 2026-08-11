@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# Statusline: model, effort, and context usage.
+#
+# Claude Code 2.1.x hands the statusline a context_window object:
+#   { total_input_tokens, total_output_tokens, context_window_size,
+#     used_percentage, remaining_percentage }
+# used_percentage is rounded to a whole number, which is coarse on a 1M window,
+# so this recomputes from the raw token counts.
+set -u
+
+payload=$(cat)
+
+IFS=$'\t' read -r model effort used size cost < <(
+  printf '%s' "$payload" | jq -r '
+    [ (.model.display_name // "?"),
+      (.effort.level // "-"),
+      (.context_window.total_input_tokens // 0),
+      (.context_window.context_window_size // 0),
+      (.cost.total_cost_usd // 0)
+    ] | @tsv' 2>/dev/null
+)
+
+# Bad payload: print nothing rather than stray escape codes.
+[ -n "${model:-}" ] || exit 0
+
+dim=$'\033[2m'; reset=$'\033[0m'
+green=$'\033[32m'; yellow=$'\033[33m'; red=$'\033[31m'
+
+out="${dim}${model}${reset}"
+[ "$effort" != "-" ] && [ "$effort" != "null" ] && out="$out ${dim}${effort}${reset}"
+
+if [ "${size:-0}" -gt 0 ]; then
+  pct=$(awk -v u="$used" -v s="$size" 'BEGIN { printf "%.1f", u / s * 100 }')
+  filled=$(awk -v p="$pct" 'BEGIN { f = int(p / 10); print (f > 10 ? 10 : f) }')
+
+  bar=''
+  i=0
+  while [ "$i" -lt 10 ]; do
+    if [ "$i" -lt "$filled" ]; then bar="$bar█"; else bar="$bar░"; fi
+    i=$(( i + 1 ))
+  done
+
+  colour=$green
+  awk -v p="$pct" 'BEGIN { exit !(p >= 50) }' && colour=$yellow
+  awk -v p="$pct" 'BEGIN { exit !(p >= 80) }' && colour=$red
+
+  # Whole numbers above 10%, one decimal below — one point is 10k on a 1M window.
+  # Truncate rather than round, so the figure never overstates and always agrees
+  # with the bar.
+  shown=$(awk -v p="$pct" 'BEGIN { if (p < 10) printf "%.1f", int(p * 10) / 10; else printf "%d", int(p) }')
+  human=$(awk -v u="$used" -v s="$size" 'BEGIN {
+    printf "%s / %s", scale(u), scale(s)
+  }
+  function scale(n) {
+    if (n >= 1000000) return sprintf("%.2fM", n / 1000000)
+    return sprintf("%.0fk", n / 1000)
+  }')
+
+  out="$out ${colour}${bar} ${shown}%${reset} ${dim}${human}${reset}"
+fi
+
+awk -v c="$cost" 'BEGIN { exit !(c > 0) }' \
+  && out="$out ${dim}\$$(awk -v c="$cost" 'BEGIN { printf "%.2f", c }')${reset}"
+
+printf '%s' "$out"
