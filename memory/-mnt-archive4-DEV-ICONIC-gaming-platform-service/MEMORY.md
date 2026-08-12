@@ -17,3 +17,13 @@
 - [Real target games](real-target-games.md) — only vikings + seven-wonders matter; sunspire is broken, tidalspin family mis-declares, both ignored
 - [No local typecheck gate](no-local-typecheck-gate.md) — hooks are biome-only; cold `pnpm typecheck` is 26 s vs a 30 s hook budget, so run it yourself
 - [Simulating gates run on request](simulating-gates-on-request.md) — `test:gates`/`capture:check`/`certify` only when asked, never as a close-out reflex; routine set is `verify` + integration; after a one-test fix re-run that test only
+- [Questions mean the writing begs them](questions-mean-the-writing-begs-them.md) — they know the answer; fix the prose, don't explain at them
+- [Docs state the rule, not the behaviour](docs-state-the-rule-not-the-behaviour.md) — a case row says what the code SHOULD do; today's behaviour is the State column
+- [Short plain commit messages](short-plain-commit-messages.md) — no essays; terse bullets
+- [Injected workspace libs need a rebuilt node_modules](injected-workspace-libs-need-a-rebuilt-node-modules.md) — fresh worktree dies on a @gps lib's missing dist; `pnpm install --force` says "up to date" and repairs nothing
+- [git push blocked by the harness](git-push-blocked-by-harness.md) — the Bash tool refuses every push form; the repo hook allows it, so hand the command to the user
+- [ALS libs need a global Symbol store](als-libs-need-a-global-symbol-store.md) — injectWorkspacePackages hard-copies a lib, so a module-level AsyncLocalStorage is two stores; key it off `Symbol.for`
+- [Commit gate matcher gaps](commit-gate-matcher-gaps.md) — heredoc commits and `git merge --continue` evade the gate; a grep mentioning the string triggers it
+- [Post-edit hook corrupts conflict markers](post-edit-hook-corrupts-conflict-markers.md) — biome --write rewrites unparseable conflict hunks; resolve via script and re-Read before editing
+- [Orca agent launch is unreliable](orca-agent-launch-is-unreliable.md) — `--agent claude` emits `mise cude`, `terminal send` races the shell profile; launch via a script + `terminal create --command`, confirm by pgrep
+- [Comments stay short](comments-stay-short.md) — one line or none; reasoning goes in the design doc, not the call site

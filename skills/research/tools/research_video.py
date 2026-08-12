@@ -631,10 +631,24 @@ def process_video(video_path: Path, info: VideoInfo, srt_path: Path,
 def main():
     if len(sys.argv) < 2:
         print("Usage: research_video.py <url-or-local-path> [--title='...'] [--slug='...'] "
-              "[--metric=luma|hsv|edge] [--threshold=...] [--no-merge] [--all-slides]")
+              "[--metric=luma|hsv|edge] [--threshold=...] [--no-merge] [--all-slides] "
+              "[--bundle=Prepared|Articles] [--language=xx|auto] [--task=transcribe|translate]")
         sys.exit(1)
 
     url = sys.argv[1]
+    # Which OKF bundle the document belongs to. Prepared is the primary-source
+    # corpus (papers, conference talks); Articles is everything secondary —
+    # blog posts, tutorials, community write-ups. The distinction is editorial,
+    # not technical, so it is the caller's to make and there is no default worth
+    # guessing: staying on Prepared preserves every existing invocation.
+    global OUTPUT_DIR, PROJECT_ROOT, ASSETS_DIR
+    bundle = next((a.split("=", 1)[1] for a in sys.argv[2:] if a.startswith("--bundle=")), "Prepared")
+    if bundle not in ("Prepared", "Articles"):
+        print(f"Unknown --bundle={bundle!r}; expected Prepared or Articles")
+        sys.exit(1)
+    OUTPUT_DIR = OUTPUT_DIR.parent / bundle
+    PROJECT_ROOT = OUTPUT_DIR
+    ASSETS_DIR = OUTPUT_DIR / "assets"
     extra_title = next((a.split("=", 1)[1] for a in sys.argv[2:] if a.startswith("--title=")), None)
     extra_slug = next((a.split("=", 1)[1] for a in sys.argv[2:] if a.startswith("--slug=")), None)
     metric_arg = next((a.split("=", 1)[1] for a in sys.argv[2:] if a.startswith("--metric=")), None)
@@ -647,6 +661,21 @@ def main():
     scene_threshold = float(threshold_arg) if threshold_arg else None
     merge = "--no-merge" not in sys.argv[2:]
     all_slides = "--all-slides" in sys.argv[2:]
+    # What is spoken, and what we want out. Forcing the default English decoder
+    # onto non-English audio does not degrade gracefully — it invents fluent
+    # English that was never said — so a non-English source MUST pass this.
+    # task=translate is Whisper's speech-to-English mode and is the only route to
+    # an English transcript when the upload carries no dubbed audio track.
+    lang_arg = next((a.split("=", 1)[1] for a in sys.argv[2:] if a.startswith("--language=")), "en")
+    language = None if lang_arg == "auto" else lang_arg
+    task = next((a.split("=", 1)[1] for a in sys.argv[2:] if a.startswith("--task=")), "transcribe")
+    if task not in ("transcribe", "translate"):
+        print(f"Unknown --task={task!r}; expected transcribe or translate")
+        sys.exit(1)
+    # The SRT is named for the language it CONTAINS, not the one that was spoken:
+    # a translate run over Russian audio writes English, and calling it .ru.srt
+    # would mislabel it for every later pass and for the archive.
+    srt_lang = "en" if task == "translate" else (lang_arg if lang_arg != "auto" else "auto")
     work_dir = Path(tempfile.mkdtemp(prefix="research-"))
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -664,8 +693,8 @@ def main():
         slug = extra_slug or re.sub(r'[^a-z0-9]+', '-', title.lower()).strip('-')[:60]
         info = VideoInfo(title=title, duration=duration, video_id=slug, url=url, slug=slug)
         # Look for SRT next to the video file first, then fall back to work_dir
-        srt_candidate = video_path.parent / f"{video_path.stem}.en.srt"
-        srt_path = srt_candidate if srt_candidate.exists() else work_dir / f"{slug}.en.srt"
+        srt_candidate = video_path.parent / f"{video_path.stem}.{srt_lang}.srt"
+        srt_path = srt_candidate if srt_candidate.exists() else work_dir / f"{slug}.{srt_lang}.srt"
         print(f"Local file: {video_path} ({format_timestamp(duration)})")
     else:
         print(f"Downloading: {url}")
@@ -674,7 +703,7 @@ def main():
             info.title = extra_title
         if extra_slug:
             info.slug = extra_slug
-        srt_path = work_dir / f"{info.slug}.en.srt"
+        srt_path = work_dir / f"{info.slug}.{srt_lang}.srt"
 
     # Transcript source is always SOTA STT (faster-whisper), never YouTube
     # auto-captions. A pre-existing SRT next to a local video is reused as-is
@@ -682,7 +711,7 @@ def main():
     if not srt_path.exists():
         from transcribe_to_srt import transcribe
         print("  Transcribing audio with faster-whisper (SOTA STT)...")
-        transcribe(str(video_path), str(srt_path))
+        transcribe(str(video_path), str(srt_path), language=language, task=task)
 
     print(f"Processing: {info.title} ({format_timestamp(info.duration)})")
     md_path = process_video(video_path, info, srt_path, scene_threshold=scene_threshold,

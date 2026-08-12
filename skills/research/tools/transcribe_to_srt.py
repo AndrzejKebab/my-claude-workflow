@@ -94,13 +94,25 @@ def _fmt(s: float) -> str:
 
 
 def transcribe(video_path: str, srt_out: str, model_size: str = DEFAULT_MODEL,
-               force: bool = False, language: str = "en") -> str:
+               force: bool = False, language: str = "en", task: str = "transcribe") -> str:
     """Transcribe ``video_path`` to an SRT at ``srt_out`` and return the path written.
 
     Without ``force``, an existing ``srt_out`` is preserved and the transcript is
     written to a randomised ``.regen-<stamp>-<hex>.srt`` sidecar instead, so
     concurrent agents retranscribing the same video never clobber each other.
+
+    ``language`` is the language *spoken in the audio* — ISO-639-1, or ``None`` to
+    let Whisper detect it. Getting this wrong is not a soft failure: forcing an
+    English decoder onto Russian audio does not produce accented English, it
+    produces confident nonsense, and it does so silently. Pass the real language.
+
+    ``task`` is ``"transcribe"`` (verbatim, in ``language``) or ``"translate"``
+    (Whisper's speech-to-English-text mode, from any source language). Translate
+    is the only route to an English transcript when the source has no dubbed
+    audio track; the SRT it writes is English regardless of ``language``.
     """
+    if task not in ("transcribe", "translate"):
+        raise ValueError(f"task must be 'transcribe' or 'translate', got {task!r}")
     if os.path.exists(srt_out) and not force:
         stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         suffix = secrets.token_hex(3)
@@ -118,12 +130,17 @@ def transcribe(video_path: str, srt_out: str, model_size: str = DEFAULT_MODEL,
         )
 
         model, device = _build_model(model_size)
-        print(f"  Transcribing with faster-whisper {model_size} on {device}...")
+        print(f"  Transcribing with faster-whisper {model_size} on {device} "
+              f"(language={language or 'auto'}, task={task})...")
         # vad_filter drops non-speech (applause, demo SFX, music) so large-v3
         # does not hallucinate looped text over silent gameplay footage.
-        segments, _info = model.transcribe(
-            wav, language=language, beam_size=5, vad_filter=True,
+        segments, info = model.transcribe(
+            wav, language=language, task=task, beam_size=5, vad_filter=True,
         )
+        # Worth printing: when language is None this is the only place the
+        # detection is visible, and a wrong detection explains a bad transcript
+        # far faster than re-reading the output does.
+        print(f"  Detected language: {info.language} (p={info.language_probability:.2f})")
 
         lines = []
         for i, seg in enumerate(segments, 1):
@@ -144,7 +161,12 @@ def main():
     video_path, srt_out = sys.argv[1], sys.argv[2]
     model_size = sys.argv[3] if len(sys.argv) > 3 and not sys.argv[3].startswith("--") else DEFAULT_MODEL
     force = "--force" in sys.argv
-    written = transcribe(video_path, srt_out, model_size=model_size, force=force)
+    # --language=xx (ISO-639-1), or --language=auto to let Whisper detect it.
+    lang_arg = next((a.split("=", 1)[1] for a in sys.argv[2:] if a.startswith("--language=")), "en")
+    language = None if lang_arg == "auto" else lang_arg
+    task = next((a.split("=", 1)[1] for a in sys.argv[2:] if a.startswith("--task=")), "transcribe")
+    written = transcribe(video_path, srt_out, model_size=model_size, force=force,
+                         language=language, task=task)
     print(f"Wrote {written}")
 
 

@@ -13,4 +13,7 @@
 - [UE nested-compositor seats](ue-nested-compositor-seats.md) — Unreal QA runs in a nested kwin (windowed for the human, --virtual offscreen w/ real GPU for the agent); no KDE session needed
 - [UE editor settings corruption](ue-editor-settings-corruption.md) — force-killing the editor corrupts EditorPerProjectUserSettings.ini; loads fine, breaks viewport input, mimics a compositor/driver bug. Reset it early.
 - [UE Wayland drag fix](ue-wayland-drag-sdl-videodriver.md) — UE 5.8's native Wayland SDL3 backend drops held-button+motion entirely; SDL_VIDEODRIVER=x11 fixes it, now the seat default
+- [Milestones need owner QA](milestone-needs-owner-qa.md) — never commit a milestone without the user's confirmation; green gates are permission to ask, not to submit
 - [FARTS gate layer](ue-farts-gate-layer.md) — gates run through zori_skills/plugins/unreal runners; UE exits 1 on success, test filters are prefix matches, the avatar SSIM gate is knowingly RED
+- [Grip truth from the reference rig](grip-truth-from-reference-rig.md) — mint poses from the marketplace rig; I cannot judge grips visually and derived metrics went green on a bad one
+- [The canonical road, not code workarounds](canonical-road-not-code-workarounds.md) — build it in the editor via MCP as a user would; extend MCP if needed; engine source before video tutorials

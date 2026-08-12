@@ -5,6 +5,7 @@
 - [Token-conservative model picks](token-conservative-model-picks.md) — set model on every Agent call: opus for hard tasks, sonnet for mechanical; don't inherit session model
 - [Headful by default](headful-by-default.md) — run browser gates headful always on this machine; headless only for CI and unproven configs
 - [Hypertino continuation state](hypertino-continuation-state.md) — E-track (docs/editor-spec.md) is the main line since 2026-07-04, Fable orchestrates opus/sonnet workers; heightfields/cosmetics parked in docs/todo
+- [Noesis stays](noesis-stays.md) — 2026-08-10 user ruling; the editor keeps NoesisGUI, the ImGui migration question is closed
 - [MCP UI = DOM query](mcp-ui-dom-query.md) — agent UI control must be one general DOM-style tree query over the whole Noesis UI, never per-panel blocks
 - [Shell is the session](hypertino-shell-is-session.md) — one editor/UI/selection; shell==session; MCP is a view onto it; multi-select is future; don't invent multiple origins
 - [Suite may be vacuous](suite-may-be-vacuous.md) — hypertino test/suite cases may be AI slop; never trust green, prove the gate bites

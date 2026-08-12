@@ -86,6 +86,15 @@ Every tag in the `tags` field of a corpus document must be drawn from this list.
 - **terrain-rendering** — GPU techniques for rendering large-scale terrain: clipmaps, geometry clipmaps, LOD (Losasso-Hoppe 2004, Widmark 2012 BF3, Kuehnert 2022, Keb 2023 Frostbite).
 - **procedural-generation** — algorithmic creation of geometry or content at runtime (Zirr-Kaplanyan 2016 procedural multiscale, van Muijden 2017 HZD vegetation placement, Keb 2023 Frostbite terrain, Sanders 2017 HZD vegetation).
 
+## Procedural Noise Functions
+
+- **procedural-noise** — parent cluster tag for coherent pseudo-random noise functions used as a primitive for procedural content (Perlin 2002 Noise Hardware, Gustavson 2005 simplex noise demystified, KdotJPG 2022 Perlin Problem series).
+- **gradient-noise** — noise built by interpolating pseudo-random gradients assigned to a lattice, the family covering classic Perlin noise, Simplex, and OpenSimplex variants (Perlin 2002, Gustavson 2005, KdotJPG 2022).
+- **perlin-noise** — the original square/hypercubic-lattice gradient noise and its axis-alignment artifacts (Perlin 2002 Noise Hardware, KdotJPG 2022 square noise).
+- **simplex-noise** — gradient noise evaluated on a simplectic (triangular/tetrahedral) lattice instead of a hypercubic one, including Simplex, OpenSimplex, OpenSimplex2, and OpenSimplex2S (Gustavson 2005, KdotJPG 2022).
+- **noise-hardware** — dedicated silicon or GPU-native evaluation of noise functions, and the design constraints that come with fixing an algorithm in hardware (Perlin 2002).
+- **domain-rotation** — transforming input coordinates (typically via an added and rescaled dimension) before sampling a noise function, to cancel a lattice's visible directional bias (KdotJPG 2022 domain rotation).
+
 ## Denoising & Filtering
 
 - **denoising** — filtering noisy rendered images using temporal or spatial filters (Schied 2017 SVGF, Schied 2018 ASVGF, Mueller 2021 TASA).
@@ -114,6 +123,7 @@ Every tag in the `tags` field of a corpus document must be drawn from this list.
 - **gpu-data-structures** — generic programmable data structures on GPU: sparse arrays, virtual pages, indirect buffers (Lefohn 2006 Glift, Lefebvre-Dachsbacher 2007 TileTrees, Lefebvre-Hoppe 2006 spatial hashing).
 - **spatial-hashing** — mapping spatial coordinates to hash table entries for fast nearest-neighbor and point queries (Lefebvre-Hoppe 2006 perfect spatial hashing).
 - **mesh-shaders** — the meshlet-based GPU rendering pipeline replacing fixed vertex/geometry stages, used for GPU-driven culling and VSM (Sakmary 2025, Lazarek 2025).
+- **graphics-api-design** — low-level graphics API and driver design: pipeline-state-object (PSO) surface, resource binding models, command buffer submission, and GPU synchronization/barrier models across DirectX 12, Vulkan, and Metal (aaltonen-2025 no-graphics-api, aaltonen-2026 reducing-api-complexity).
 
 ## Floating-Point Arithmetic & Numerical Precision
 
@@ -174,6 +184,13 @@ Every tag in the `tags` field of a corpus document must be drawn from this list.
 - **frame-pacing** — the synchronization contract between the Game/Render/RHI/GPU pipeline stages, and the trade-off between input latency and hitch resiliency it creates (Epic 2026 Frame Timing & Latency).
 - **input-latency** — the delay chain from input sampling to displayed photon, and the cvars/techniques used to measure and reduce it (Epic 2026 Frame Timing & Latency).
 - **cpu-profiling** — measuring and reducing CPU-side bottlenecks: game-thread cost, UObject counts, garbage collection, and Slate/UI overhead (Arnbjörnsson-Oztalay 2026, Oztalay 2026).
+
+## Game Design Theory & Process
+
+- **game-design-theory** — parent cluster tag for formal frameworks and analytical models that treat game design itself as an object of study, distinct from techniques for building or shipping a game (Hunicke-LeBlanc-Zubek 2004 MDA, Costikyan 2002 critical vocabulary, Meier 2010 psychology of game design, Blow 2007 Design Reboot).
+- **design-process** — practices, documentation formats, and workflows for the day-to-day practice of designing games: idea generation, communicating intent to a team, iterating on a design (Librande 2010 one-page designs, Tyroller 2025 Steam hook).
+- **player-psychology** — design reasoning grounded in how players perceive fairness, difficulty, and drama rather than strict mathematical or historical accuracy (Meier 2010 psychology of game design).
+- **design-criticism** — critical or philosophical argument about what makes game design meaningful versus exploitative, and critiques of inherited industry convention (Blow 2007 Design Reboot, Costikyan 2002 critical vocabulary).
 
 ## Point Cloud & Photogrammetry Pipelines
 

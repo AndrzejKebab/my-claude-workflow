@@ -5,10 +5,12 @@ import sys
 import re
 from pathlib import Path
 
-# The extracted markdown corpus lives at a single hardcoded global location,
-# independent of cwd / which project invoked /research — same root the rest of
-# the pipeline (extract_research.py, validate_research.py) writes to.
-OUTPUT_DIR = Path("/mnt/archive4/PAPERS/Prepared")
+# The extracted markdown corpus lives at a global location independent of cwd /
+# which project invoked /research. `Prepared` is the primary-source bundle and
+# the default; `Articles` holds secondary material (tutorials, blog posts,
+# community write-ups) and is reached with `--research-dir`, matching
+# validate_research.py's flag of the same name.
+DEFAULT_DIR = Path("/mnt/archive4/PAPERS/Prepared")
 
 # Repeated footer/watermark lines to strip from PPTX-sourced slides
 STRIP_LINES = [
@@ -125,27 +127,45 @@ def main():
     # `--only=SLUG[,SLUG2]` scopes cleanup to specific docs (matches
     # validate_research.py). Absent, every per-slug `<slug>.md` is cleaned.
     only_slugs: set[str] | None = None
+    research_dir = DEFAULT_DIR
     for arg in sys.argv[1:]:
         if arg.startswith("--only="):
             slugs = {s.strip() for s in arg.split("=", 1)[1].split(",") if s.strip()}
             only_slugs = slugs if slugs else None
+        elif arg.startswith("--research-dir="):
+            research_dir = Path(arg.split("=", 1)[1])
         elif arg.startswith("-"):
             raise SystemExit(f"cleanup_research.py: unknown flag {arg!r}")
 
+    if not research_dir.is_dir():
+        raise SystemExit(f"cleanup_research.py: no such directory: {research_dir}")
+
     total_changes = 0
-    for md_file in sorted(OUTPUT_DIR.glob("*.md")):
+    seen: set[str] = set()
+    for md_file in sorted(research_dir.glob("*.md")):
         # Skip non-slug bookkeeping files (index*.md) and per-slug regen
         # sidecars — neither is a canonical extraction.
         if md_file.name.startswith("index") or ".regen-" in md_file.name:
             continue
         if only_slugs and md_file.stem not in only_slugs:
             continue
+        seen.add(md_file.stem)
         slug, changes = cleanup_file(md_file)
         if changes:
             print(f"  {slug}: {changes} fixes")
             total_changes += changes
         else:
             print(f"  {slug}: clean")
+
+    # A slug that matched nothing is a failure, not a clean run. Silently
+    # reporting "0 fixes applied" for a document in the other bundle is
+    # indistinguishable from success, and that is exactly how three documents
+    # got shipped past this script without it ever having read them.
+    if only_slugs and (missing := sorted(only_slugs - seen)):
+        raise SystemExit(
+            f"cleanup_research.py: no document found in {research_dir} for: {', '.join(missing)}\n"
+            f"  (a doc in the other bundle needs --research-dir=/mnt/archive4/PAPERS/Articles)"
+        )
     print(f"\nTotal: {total_changes} fixes applied")
 
 
