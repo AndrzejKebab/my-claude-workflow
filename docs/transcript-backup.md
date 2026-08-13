@@ -56,8 +56,14 @@ rclone about mega:
 rclone lsd mega:
 ```
 
-The account is 2 TB, so 6.9 GB is not a sizing question and compression is not
-worth the loss of a browsable remote.
+Measured 2026-08-14: 3 TiB total, 303 GiB used, 2.7 TiB free. 6.9 GB is not a
+sizing question, so the archive goes up uncompressed and stays browsable.
+
+**Close any interactive `rclone config` session first.** Login writes `session_id`
+and `master_key` back into `rclone.conf`, and a config session holding that file
+stalls the write — the symptom is `rclone about mega:` sitting forever on
+`Using username and password to initialize the Mega API`. With the file free,
+that login takes about 26 seconds.
 
 First run, without uploading anything:
 
