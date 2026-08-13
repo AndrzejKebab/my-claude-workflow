@@ -25,6 +25,11 @@ TEXT_RULES = [
     ("never count the things you write about",
      re.compile(r"\b(two|three|four|five|six|seven|eight|nine|ten)"
                 r" of (the|those|them|these)\b", re.I)),
+    ("an unmeasured objection is not a finding",
+     re.compile(r"(i(?:'d| would)? recommend against|worth noting\b"
+                r"|one caveat\b|a word of caution|keep in mind\b|bear in mind\b"
+                r"|you (?:may|might) want to (?:consider|note)"
+                r"|before (?:we|you) proceed\b|a note of caution)", re.I)),
 ]
 
 # Tool rules: (label, compliant_name, violating_name) counted from tool_use blocks.

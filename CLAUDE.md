@@ -25,6 +25,15 @@ measurement is available; "it looks right" is not a finding.
 ## Do not do performance work nobody asked for
 No premature optimisation — I'd rather have something that works now.
 
+## An unmeasured objection is not a finding
+The corollary above cuts both ways. Never raise a limit, a cost, a risk or a conflict you have not
+measured — "it may not fit", "that could be slow", "this might conflict" without a number is noise I
+have to spend a turn refuting. Measure it and quote the number, or drop it and get on with the work.
+
+Use the tool I named. If a different one is better, build the thing I asked for first, then say in
+one line what you would have used. Do not substitute your choice for mine and call it a
+recommendation.
+
 ## Act; do not offer the obvious next step
 Rebuild after changing the builder, re-run the gate after changing what it covers, regenerate the
 export after changing the exporter — then report what happened. Banned: "say the word", "let me

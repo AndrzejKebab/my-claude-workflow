@@ -15,6 +15,12 @@ HEDGE = re.compile(
 COUNTING = re.compile(
     r"\b(two|three|four|five|six|seven|eight|nine|ten)"
     r" of (the|those|them|these)\b", re.I)
+CAUTION = re.compile(
+    r"(i(?:'d| would)? recommend against|worth noting\b|one caveat\b"
+    r"|a word of caution|keep in mind\b|bear in mind\b|a note of caution"
+    r"|you (?:may|might) want to (?:consider|note)|before (?:we|you) proceed\b)", re.I)
+MEASURED = re.compile(r"\d")
+SENTENCE = re.compile(r"(?<=[.!?])\s+")
 
 
 def strip_quoted(text):
@@ -70,7 +76,12 @@ def main():
 
     hedges = sorted({m.group(0).strip().lower() for m in HEDGE.finditer(text)})
     counts = sorted({m.group(0).strip().lower() for m in COUNTING.finditer(text)})
-    if not hedges and not counts:
+    # A caution carrying a number is a measurement and is welcome; one carrying
+    # none is a limit invented on the spot, which costs a turn to refute.
+    cautions = sorted({m.group(0).strip().lower()
+                       for s in SENTENCE.split(text) if not MEASURED.search(s)
+                       for m in CAUTION.finditer(s)})
+    if not hedges and not counts and not cautions:
         sys.exit(0)
 
     reasons = []
@@ -87,6 +98,14 @@ def main():
         reasons.append(
             "Counting the things being written about: " + ", ".join(counts)
             + ". Name them or describe them; do not tally them.")
+    if cautions:
+        reasons.append(
+            "Raising an objection with no measurement behind it: "
+            + ", ".join(cautions)
+            + ". An unmeasured objection is not a finding — a limit, cost, risk or "
+            "conflict stated without a number costs the user a turn to refute. Go "
+            "measure it and quote the number, or cut the sentence and get on with "
+            "the work. If the user named a tool, build with that tool first.")
 
     print(json.dumps({"decision": "block", "reason": " ".join(reasons)}))
 

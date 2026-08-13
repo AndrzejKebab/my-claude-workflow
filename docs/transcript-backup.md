@@ -56,8 +56,8 @@ rclone about mega:
 rclone lsd mega:
 ```
 
-`rclone about` prints the quota — 6.9 GB needs to fit alongside whatever MEGAsync
-is already storing. A free account is 20 GB total.
+The account is 2 TB, so 6.9 GB is not a sizing question and compression is not
+worth the loss of a browsable remote.
 
 First run, without uploading anything:
 
