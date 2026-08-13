@@ -32,15 +32,22 @@ decide to call the `Skill` tool. Measured, it decides to 1.4% of the time. Any
 rule expressed as "invoke X" in `CLAUDE.md` has this shape and scores near zero.
 The fix is to load the body, not to reword the pointer.
 
-**A rule that is never loaded is not ignored; it is absent.** `~/.claude/` holds
-`CLAUDE_B`, `CLAUDE_C`, `HARNESS`, `NONDUAL`, `PROSE`, `VERIFY`, `RTK`,
-`negative-space-expanded` and `FFF`, and `CLAUDE.md` imported exactly one of
-them — `@FFF.md`, the moot one. Before adding any of the rest to
-`DOCTRINE.list`, establish that it is live: **`CLAUDE_B.md`, `CLAUDE_C.md` and
-`CLAUDE_D.md` are rejected variants of `CLAUDE.md`** — drafts that were tried and
-did not work. They are unloaded on purpose and must stay that way. Loading a
-graveyard is worse than loading nothing, because a rejected rule that reaches a
-session outranks a live one that does not.
+**Most of `~/.claude` is a graveyard, and it is unloaded on purpose.** Every
+`CLAUDE_*.md`, plus `VOICE.md`, `PROSE.md`, `NONDUAL.md`, `VERIFY.md`,
+`HARNESS.md`, `EDITING.md`, `MODEL.md`, `DISPATCH.md` and
+`negative-space-expanded.md`, is a **rejected draft** of `CLAUDE.md` — tried, did
+not work, kept on disk. `FFF.md` is the exception and is imported.
+
+So an unloaded file here is not evidence of a wiring bug, and the `(binding)`
+heading inside a rejected draft binds nothing. Loading a graveyard is worse than
+loading nothing: a rejected rule that reaches a session outranks a live one that
+does not. Do not wire any of them, and do not "restore" them in a later pass.
+
+The live doctrine is `CLAUDE.md`, and it is kept small deliberately: when Claude
+turns unproductive, the file gets trimmed back to what can be justified as a
+*preference over the model's default behaviour*. Anything the model already does
+well is noise competing with the rules that differ. A rule that survives a trim
+goes in `CLAUDE.md`; a rule that needs enforcement becomes a hook.
 
 ## The escalation ladder
 
@@ -63,9 +70,11 @@ A rule that scores badly and matters is a rule at the wrong rung. Move it down.
 
 ### `cc-doctrine` — SessionStart
 
-Injects the files listed in `DOCTRINE.list` — currently `VOICE.md` and the
-`i-have-adhd` skill body, 1847 tokens. Two reasons it is a hook rather than an
-`@import` in `CLAUDE.md`:
+Injects the files listed in `DOCTRINE.list` — currently just the `i-have-adhd`
+skill body, 1302 tokens. Almost nothing belongs in that manifest; it exists for
+the one case `CLAUDE.md` cannot cover, a rule whose body lives elsewhere and
+which an "invoke X" line fails to load. Two reasons it is a hook rather than an
+`@import`:
 
 - **It fires again after a compaction.** `SessionStart` carries a `source`
   field and `compact` is one of its values. An import is injected once; this
@@ -104,18 +113,18 @@ in `settings.json`: the harness refuses, and the refusal carries the alternative
 
 ### `cc-comment-wall` — PostToolUse (Write, Edit)
 
-Enforces `VOICE.md` "Dose" — *"Comments are one-liners. A longer one earns its
-place only by saying something the code cannot"* — and "Cut", which sends
-self-narration to the commit message or nowhere. Blocks on 4+ contiguous `//` or
+Enforces `CLAUDE.md` "Comments are one-liners". Blocks on 4+ contiguous `//` or
 `#` narration lines and names the line numbers.
 
 Doc comments (`///`, `/** */`, docstrings) pass; so do licence headers, SPDX
 lines and preprocessor directives. File type comes from the extension, or from
 the shebang when there is none — `bin/` scripts carry no suffix.
 
-The same rule is stated more forcefully in `CLAUDE_D.md` ("write a documentation
-page"), but that file is a rejected variant and is not the anchor. `VOICE.md` is
-binding and live, so the hook quotes `VOICE.md`.
+The rule was stated in `VOICE.md` and more forcefully in `CLAUDE_D.md` ("write a
+documentation page"), and both are rejected drafts, which is the whole reason it
+never bound anything. It was restated in `CLAUDE.md` — the live file — and the
+hook quotes `CLAUDE.md`. That is the pattern for any rule rescued from the
+graveyard: restate it where the model actually reads, then enforce it.
 
 Note what it found on arrival: the pre-existing `bin/` scripts in this repo carry
 headers of 9, 12, 17, 20, 22, 27 and 31 lines. The hook fires only on files

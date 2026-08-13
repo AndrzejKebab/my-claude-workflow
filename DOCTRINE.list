@@ -1,18 +1,20 @@
 # Files cc-doctrine injects at SessionStart and after every compaction.
 # One path per line, relative to this repo unless absolute. Paid on every session
-# AND after every compaction — keep it short, and use `cc-rule-audit` to find out
-# whether a file earns its place.
+# AND after every compaction — keep it short.
 #
-# CLAUDE_C.md and CLAUDE_D.md are NOT here and must not be added: they are
-# rejected variants of CLAUDE.md that were tried and did not work. They are the
-# graveyard, not the canon. Rules worth keeping were re-stated in the files below
-# or wired as hooks; the rest stay unloaded on purpose.
+# Almost nothing belongs here. Every CLAUDE_*.md, VOICE.md, PROSE.md, NONDUAL.md,
+# VERIFY.md, HARNESS.md, EDITING.md, MODEL.md, DISPATCH.md and
+# negative-space-expanded.md in this repo is a REJECTED DRAFT of CLAUDE.md. They
+# are the graveyard. Do not wire them, however binding their own headings claim to
+# be — a rejected rule that reaches a session outranks a live one that does not.
 #
-# Token cost measured 2026-08-13 with ttok.
+# The live doctrine is CLAUDE.md, kept deliberately small: only what can be
+# justified as a preference over the model's default behaviour. A rule that
+# survives goes there, not here.
+#
+# This file exists for the one case CLAUDE.md cannot cover — a rule whose body
+# lives somewhere else and which an "invoke X" line fails to load. Measured with
+# cc-rule-audit: `/i-have-adhd` in CLAUDE.md fired in 9 of 637 sessions, because a
+# slash command in an injected file is text, not an invocation.
 
-VOICE.md    # 487 — binding: register, dose, one home per fact, comments are one-liners
-
-# The output-shape rule. Its own description says "use this whenever responding to
-# ANY user message", which makes it doctrine rather than a skill you reach for.
-# As a `/i-have-adhd` line in CLAUDE.md it fired in 9 of 637 measured sessions.
-/home/midori/i-have-adhd/skills/i-have-adhd/SKILL.md    # 1302
+/home/midori/i-have-adhd/skills/i-have-adhd/SKILL.md    # 1302 tok

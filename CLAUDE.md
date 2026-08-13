@@ -1,5 +1,13 @@
+@FFF.md
+
 Always read AGENTS.md and CONTEXT.md ENTIRE — never `head` them, never pass `limit`/`offset`. Use their ubiquitous language.
 Always talk in Simplified Technical English.
+
+## Comments are one-liners
+A comment earns its place only by saying something the code cannot: a constraint, a gotcha, a reason
+someone would otherwise "fix" it. A design header, a numbered rationale, a transcript of
+measurements, a record of rejected alternatives — that is a doc page with a one-line pointer left
+behind, or it is deleted. Never a wall of narration where a doc page belongs.
 
 ## Never count the things you are writing about
 Do not write "three of the seven", "five of the six", "four of those".

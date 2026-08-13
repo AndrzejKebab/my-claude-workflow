@@ -109,10 +109,11 @@ transcript record so an ignored rule can be moved down the ladder — prose, the
 — instead of reworded into a differently-worded ignored rule.
 [docs/rule-compliance.md](docs/rule-compliance.md) carries the 637-session baseline the four hooks
 above were wired against, and the two failure shapes behind it: a slash command in `CLAUDE.md` is
-text and not an invocation (`/i-have-adhd` fired in 1.4% of sessions), and a rule that never loads is
-absent rather than ignored. `CLAUDE_B.md`, `CLAUDE_C.md` and `CLAUDE_D.md` are rejected variants of
-`CLAUDE.md` and stay unloaded on purpose — `DOCTRINE.list` says so, so a later pass does not
-"helpfully" wire the graveyard.
+text and not an invocation (`/i-have-adhd` fired in 1.4% of sessions), and a rule inside a rejected
+draft binds nothing however loudly it says "(binding)". Every `CLAUDE_*.md`, `VOICE.md`, `PROSE.md`,
+`NONDUAL.md`, `VERIFY.md`, `HARNESS.md`, `EDITING.md`, `MODEL.md` and `DISPATCH.md` here is a
+rejected draft of `CLAUDE.md` and stays unloaded on purpose — `DOCTRINE.list` says so, so a later
+pass does not "helpfully" wire the graveyard. `FFF.md` is the exception and is imported.
 
 The built-in context indicator stays hidden until the window is nearly full, and that
 threshold is not configurable. [docs/context-usage.md](docs/context-usage.md) covers why
