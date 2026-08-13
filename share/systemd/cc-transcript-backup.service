@@ -1,0 +1,10 @@
+[Unit]
+Description=Back up Claude Code transcripts to MEGA
+Documentation=file:///home/midori/_dev/my-claude-workflow/docs/transcript-backup.md
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/home/midori/_dev/my-claude-workflow/bin/cc-transcript-backup
+Nice=10
+IOSchedulingClass=idle

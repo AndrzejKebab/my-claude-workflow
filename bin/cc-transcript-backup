@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Push ~/.claude/projects to MEGA. copy, never sync — see docs/transcript-backup.md.
+set -euo pipefail
+
+REMOTE="${CC_BACKUP_REMOTE:-mega:claude-transcripts}"
+SRC="${CC_BACKUP_SRC:-$HOME/.claude/projects}"
+LOG="${CC_BACKUP_LOG:-$HOME/.claude/transcript-backup.log}"
+SETTLE="${CC_BACKUP_SETTLE:-15m}"
+
+if ! command -v rclone >/dev/null; then
+    echo "rclone missing — pacman -S rclone" >&2
+    exit 1
+fi
+
+if ! rclone listremotes 2>/dev/null | grep -q "^${REMOTE%%:*}:$"; then
+    echo "rclone remote '${REMOTE%%:*}' is not configured. Run: rclone config" >&2
+    exit 1
+fi
+
+[[ -d "$SRC" ]] || { echo "no such source: $SRC" >&2; exit 1; }
+
+exec rclone copy "$SRC" "$REMOTE" \
+    --min-age "$SETTLE" \
+    --transfers 4 \
+    --checkers 8 \
+    --retries 5 \
+    --low-level-retries 20 \
+    --stats 5m \
+    --stats-one-line \
+    --log-file "$LOG" \
+    --log-level INFO \
+    "$@"
