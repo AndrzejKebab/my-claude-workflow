@@ -23,6 +23,7 @@ cc-rule-audit --project p7    # only transcript dirs matching a substring
 | act; do not offer the next step | **322** hedges, 18.6 per 1000 blocks | `cc-no-hedge` refuses the stop. |
 | never count the things you write about | **93** hits, 5.4 per 1000 blocks | `cc-no-hedge` refuses the stop. |
 | `/i-have-adhd` | 9 of 637 sessions → **98.6% miss** | `cc-doctrine` loads the skill body instead — see below. |
+| finish and stop; there is no caveat slot | **104** of 2116 substantial blocks → 4.9% | `cc-no-hedge` blocks the phrasal subset — see the limit below. |
 
 ## The two failure shapes
 
@@ -102,6 +103,21 @@ what a Stop hook can see. Three properties it holds:
   the same reasoning that makes `no-latching-waits.sh` strip quoted spans.
 - **Fail open.** A Stop hook that dies on a malformed transcript would end every
   turn with an error.
+
+It also blocks the caveat slot: a finished report carries a trailing paragraph
+qualifying the work, and the slot gets filled because the shape of a completion
+seems to want one rather than because anything belongs in it. A caution sentence
+carrying a digit passes — a measured qualification is usually a real finding —
+and one carrying none is cut.
+
+**Where this stops working.** The detector is phrasal, and the honest measure of
+its reach is 104 of 2116 substantial blocks. Clustering the final paragraph of
+every long message over five days shows the trailing slot is filled far more
+often than that, mostly by `Next: …` status lines (which the `i-have-adhd` skill
+asks for) and by semantic qualifications no regex sees — "the numbers were taken
+on a hot deck", "the bound at 40 is a ruling, not a derivation". Those reach the
+model only through the `CLAUDE.md` rule. The hook narrows the habit; it does not
+close it.
 
 ### `cc-whole-file-reads` — PreToolUse (Read, Bash)
 

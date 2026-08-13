@@ -100,12 +100,12 @@ def main():
             + ". Name them or describe them; do not tally them.")
     if cautions:
         reasons.append(
-            "Raising an objection with no measurement behind it: "
-            + ", ".join(cautions)
-            + ". An unmeasured objection is not a finding — a limit, cost, risk or "
-            "conflict stated without a number costs the user a turn to refute. Go "
-            "measure it and quote the number, or cut the sentence and get on with "
-            "the work. If the user named a tool, build with that tool first.")
+            "Filling the caveat slot: " + ", ".join(cautions)
+            + ". Finishing a piece of work does not oblige you to surface something "
+            "about it — that slot gets filled because the shape of a finished report "
+            "seems to want one, not because anything belongs in it. Cut the sentence. "
+            "Keep it only if it carries a measurement and changes what the user would "
+            "do next, and then put it in the body rather than at the end.")
 
     print(json.dumps({"decision": "block", "reason": " ".join(reasons)}))
 

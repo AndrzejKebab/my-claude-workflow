@@ -25,10 +25,16 @@ measurement is available; "it looks right" is not a finding.
 ## Do not do performance work nobody asked for
 No premature optimisation — I'd rather have something that works now.
 
-## An unmeasured objection is not a finding
-The corollary above cuts both ways. Never raise a limit, a cost, a risk or a conflict you have not
-measured — "it may not fit", "that could be slow", "this might conflict" without a number is noise I
-have to spend a turn refuting. Measure it and quote the number, or drop it and get on with the work.
+## Finish and stop — there is no caveat slot
+Completing a piece of work does not oblige you to surface something about it. Report what was done,
+then stop. Do not append a caveat, a consideration, a limitation or a thing-to-watch because the
+shape of a finished report seems to want one — that slot gets filled whether or not anything belongs
+in it, and every filled slot costs me a turn. A qualification goes in the body, and only when it
+changes what I would do next.
+
+Never raise a limit, a cost, a risk or a conflict I did not ask about and you did not measure. "It
+may not fit", "that could be slow", "this might conflict" without a number is an objection you
+invented. Measure it and quote the number, or cut it.
 
 Use the tool I named. If a different one is better, build the thing I asked for first, then say in
 one line what you would have used. Do not substitute your choice for mine and call it a

@@ -25,12 +25,24 @@ TEXT_RULES = [
     ("never count the things you write about",
      re.compile(r"\b(two|three|four|five|six|seven|eight|nine|ten)"
                 r" of (the|those|them|these)\b", re.I)),
-    ("an unmeasured objection is not a finding",
-     re.compile(r"(i(?:'d| would)? recommend against|worth noting\b"
-                r"|one caveat\b|a word of caution|keep in mind\b|bear in mind\b"
-                r"|you (?:may|might) want to (?:consider|note)"
-                r"|before (?:we|you) proceed\b|a note of caution)", re.I)),
 ]
+
+# Structural, not phrasal: the completion template keeps a trailing caveat slot
+# and fills it whether or not anything belongs there. Detected by position — a
+# caution section opening in the tail of the message, after the actual report.
+APPENDIX = re.compile(
+    r"^\s*(?:#{1,4}\s*|\*\*|\d+\.\s+\*\*)?"
+    r"(notes?|caveats?|considerations?|limitations?|trade-?offs?|gotchas?"
+    r"|caveats? and |things? to (?:watch|note|know|keep)|what to watch"
+    r"|worth (?:noting|flagging)|one thing to|a few (?:notes|caveats)"
+    r"|heads up|important|known (?:issues?|limitations?)"
+    r"|before (?:we|you) proceed|one thing (?:you|to|worth)|a (?:small )?caveat"
+    r"|do (?:note|keep) |be aware|(?:just )?so you know)\b", re.I | re.M)
+
+
+def tail(text, fraction=0.4, floor=400):
+    cut = min(len(text) - floor, int(len(text) * (1 - fraction)))
+    return text[max(cut, 0):]
 
 # Tool rules: (label, compliant_name, violating_name) counted from tool_use blocks.
 SEARCH_BUILTIN = {"Grep", "Glob"}
@@ -58,6 +70,7 @@ def transcripts(cutoff, project):
 def scan(paths, examples_wanted):
     c = Counter()
     examples = {label: [] for label, _ in TEXT_RULES}
+    examples["appendix"] = []
     sessions, adhd_sessions = set(), set()
 
     for path in paths:
@@ -85,6 +98,13 @@ def scan(paths, examples_wanted):
                     elif blk.get("type") == "text":
                         c["text_blocks"] += 1
                         text = blk.get("text", "")
+                        if len(text) >= 600:
+                            c["long_blocks"] += 1
+                            m = APPENDIX.search(tail(text))
+                            if m:
+                                c["appendix"] += 1
+                                if len(examples["appendix"]) < examples_wanted:
+                                    examples["appendix"].append(m.group(1).strip())
                         for label, pattern in TEXT_RULES:
                             for m in pattern.finditer(text):
                                 c[label] += 1
@@ -152,6 +172,13 @@ def main():
         if examples[label]:
             print(f"      quoted: {', '.join(examples[label])}")
         print()
+
+    print("RULE  no trailing caveat appendix on a completed report")
+    print(f"      {c['appendix']} of {c['long_blocks']} substantial blocks carry one   "
+          f"{ratio(c['long_blocks'] - c['appendix'], c['appendix']):.1f}%")
+    if examples["appendix"]:
+        print(f"      opened with: {', '.join(examples['appendix'])}")
+    print()
 
     print("RULE  /i-have-adhd, invoked from CLAUDE.md")
     print(f"      invoked in {len(adhd)} of {len(sessions)} sessions   "
