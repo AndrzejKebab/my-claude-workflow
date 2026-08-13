@@ -386,6 +386,7 @@ Every research source — PDF, PPTX, YouTube video, HLS / m3u8 stream, local mp4
 | YouTube video | `/mnt/archive4/PAPERS/<year>-<slug-tail>/<canonical-slug>.mp4` + `<canonical-slug>.en.srt` |
 | HLS / m3u8 stream | same folder layout as YouTube |
 | Local mp4/mkv/webm + SRT | same folder layout as YouTube |
+| Web article (blog/devlog/news page) | *(exception)* `/mnt/archive4/PAPERS/Articles/<canonical-slug>.html`, next to the derived `.md` — `extract_article.py` writes both directly; see "Plain web article" under "Determining Input Type". Bundle-local pairing, not the top-level PAPERS/ layout above. |
 
 The canonical slug is the same one used for `/mnt/archive4/PAPERS/Prepared/<slug>.md` (see "REQUIRED: Citable Canonical Naming" above). The video-folder prefix `<year>-<slug-tail>` is just the canonical slug rotated so the year sorts first — e.g. canonical `feller-2024-volumetric-fog-enshrouded` → folder `2024-feller-volumetric-fog-enshrouded/`.
 
@@ -794,10 +795,26 @@ All scripts live in `tools/` and use the venv at `tools/.venv/`. None of them si
 ## Determining Input Type
 
 - Starts with `http` or `https` and contains `m3u8` → HLS stream pipeline (ffmpeg download + SOTA STT)
-- Starts with `http` or `https` → YouTube pipeline (yt-dlp download + SOTA STT; never auto-captions)
+- Starts with `http` or `https` and the host is `youtube.com`/`youtu.be` (or another recognized video host) → YouTube pipeline (yt-dlp download + SOTA STT; never auto-captions)
 - Ends with `.pdf` → PDF extraction
 - Ends with `.pptx` → PPTX extraction
 - Ends with `.mp4`, `.mkv`, `.webm` → local video (research_video.py with `--title` and `--slug`)
+- Any other `http`/`https` URL (a blog post, devlog, release-notes page, news article) → **plain web article**, see below. Do NOT route this to the YouTube pipeline — yt-dlp will simply fail on a non-video page.
+
+### Plain web article (blog post, devlog, news page)
+
+For a URL that is just an HTML article — not a video host, not a PDF/PPTX link — use `tools/extract_article.py`, which fetches the page, locates the article's content region (tries a short list of common selectors: `article`, `[itemprop=articleBody]`, `.post-content`, `.entry-content`, falling back to `main`; extend `CONTENT_SELECTORS` for a new site if none match), and converts it to markdown (fenced code blocks with language, tables, headings, lists) via `markdownify`, downloading referenced images/videos into `assets/<slug>/`:
+
+```bash
+~/.claude/skills/research/.venv/bin/python ~/.claude/skills/research/tools/extract_article.py \
+  "<url>" --slug=<slug> [--title TITLE] [--author AUTHOR] [--force]
+```
+
+Output goes to `/mnt/archive4/PAPERS/Articles/<slug>.md` (frontmatter `type: Technical Article`, `medium: html`, `source_url`), with the raw fetched HTML archived alongside at `Articles/<slug>.html` — this matches the corpus's existing `<slug>.html` + `<slug>.md` pairing convention (see e.g. `Articles/bittker-making-sandspiel.{html,md}`), not the Prepared bundle's PDF/PPTX layout.
+
+A single article (or a small batch of a few) is squarely the "small extraction" case in "When to skip dispatch" below — run it inline, then fill `description` and `tags` (from `OKF-TAXONOMY.md`) by hand rather than dispatching a refiner. Match the established Articles-bundle convention: fill frontmatter, but do **not** inject a `## Summary` / `### Relevance & applications` block — that apparatus is a Prepared-bundle (research paper) convention; Articles-bundle blog posts (`dyar-million-pixels-falling-sand.md`, `bittker-making-sandspiel.md`, …) go straight from frontmatter + `# Title` into the verbatim body. Still *deliver* the relevance/applications synthesis the standing regimen calls for — just put it in your chat reply to the user, not in the cached file. Run `tools/update_topics.py --bundle=Articles` afterward to link the new tags into the topic index.
+
+If the article's content region doesn't match any selector (script exits with "could not locate an article content region"), inspect the page structure and add the site's specific container to `CONTENT_SELECTORS` in the script rather than hand-converting in `/tmp` — the whole point of the script is that the next article from any site (including a repeat of the same site) reuses it.
 
 ### Dual source: the same talk as BOTH a slide deck AND a recording
 

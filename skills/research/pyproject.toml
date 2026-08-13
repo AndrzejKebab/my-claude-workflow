@@ -19,6 +19,8 @@ dependencies = [
     "nvidia-cublas-cu12>=12.9,<13 ; sys_platform == 'linux'",
     "marker-pdf>=1.10,<2",
     "imagehash>=4.3.2",
+    "beautifulsoup4>=4.12,<5",
+    "markdownify>=1.1,<2",
 ]
 
 [tool.uv]

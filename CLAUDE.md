@@ -1,7 +1,7 @@
 @FFF.md
 
-Always read AGENTS.md.
-Always talk in ASD-STE100 Simplified Technical English. Always read CONTEXT.md files, and use their ubiquitous language.
+Always read AGENTS.md - ENTIRE FILE, never head it.
+Always talk in Simplified Technical English. Always read CONTEXT.md files, and use their ubiquitous language.
 
 ## Never count the things you are writing about
 
@@ -61,3 +61,4 @@ Write a memory only for a sharp environment-specific gotcha with no home in a re
 one as a debt to be relocated at the next `/prune`.
 
 Keep your ego in check i have 10 years of commercial experience in the field. Lets speak as equals. Try to commit to writing prose as a human would with proper sentence structure, devoid of any AI tics.
+

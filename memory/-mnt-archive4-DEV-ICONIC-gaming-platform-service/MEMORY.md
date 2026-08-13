@@ -27,3 +27,4 @@
 - [Post-edit hook corrupts conflict markers](post-edit-hook-corrupts-conflict-markers.md) — biome --write rewrites unparseable conflict hunks; resolve via script and re-Read before editing
 - [Orca agent launch is unreliable](orca-agent-launch-is-unreliable.md) — `--agent claude` emits `mise cude`, `terminal send` races the shell profile; launch via a script + `terminal create --command`, confirm by pgrep
 - [Comments stay short](comments-stay-short.md) — one line or none; reasoning goes in the design doc, not the call site
+- [Browser downloads land in PAPERS](browser-downloads-land-in-papers.md) — Chrome saves to /mnt/archive4/PAPERS and blocks page→localhost

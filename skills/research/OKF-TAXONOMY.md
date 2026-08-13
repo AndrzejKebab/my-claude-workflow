@@ -125,6 +125,12 @@ Every tag in the `tags` field of a corpus document must be drawn from this list.
 - **mesh-shaders** — the meshlet-based GPU rendering pipeline replacing fixed vertex/geometry stages, used for GPU-driven culling and VSM (Sakmary 2025, Lazarek 2025).
 - **graphics-api-design** — low-level graphics API and driver design: pipeline-state-object (PSO) surface, resource binding models, command buffer submission, and GPU synchronization/barrier models across DirectX 12, Vulkan, and Metal (aaltonen-2025 no-graphics-api, aaltonen-2026 reducing-api-complexity).
 
+## Game Engine Architecture
+
+- **game-engine-architecture** — parent cluster tag for the high-level structural design of a game engine or app framework itself — its core abstractions, module boundaries, and the tradeoffs behind them — as distinct from any single rendering/simulation technique it ships (Bevy 0.19 release notes, Anderson 2026 Bevy sixth birthday).
+- **entity-component-system** — a data-oriented architecture that separates entity identity, component data storage, and system logic operating over component queries, instead of object-oriented inheritance hierarchies (Bevy ECS).
+- **scene-authoring** — declarative formats and workflows for defining and composing entity/component hierarchies as reusable, templated scene data rather than imperative spawn code (Bevy BSN / Bevy Scene Notation).
+
 ## Floating-Point Arithmetic & Numerical Precision
 
 - **floating-point-arithmetic** — the IEEE 754 number system, rounding, and error analysis (Dekker 1971, Anderson 1967, Tomasulo 1967, Gao-Baidoo 2026).
@@ -159,6 +165,11 @@ Every tag in the `tags` field of a corpus document must be drawn from this list.
 - **behavior-trees** — hierarchical, node-based AI decision structures that select and run child tasks/composites by reading shared state from a Blackboard (Souza 2020).
 - **environment-query-system** — Unreal Engine's EQS: generates a set of candidate points or actors and scores them against context-aware tests to drive spatial AI decisions (Souza 2020).
 - **ai-perception** — simulated sensory systems (sight, hearing, and other senses) that feed stimulus events into an NPC's decision-making layer (Souza 2020).
+
+## Pathfinding & Navigation
+
+- **pathfinding** — parent cluster tag for algorithms that compute a route through an environment for a game agent or robot, distinct from the decision-making layer that decides where to go (Cui-Harabor-Grastien 2017 Polyanya).
+- **navigation-mesh** — pathfinding over a navmesh: a runtime representation of traversable space as a set of convex (or otherwise structured) polygons, as opposed to a fixed-resolution grid (Cui-Harabor-Grastien 2017 Polyanya).
 
 ## Character Animation & Rigging
 
