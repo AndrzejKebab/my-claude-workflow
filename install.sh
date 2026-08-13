@@ -193,6 +193,13 @@ echo "Hooks:"
 # in 120s. See docs/no-op-spin.md for why. Fails open if jq is missing.
 install_hook PreToolUse Bash cc-nospin
 
+# Rules that measurement showed prose could not carry. docs/rule-compliance.md
+# holds the baseline each one was wired against, and cc-rule-audit re-measures.
+install_hook SessionStart "" cc-doctrine
+install_hook Stop "" cc-no-hedge
+install_hook PreToolUse "Read|Bash" cc-whole-file-reads
+install_hook PostToolUse "Write|Edit" cc-comment-wall
+
 # cc-context-warn, cc-cost-tick and cc-statusline are deliberately NOT wired any
 # more. They grew up into cha-ching, which does the same job better: it chains to
 # an existing statusline instead of taking the slot, reads cost and context from

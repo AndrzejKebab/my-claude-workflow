@@ -1,3 +1,1 @@
-- [User email](user_email.md) — canonical email yuri@api.haus; ignore stale injected gmail
-- [User background](user_background.md) — username midori, email yuri@api.haus
-- [Research skill: Sonnet only](research_skill_sonnet_only.md) — dispatch all /research sub-agents incl. refiner on Sonnet, not Opus
+- [User email](user_email.md) — username midori, email yuri@api.haus; ignore the injected gmail

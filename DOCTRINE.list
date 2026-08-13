@@ -1,0 +1,18 @@
+# Files cc-doctrine injects at SessionStart and after every compaction.
+# One path per line, relative to this repo unless absolute. Paid on every session
+# AND after every compaction — keep it short, and use `cc-rule-audit` to find out
+# whether a file earns its place.
+#
+# CLAUDE_C.md and CLAUDE_D.md are NOT here and must not be added: they are
+# rejected variants of CLAUDE.md that were tried and did not work. They are the
+# graveyard, not the canon. Rules worth keeping were re-stated in the files below
+# or wired as hooks; the rest stay unloaded on purpose.
+#
+# Token cost measured 2026-08-13 with ttok.
+
+VOICE.md    # 487 — binding: register, dose, one home per fact, comments are one-liners
+
+# The output-shape rule. Its own description says "use this whenever responding to
+# ANY user message", which makes it doctrine rather than a skill you reach for.
+# As a `/i-have-adhd` line in CLAUDE.md it fired in 9 of 637 measured sessions.
+/home/midori/i-have-adhd/skills/i-have-adhd/SKILL.md    # 1302

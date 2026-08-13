@@ -1,0 +1,95 @@
+#!/usr/bin/env python3
+"""cc-no-hedge — Stop hook. Refuses to end a turn that hedges or counts.
+
+Never latches (honours stop_hook_active), strips quoted spans before matching,
+and fails open. See docs/rule-compliance.md.
+"""
+import json
+import os
+import re
+import sys
+
+HEDGE = re.compile(
+    r"(let me know\b|say the word\b|shall i\b|want me to\b"
+    r"|would you like me to\b|ready when you are\b|if you'?d like,? i\b)", re.I)
+COUNTING = re.compile(
+    r"\b(two|three|four|five|six|seven|eight|nine|ten)"
+    r" of (the|those|them|these)\b", re.I)
+
+
+def strip_quoted(text):
+    text = re.sub(r"```.*?```", " ", text, flags=re.S)   # fenced code
+    text = re.sub(r"`[^`\n]*`", " ", text)               # inline code
+    text = re.sub(r"^\s*>.*$", " ", text, flags=re.M)    # blockquotes
+    text = re.sub(r"^\s*\|.*$", " ", text, flags=re.M)   # table rows
+    text = re.sub(r"\"[^\"\n]*\"", " ", text)            # double-quoted spans
+    return text
+
+
+def last_assistant_text(path):
+    """Text blocks of the final assistant message, oldest transcript line last."""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            lines = fh.readlines()
+    except OSError:
+        return ""
+    for line in reversed(lines):
+        if '"assistant"' not in line:
+            continue
+        try:
+            rec = json.loads(line)
+        except ValueError:
+            continue
+        if rec.get("type") != "assistant":
+            continue
+        blocks = (rec.get("message") or {}).get("content") or []
+        texts = [b.get("text", "") for b in blocks
+                 if isinstance(b, dict) and b.get("type") == "text"]
+        if texts:
+            return "\n".join(texts)
+    return ""
+
+
+def main():
+    raw = sys.stdin.read()
+    try:
+        payload = json.loads(raw) if raw.strip() else {}
+    except ValueError:
+        sys.exit(0)
+
+    if payload.get("stop_hook_active"):
+        sys.exit(0)
+
+    path = payload.get("transcript_path") or ""
+    if not path or not os.path.exists(path):
+        sys.exit(0)
+
+    text = strip_quoted(last_assistant_text(path))
+    if not text.strip():
+        sys.exit(0)
+
+    hedges = sorted({m.group(0).strip().lower() for m in HEDGE.finditer(text)})
+    counts = sorted({m.group(0).strip().lower() for m in COUNTING.finditer(text)})
+    if not hedges and not counts:
+        sys.exit(0)
+
+    reasons = []
+    if hedges:
+        reasons.append(
+            "Offering the next step instead of taking it: " + ", ".join(hedges)
+            + ". The rule is 'Act; do not offer the obvious next step' — when the "
+            "step follows from the work just finished, do it and report what "
+            "happened. Do the work now, then rewrite the closing without the "
+            "phrase. Only a decision the user owns (a design fork with materially "
+            "different outcomes, a destructive or outward-facing action) justifies "
+            "asking, and that is asked with AskUserQuestion, not a trailing offer.")
+    if counts:
+        reasons.append(
+            "Counting the things being written about: " + ", ".join(counts)
+            + ". Name them or describe them; do not tally them.")
+
+    print(json.dumps({"decision": "block", "reason": " ".join(reasons)}))
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,157 @@
+#!/usr/bin/env python3
+"""cc-rule-audit — count, per CLAUDE.md rule, how often it is obeyed.
+
+Reads ~/.claude/projects/**/*.jsonl. Always exits 0: it reports, it does not
+gate. See docs/rule-compliance.md.
+
+    cc-rule-audit --days 30 --examples 20 --project p7
+"""
+import argparse
+import json
+import os
+import re
+import sys
+import time
+from collections import Counter
+
+TRANSCRIPTS = os.path.expanduser("~/.claude/projects")
+
+# Text rules: a match in an assistant text block is a violation.
+TEXT_RULES = [
+    ("act, do not offer the next step",
+     re.compile(r"(let me know|say the word|shall i\b|want me to\b"
+                r"|would you like me to\b|ready when you are"
+                r"|if you'?d like,? i)", re.I)),
+    ("never count the things you write about",
+     re.compile(r"\b(two|three|four|five|six|seven|eight|nine|ten)"
+                r" of (the|those|them|these)\b", re.I)),
+]
+
+# Tool rules: (label, compliant_name, violating_name) counted from tool_use blocks.
+SEARCH_BUILTIN = {"Grep", "Glob"}
+SEARCH_FFF = re.compile(r"^mcp__fff")
+WHOLE_FILE_READS = {"AGENTS.md", "CONTEXT.md"}
+HEAD_IN_BASH = re.compile(r"\b(head|tail)\b[^|]*(AGENTS|CONTEXT)\.md")
+ADHD_SKILL = re.compile(r"adhd", re.I)
+
+
+def transcripts(cutoff, project):
+    for dirpath, _, names in os.walk(TRANSCRIPTS):
+        if project and project not in os.path.basename(dirpath):
+            continue
+        for name in names:
+            if not name.endswith(".jsonl"):
+                continue
+            path = os.path.join(dirpath, name)
+            try:
+                if os.path.getmtime(path) >= cutoff:
+                    yield path
+            except OSError:
+                continue
+
+
+def scan(paths, examples_wanted):
+    c = Counter()
+    examples = {label: [] for label, _ in TEXT_RULES}
+    sessions, adhd_sessions = set(), set()
+
+    for path in paths:
+        session = os.path.basename(path)[:-6]
+        sessions.add(session)
+        try:
+            fh = open(path, encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        with fh:
+            for line in fh:
+                if '"assistant"' not in line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except ValueError:
+                    continue
+                if rec.get("type") != "assistant":
+                    continue
+                for blk in (rec.get("message") or {}).get("content") or []:
+                    if not isinstance(blk, dict):
+                        continue
+                    if blk.get("type") == "tool_use":
+                        tool_use(blk, c, session, adhd_sessions)
+                    elif blk.get("type") == "text":
+                        c["text_blocks"] += 1
+                        text = blk.get("text", "")
+                        for label, pattern in TEXT_RULES:
+                            for m in pattern.finditer(text):
+                                c[label] += 1
+                                if len(examples[label]) < examples_wanted:
+                                    examples[label].append(m.group(0).strip())
+    return c, examples, sessions, adhd_sessions
+
+
+def tool_use(blk, c, session, adhd_sessions):
+    name = blk.get("name", "")
+    inp = blk.get("input") or {}
+    if name in SEARCH_BUILTIN:
+        c["search_builtin"] += 1
+    elif SEARCH_FFF.match(name):
+        c["search_fff"] += 1
+    if name == "Read":
+        base = os.path.basename(str(inp.get("file_path", "")))
+        if base in WHOLE_FILE_READS:
+            key = "read_partial" if (inp.get("limit") or inp.get("offset")) \
+                else "read_full"
+            c[key] += 1
+    if name == "Bash" and HEAD_IN_BASH.search(str(inp.get("command", ""))):
+        c["read_partial"] += 1
+    if name == "Skill" and ADHD_SKILL.search(str(inp.get("skill", ""))):
+        adhd_sessions.add(session)
+
+
+def ratio(good, bad):
+    total = good + bad
+    return (100.0 * bad / total) if total else 0.0
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--days", type=float, default=14,
+                    help="how far back to scan by transcript mtime (default 14)")
+    ap.add_argument("--examples", type=int, default=8,
+                    help="violating phrases to quote per text rule (default 8)")
+    ap.add_argument("--project", default="",
+                    help="only scan transcript dirs whose name contains this")
+    args = ap.parse_args()
+
+    paths = list(transcripts(time.time() - args.days * 86400, args.project))
+    if not paths:
+        print(f"no transcripts under {TRANSCRIPTS} in the last {args.days:g} days",
+              file=sys.stderr)
+        return
+    c, examples, sessions, adhd = scan(paths, args.examples)
+
+    print(f"corpus: {len(paths)} transcripts / {len(sessions)} sessions / "
+          f"{c['text_blocks']} assistant text blocks / last {args.days:g} days\n")
+
+    print("RULE  prefer the fff MCP tools over built-in Glob/Grep")
+    print(f"      fff {c['search_fff']}   Glob/Grep {c['search_builtin']}   "
+          f"violation {ratio(c['search_fff'], c['search_builtin']):.1f}%\n")
+
+    print("RULE  read AGENTS.md / CONTEXT.md entire, never head them")
+    print(f"      full {c['read_full']}   partial {c['read_partial']}   "
+          f"violation {ratio(c['read_full'], c['read_partial']):.1f}%\n")
+
+    for label, _ in TEXT_RULES:
+        per_k = 1000.0 * c[label] / c["text_blocks"] if c["text_blocks"] else 0.0
+        print(f"RULE  {label}")
+        print(f"      {c[label]} violations   {per_k:.1f} per 1000 text blocks")
+        if examples[label]:
+            print(f"      quoted: {', '.join(examples[label])}")
+        print()
+
+    print("RULE  /i-have-adhd, invoked from CLAUDE.md")
+    print(f"      invoked in {len(adhd)} of {len(sessions)} sessions   "
+          f"miss {ratio(len(adhd), len(sessions) - len(adhd)):.1f}%")
+
+
+if __name__ == "__main__":
+    main()

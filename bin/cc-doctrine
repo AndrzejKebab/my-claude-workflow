@@ -1,0 +1,52 @@
+#!/usr/bin/env python3
+"""cc-doctrine — SessionStart hook. Injects the doctrine files listed in DOCTRINE.list.
+
+Re-fires after a compaction, which is why this is a hook and not an @import.
+See docs/rule-compliance.md.
+"""
+import json
+import os
+import sys
+
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+MANIFEST = os.path.join(REPO, "DOCTRINE.list")
+
+
+def emit(context):
+    print(json.dumps({"hookSpecificOutput": {
+        "hookEventName": "SessionStart",
+        "additionalContext": context}}))
+
+
+def main():
+    sys.stdin.read()  # drain the payload; nothing here varies by session source
+
+    try:
+        with open(MANIFEST, encoding="utf-8") as fh:
+            wanted = [p for p in (ln.split("#")[0].strip() for ln in fh) if p]
+    except OSError:
+        sys.exit(0)
+
+    parts, loaded = [], []
+    for name in wanted:
+        path = name if os.path.isabs(name) else os.path.join(REPO, name)
+        try:
+            with open(path, encoding="utf-8") as fh:
+                body = fh.read().strip()
+        except OSError:
+            continue
+        if body:
+            parts.append(f"===== {os.path.basename(path)} =====\n\n{body}")
+            loaded.append(os.path.basename(path))
+
+    if not parts:
+        sys.exit(0)
+
+    emit("The user's standing doctrine, loaded verbatim. These are binding rules, "
+         "not background context — they override default behaviour and they apply "
+         "for the whole session, including after a compaction. Sections marked "
+         "(binding) are hard rules.\n\n" + "\n\n".join(parts))
+
+
+if __name__ == "__main__":
+    main()

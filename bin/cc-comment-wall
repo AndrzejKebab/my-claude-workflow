@@ -1,0 +1,98 @@
+#!/usr/bin/env python3
+"""cc-comment-wall — PostToolUse hook. A wall of comments is a doc page in the wrong file.
+
+Enforces VOICE.md "Dose": comments are one-liners. Flags contiguous `//` or `#`
+narration only; doc comments on a public surface pass, as do licence headers and
+directive pragmas. See docs/rule-compliance.md.
+"""
+import json
+import os
+import re
+import sys
+
+WALL = 4  # contiguous narration lines that stop being a one-liner
+
+CODE_EXT = {".cs", ".c", ".h", ".cpp", ".hpp", ".cc", ".rs", ".py", ".js", ".ts",
+            ".tsx", ".jsx", ".go", ".java", ".kt", ".swift", ".sh", ".bash",
+            ".fish", ".lua", ".rb", ".php", ".glsl", ".hlsl", ".shader", ".cginc",
+            ".compute", ".zig", ".scala", ".dart"}
+
+SLASH = re.compile(r"^\s*//(?!/)")          # // but not ///
+HASH = re.compile(r"^\s*#(?![!\[])")        # # but not #! shebang, not #[attr]
+DOC = re.compile(r"^\s*(///|/\*\*|\*|\*/|/\*)")
+EXEMPT = re.compile(r"copyright|SPDX|licen[sc]e|^\s*#\s*(include|define|pragma|if|endif|else)",
+                    re.I)
+
+
+HASH_EXT = {".py", ".sh", ".bash", ".fish", ".rb", ".yaml", ".yml"}
+SHEBANG = re.compile(r"^#!.*\b(python|sh|bash|zsh|fish|ruby|perl)\b")
+
+
+def is_code(path, first_line):
+    """Extension when it has one; otherwise the shebang — bin/ scripts carry no suffix."""
+    ext = os.path.splitext(path)[1]
+    if ext:
+        return ext in CODE_EXT, ext in HASH_EXT
+    return bool(SHEBANG.match(first_line)), True
+
+
+def walls(path):
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            lines = fh.read().splitlines()
+    except OSError:
+        return []
+
+    code, hashy = is_code(path, lines[0] if lines else "")
+    if not code:
+        return []
+    marker = HASH if hashy else SLASH
+
+    found, run, start = [], [], 0
+    for i, line in enumerate(lines, 1):
+        if DOC.match(line):
+            run = []
+            continue
+        if marker.match(line):
+            if not run:
+                start = i
+            run.append(line)
+            continue
+        if len(run) >= WALL and not any(EXEMPT.search(x) for x in run):
+            found.append((start, len(run)))
+        run = []
+    if len(run) >= WALL and not any(EXEMPT.search(x) for x in run):
+        found.append((start, len(run)))
+    return found
+
+
+def main():
+    raw = sys.stdin.read()
+    try:
+        payload = json.loads(raw) if raw.strip() else {}
+    except ValueError:
+        sys.exit(0)
+
+    inp = payload.get("tool_input") or {}
+    path = str(inp.get("file_path", ""))
+    if not path or not os.path.exists(path):
+        sys.exit(0)
+
+    found = walls(path)
+    if not found:
+        sys.exit(0)
+
+    where = "; ".join(f"line {ln} ({n} lines)" for ln, n in found[:5])
+    print(json.dumps({"decision": "block", "reason": (
+        f"Comment wall in {os.path.basename(path)}: {where}. VOICE.md: comments are "
+        "one-liners, and a longer one earns its place only by saying something the "
+        "code cannot — a constraint, a gotcha, a reason someone would otherwise "
+        "'fix' it. A file header explaining the design, a numbered list of "
+        "rationale, a transcript of measurements, or a record of rejected "
+        "alternatives is none of those: it is self-narration, and it goes in a doc "
+        "page with a one-line pointer left behind, in the commit message, or "
+        "nowhere. Relocate the block or delete it, then re-apply the edit.")}))
+
+
+if __name__ == "__main__":
+    main()

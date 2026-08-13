@@ -98,6 +98,21 @@ writes to it — so without this step a hook lives only on the machine that crea
 | `cc-cost-tick` | *retired* | Announced what each turn cost, with a bell — superseded by cha-ching |
 | `cc-statusline` | *retired* | Context gauge and session cost — superseded by cha-ching |
 | `cc-memory-link` | run by `install.sh` | Moves per-project memories into `memory/` and links them back |
+| `cc-rule-audit` | run by hand | Counts, per rule, how often it is obeyed across the transcripts |
+| `cc-doctrine` | `SessionStart` | Injects the files in `DOCTRINE.list` — and re-injects them after a compaction |
+| `cc-no-hedge` | `Stop` | Refuses to end a turn that hedges ("want me to") or counts ("three of them") |
+| `cc-whole-file-reads` | `PreToolUse(Read\|Bash)` | Denies partial reads of `AGENTS.md` / `CONTEXT.md` |
+| `cc-comment-wall` | `PostToolUse(Write\|Edit)` | Refuses a wall of narration comments — that block is a doc page |
+
+A rule in `CLAUDE.md` is a hypothesis, not a mechanism. `cc-rule-audit` scores each one against the
+transcript record so an ignored rule can be moved down the ladder — prose, then skill file, then hook
+— instead of reworded into a differently-worded ignored rule.
+[docs/rule-compliance.md](docs/rule-compliance.md) carries the 637-session baseline the four hooks
+above were wired against, and the two failure shapes behind it: a slash command in `CLAUDE.md` is
+text and not an invocation (`/i-have-adhd` fired in 1.4% of sessions), and a rule that never loads is
+absent rather than ignored. `CLAUDE_B.md`, `CLAUDE_C.md` and `CLAUDE_D.md` are rejected variants of
+`CLAUDE.md` and stay unloaded on purpose — `DOCTRINE.list` says so, so a later pass does not
+"helpfully" wire the graveyard.
 
 The built-in context indicator stays hidden until the window is nearly full, and that
 threshold is not configurable. [docs/context-usage.md](docs/context-usage.md) covers why

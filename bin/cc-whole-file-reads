@@ -1,0 +1,51 @@
+#!/usr/bin/env python3
+"""cc-whole-file-reads — PreToolUse hook. AGENTS.md and CONTEXT.md are read entire.
+
+Denies Read with limit/offset and head/tail through Bash. Fails open on an
+unparseable payload. See docs/rule-compliance.md.
+"""
+import json
+import os
+import re
+import sys
+
+WHOLE_FILE = {"AGENTS.md", "CONTEXT.md"}
+HEAD_TAIL = re.compile(
+    r"\b(head|tail)\b[^|;&]*\b(AGENTS|CONTEXT)\.md", re.I)
+
+WHY = ("These files are the project's own canon and its ubiquitous language; the "
+       "part you skip is the part that redefines a term you are about to use. "
+       "Read the whole file — Read with no limit and no offset.")
+
+
+def deny(reason):
+    print(json.dumps({"hookSpecificOutput": {
+        "hookEventName": "PreToolUse",
+        "permissionDecision": "deny",
+        "permissionDecisionReason": reason}}))
+    sys.exit(0)
+
+
+def main():
+    raw = sys.stdin.read()
+    try:
+        payload = json.loads(raw) if raw.strip() else {}
+    except ValueError:
+        sys.exit(0)
+
+    tool = payload.get("tool_name") or ""
+    inp = payload.get("tool_input") or {}
+
+    if tool == "Read":
+        name = os.path.basename(str(inp.get("file_path", "")))
+        if name in WHOLE_FILE and (inp.get("limit") or inp.get("offset")):
+            deny(f"Partial read of {name} refused. " + WHY)
+
+    if tool == "Bash":
+        cmd = str(inp.get("command", ""))
+        if HEAD_TAIL.search(cmd):
+            deny("head/tail on AGENTS.md or CONTEXT.md refused. " + WHY)
+
+
+if __name__ == "__main__":
+    main()
