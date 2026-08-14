@@ -2,9 +2,17 @@
 
 `~/.claude/projects` holds every session transcript this machine has produced —
 6.9 GB across 114 project directories as of 2026-08-14. Nothing else records what
-was decided, measured or tried in a session, and Claude Code never prunes it. It
-is also the corpus `cc-rule-audit` measures against, so losing it loses the
-baseline as well as the history.
+was decided, measured or tried in a session. It is also the corpus
+`cc-rule-audit` measures against, so losing it loses the baseline as well as the
+history.
+
+Claude Code does prune it. `cleanupPeriodDays` deletes any transcript whose last
+activity is older than the period, and the default is 30 days. Measured
+2026-08-14, before the setting was written: the oldest surviving transcript on
+this machine was 2026-07-14, and the sweep had run that morning at 11:58.
+`~/.claude/settings.json` now sets `cleanupPeriodDays` to 3650. **That setting is
+what makes this backup an archive instead of a rolling 30-day window** — restore
+it first on a new machine, because a fresh install starts deleting again.
 
 `bin/cc-transcript-backup` pushes it to MEGA on a timer.
 
@@ -116,6 +124,20 @@ To include the small configuration alongside the transcripts — `settings.json`
 `memory/`, `todos/` — point `CC_BACKUP_SRC` at `~/.claude` instead. That pulls in
 `statsig/` and the shell snapshots too, which are churn with no recovery value,
 so an `--exclude` list is the price of doing it.
+
+## Images are already in here
+
+A pasted image is written into the transcript as base64, verbatim. Measured on a
+1218x514 screenshot: the record decodes to 158039 bytes and the source file in
+`/tmp` is 158039 bytes, same `image/png` media type — no re-encode, no downscale.
+The images a session reads off disk are embedded the same way. The corpus held
+10923 of them on 2026-08-14, jpeg and png together.
+
+So backing up `~/.claude/projects` backs up every image, and the terminal's own
+paste files under `/tmp` are a copy that a reboot is welcome to take. Nothing
+extra needs syncing. The cost is that an image is only reachable by decoding the
+JSONL record that carries it — the archive stores images, it does not browse
+them.
 
 ## What is in these files
 
