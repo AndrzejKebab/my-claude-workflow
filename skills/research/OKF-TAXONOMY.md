@@ -72,6 +72,17 @@ Every tag in the `tags` field of a corpus document must be drawn from this list.
 - **reprojection** — warping a previous frame's pixel data into the current frame using motion vectors or depth reprojection (Nehab 2007 reverse reprojection, Scherzer 2010/2012).
 - **temporal-coherence** — exploiting frame-to-frame coherence in rendering to amortise cost (Scherzer 2010/2012 survey, Yang 2009 amortised supersampling, Mueller 2021 TASA).
 
+## Spatial Anti-Aliasing
+
+- **anti-aliasing** — parent cluster tag for single-frame edge/aliasing reduction, as distinct from **temporal-anti-aliasing** which accumulates history across frames (Jimenez 2011 filtering course, Reshetov 2009 MLAA, Jimenez 2012 SMAA).
+- **morphological-anti-aliasing** — pattern-matching antialiasing that classifies edge shapes in a rasterized image and blends pixel colors across the classified pattern (Reshetov 2009 MLAA, Jimenez 2011 practical MLAA, Jimenez 2012 SMAA, Jimenez 2016 filmic SMAA, Reshetov-Jimenez 2017 MLAA retrospective).
+
+## Skin & Subsurface Rendering
+
+- **subsurface-scattering** — parent cluster tag for light transport that enters a translucent material, scatters beneath the surface, and exits at a different point (Jimenez 2009 screen-space SSS, Jimenez 2015 separable SSS).
+- **screen-space-subsurface-scattering** — approximating subsurface light diffusion as a post-process blur in screen space rather than a volumetric or BSSRDF simulation (Jimenez 2009, Jimenez 2015 separable SSS).
+- **skin-rendering** — real-time shading models purpose-built for human skin: translucency, specular variation, and appearance (Jimenez 2008 faster skin rendering, Jimenez 2010 skin translucency, Jimenez 2010 facial color, Jimenez 2011 facial wrinkles, Jimenez 2012/2013 eyes and character rendering).
+
 ## Culling & Visibility
 
 - **frustum-culling** — testing objects against the camera frustum planes to skip invisible work (view-frustum-culling, frustum-culling-turning-the-crank, frustum-culling-in-stingray, practical-dynamic-visibility-for-games).

@@ -35,10 +35,7 @@ ASSETS_DIR = ARTICLES_DIR / "assets"
 
 UA = "Mozilla/5.0 (X11; Linux x86_64) research-skill/1.0"
 
-# Ordered content-region heuristics. Every match across every selector is
-# scored by rendered text length and the longest wins -- sites like bevy.org
-# repeat the same class on a near-empty hero wrapper *and* the real body, so
-# picking the first match is wrong.
+# Longest text match wins within a selector -- bevy.org reuses one class on both a near-empty hero wrapper and the real body.
 CONTENT_SELECTORS = [
     ("div", {"class": "news-content"}),  # bevy.org
     ("article", {}),
@@ -46,6 +43,7 @@ CONTENT_SELECTORS = [
     ("div", {"class": re.compile(r"\bpost-content\b")}),
     ("div", {"class": re.compile(r"\bentry-content\b")}),
     ("div", {"class": re.compile(r"\barticle-body\b")}),
+    ("div", {"id": "content"}),  # iryoku.com
     ("main", {}),
 ]
 
@@ -59,13 +57,7 @@ def fetch(url: str) -> bytes:
 
 
 def find_content(soup: BeautifulSoup):
-    """Try selectors in priority order; within the first selector that yields
-    a plausible match, keep the longest (a site may repeat the same class on
-    a near-empty wrapper *and* the real body -- bevy.org does this for its
-    hero-image div vs. the actual article div). Do NOT fall through to a more
-    generic selector once a specific one has matched: `main`/`article` wrap
-    the whole page (title, subtitle, sidebar nav) and will usually be
-    *longer* than the real content region, which is exactly wrong."""
+    """First selector with a match wins (never falls through to a broader one -- main/article wrap the whole page and would look longer but wrong)."""
     for name, attrs in CONTENT_SELECTORS:
         candidates = [el for el in soup.find_all(name, attrs=attrs) if len(el.get_text(strip=True)) > 200]
         if candidates:
@@ -113,10 +105,7 @@ def clean_and_localize(content, page_url: str, slug: str) -> None:
     for a in content.find_all("a", class_="anchor-link"):
         a.decompose()
 
-    # <details>/<summary> (collapsible sections) aren't in markdownify's
-    # block-tag registry, so its content gets glued onto whatever text
-    # precedes it with no line break. Turn the summary into its own <p> and
-    # unwrap <details> so its children fall into normal block-level flow.
+    # markdownify has no <details>/<summary> handling -- glues summary text onto the preceding line without it.
     for details in content.find_all("details"):
         summary = details.find("summary")
         if summary:

@@ -83,10 +83,7 @@ def download_video(url: str, output_dir: Path) -> tuple[Path, VideoInfo]:
         print(f"  Downloading video...")
         dl_cmd = [
             "yt-dlp",
-            # Prefer H.264 (avc1): OpenCV's FFmpeg backend cannot decode YouTube's
-            # default AV1/VP9 (it yields all-black frames, collapsing scene
-            # detection). Fall back to any mp4, then best — _ensure_cv2_decodable
-            # transcodes whatever lands if it still isn't H.264.
+            # Prefer H.264: OpenCV/FFmpeg can't decode AV1/VP9 (all-black frames, dead scene detection) -- see "Codec" in SKILL.md Pass 1.5.
             "-f", ("bestvideo[height<=720][ext=mp4][vcodec^=avc1]+bestaudio[ext=m4a]/"
                    "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720]"),
             "--merge-output-format", "mp4",
@@ -247,15 +244,7 @@ def classify_frame(frame: np.ndarray) -> str:
 
     overall_brightness = np.mean(gray)
 
-    # Brightness-independent slide signal. A content slide carries dense, sharp
-    # text/vector edges regardless of theme; a dark-themed slide has low
-    # brightness but retains that edge structure, where a genuine dark
-    # speaker/transition shot does not. Measure edge density on the left 65% of
-    # the frame -- the slide area in the typical screen-capture composite layout
-    # (large slide + small speaker webcam PiP in the top-right corner). Without
-    # this cue, dark-themed decks score as "speaker" and their frames are dropped
-    # from the markdown entirely. For recordings that are slides end-to-end, use
-    # the --all-slides override, which is exact rather than heuristic.
+    # Edge density on the left 65% (slide area) catches dark-themed slides that brightness alone misses -- see "dark-slide handling" in SKILL.md.
     left_edges = cv2.Canny(gray[:, : int(w * 0.65)], 50, 150)
     edge_density = np.mean(left_edges > 0)
 
@@ -400,11 +389,30 @@ def get_transcript_for_range(captions: list, start: float, end: float) -> str:
     return ' '.join(deduped)
 
 
+def _chrome_stopwords(scenes: list[Scene]) -> set[str]:
+    """Words that recur across most slides are chrome (logo, date banner, page
+    number), not content — e.g. a talk-title slide's OCR legitimately contains
+    the studio name, which then also sits in every other slide's corner logo,
+    so a raw word-overlap ratio reads that pair as near-identical. Frequency
+    over the whole deck separates the two: content words are slide-specific,
+    chrome words are everywhere."""
+    texts = [s.ocr_text.lower().split() for s in scenes if s.ocr_text]
+    if len(texts) < 4:
+        return set()
+    from collections import Counter
+    doc_freq = Counter()
+    for words in texts:
+        doc_freq.update(set(words))
+    n = len(texts)
+    return {w for w, c in doc_freq.items() if c / n > 0.5}
+
+
 def merge_similar_scenes(scenes: list[Scene], video_path: Path) -> list[Scene]:
     """Merge consecutive scenes of the same type if the slide content hasn't changed."""
     if not scenes:
         return scenes
 
+    chrome_words = _chrome_stopwords(scenes)
     merged = [scenes[0]]
     for scene in scenes[1:]:
         prev = merged[-1]
@@ -415,8 +423,8 @@ def merge_similar_scenes(scenes: list[Scene], video_path: Path) -> list[Scene]:
             if scene.scene_type == "slide":
                 # For slides, merge if OCR text is similar (same slide, animation step)
                 if scene.ocr_text and prev.ocr_text:
-                    words_a = set(prev.ocr_text.lower().split())
-                    words_b = set(scene.ocr_text.lower().split())
+                    words_a = set(prev.ocr_text.lower().split()) - chrome_words
+                    words_b = set(scene.ocr_text.lower().split()) - chrome_words
                     if words_a and words_b:
                         overlap = len(words_a & words_b) / max(len(words_a), len(words_b))
                         if overlap > 0.4:
@@ -486,10 +494,7 @@ def process_video(video_path: Path, info: VideoInfo, srt_path: Path,
     fps = cap.get(cv2.CAP_PROP_FPS)
 
     for i, (start, end) in enumerate(scene_intervals):
-        # --all-slides: the recording is slides end-to-end (screen-capture
-        # composite). Skip the brightness/edge heuristic, which can drop
-        # dark-themed slides, and treat every detected scene as a slide so its
-        # frame is OCR'd and embedded.
+        # --all-slides: skip the brightness/edge heuristic (drops dark slides) and OCR/embed every scene -- see "dark-slide handling" in SKILL.md.
         scene_type = "slide" if all_slides else classify_scene(video_path, start, end)
 
         scene = Scene(
@@ -544,14 +549,7 @@ def process_video(video_path: Path, info: VideoInfo, srt_path: Path,
         "",
     ]
 
-    # Slide-centric emit: only a *visual* scene (slide or demo) opens a section.
-    # Speaker scenes never emit a header -- their narration is folded into the
-    # current section's transcript, which is buffered and flushed when the next
-    # visual scene (or the end) arrives. Without this, the non---all-slides path
-    # emits a bare "## [MM:SS]" header per speaker micro-scene and splits one
-    # continuous sentence across many of them, so an animation-revealed slide
-    # becomes dozens of empty timestamp headers with shredded transcript. See the
-    # "Slide-centric emit" rule in SKILL.md.
+    # Only a visual scene (slide/demo) opens a header; speaker narration folds into the buffered transcript -- see "Slide-centric emit" in SKILL.md.
     slide_num = 0
     transcript_buf = []
 
@@ -583,13 +581,7 @@ def process_video(video_path: Path, info: VideoInfo, srt_path: Path,
             md_lines.append(f"*[{ts}] ({dur:.0f}s)*")
             md_lines.append("")
 
-            # NB: scene.ocr_text is deliberately NOT dumped into the body. OpenOCR
-            # reads top-to-bottom with no column awareness, so a multi-column slide
-            # comes out interleaved row-by-row into mangled, sense-losing text. The
-            # vision pass produces the layout-aware slide description; OCR stays
-            # internal-only (heading hint above + merge_similar_scenes). See the
-            # "OCR is internal-only" rule in SKILL.md.
-
+            # scene.ocr_text stays internal (heading hint + merge only) -- OpenOCR is column-blind and would dump mangled text -- see "OCR is internal-only" in SKILL.md.
             md_lines.append(f"![{Path(scene.frame_path).name}]({scene.frame_path})")
             md_lines.append("")
 
@@ -636,11 +628,7 @@ def main():
         sys.exit(1)
 
     url = sys.argv[1]
-    # Which OKF bundle the document belongs to. Prepared is the primary-source
-    # corpus (papers, conference talks); Articles is everything secondary —
-    # blog posts, tutorials, community write-ups. The distinction is editorial,
-    # not technical, so it is the caller's to make and there is no default worth
-    # guessing: staying on Prepared preserves every existing invocation.
+    # Bundle choice is editorial (Prepared = primary sources, Articles = secondary), not inferrable -- default Prepared preserves every existing invocation.
     global OUTPUT_DIR, PROJECT_ROOT, ASSETS_DIR
     bundle = next((a.split("=", 1)[1] for a in sys.argv[2:] if a.startswith("--bundle=")), "Prepared")
     if bundle not in ("Prepared", "Articles"):
@@ -661,11 +649,7 @@ def main():
     scene_threshold = float(threshold_arg) if threshold_arg else None
     merge = "--no-merge" not in sys.argv[2:]
     all_slides = "--all-slides" in sys.argv[2:]
-    # What is spoken, and what we want out. Forcing the default English decoder
-    # onto non-English audio does not degrade gracefully — it invents fluent
-    # English that was never said — so a non-English source MUST pass this.
-    # task=translate is Whisper's speech-to-English mode and is the only route to
-    # an English transcript when the upload carries no dubbed audio track.
+    # Non-English audio MUST pass --task=translate -- the default English decoder doesn't degrade gracefully, it invents fluent English that was never said.
     lang_arg = next((a.split("=", 1)[1] for a in sys.argv[2:] if a.startswith("--language=")), "en")
     language = None if lang_arg == "auto" else lang_arg
     task = next((a.split("=", 1)[1] for a in sys.argv[2:] if a.startswith("--task=")), "transcribe")
