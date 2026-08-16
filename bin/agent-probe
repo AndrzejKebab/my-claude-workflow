@@ -1,0 +1,309 @@
+#!/usr/bin/env python3
+"""agent-probe — one-shot liveness digest for a coding agent running in an Orca terminal.
+
+Answers the only question a babysitter asks: is it working, blocked, quota-locked, or dead?
+Cheap by construction — reads the agent's own on-disk state plus one bounded Orca terminal read,
+so a monitoring loop costs a few hundred tokens per tick instead of a screenful.
+
+Backends are detected from the worktree path: a Kimi Code session under ~/.kimi-code/sessions
+(shared log + per-task records), or a Claude Code transcript under ~/.claude/projects.
+
+    agent-probe --root <worktree>              # auto-detect backend and terminal
+    agent-probe --root <worktree> --exclude <session-id>   # ignore the watcher's own transcript
+    agent-probe --root <worktree> --screen 40  # more terminal lines
+
+Exit code is the verdict: 0 working, 3 blocked on a prompt, 4 stalled or overrun,
+5 no session found, 6 quota-locked.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+KIMI_SESSIONS = Path.home() / ".kimi-code" / "sessions"
+CLAUDE_PROJECTS = Path.home() / ".claude" / "projects"
+ORCA = os.environ.get("ORCA_CLI_COMMAND") or "orca-ide"
+
+# A prompt the agent is waiting on renders as a numbered choice list or a yes/no gate. Matching the
+# choice glyph plus the verb keeps ordinary prose about "permissions" from tripping the alarm.
+PROMPT_PATTERNS = [
+    r"Do you want to (proceed|allow|continue)",
+    r"❯\s*\d[\.\)]\s",
+    r"\b1[\.\)]\s*Yes\b",
+    r"Allow (this|and|once|always)",
+    r"switch to auto mode",
+    r"keep (yolo|YOLO)",
+    r"\(y/n\)",
+    r"Press Enter to continue",
+]
+
+# A quota lockout stops the agent as dead as a crash but reads as ordinary silence, so it needs
+# its own verdict — the recovery is a successor session, not a nudge.
+LIMIT_PATTERNS = [
+    r"usage limit",
+    r"rate.?limit",
+    r"quota (exceeded|exhausted|will be refreshed)",
+    r"\b429\b",
+    r"insufficient (credits|balance)",
+    r"upgrade (your plan|to continue)",
+]
+
+# Both TUIs paint a context meter; the percentage is the autocompact early-warning.
+CONTEXT_RE = re.compile(r"(\d+(?:\.\d+)?)%\s+([\d.]+[kKmM])\s*/\s*([\d.]+[kKmM])")
+LOG_TS_RE = re.compile(r"^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d+Z)\s+(\w+)\s+(.*)$")
+
+
+def run(cmd: list[str], timeout: int = 30) -> str:
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        return p.stdout
+    except Exception as exc:  # noqa: BLE001 - a dead CLI is a finding, not a crash
+        return json.dumps({"ok": False, "error": str(exc)})
+
+
+# ---------------------------------------------------------------- kimi backend
+
+def kimi_session(root: str) -> Path | None:
+    if not KIMI_SESSIONS.is_dir():
+        return None
+    best, best_mtime = None, -1.0
+    for state in KIMI_SESSIONS.glob("*/session_*/state.json"):
+        try:
+            if json.loads(state.read_text()).get("cwd") != root:
+                continue
+        except Exception:  # noqa: BLE001
+            continue
+        mtime = max((f.stat().st_mtime for f in state.parent.rglob("*") if f.is_file()),
+                    default=state.stat().st_mtime)
+        if mtime > best_mtime:
+            best, best_mtime = state.parent, mtime
+    return best
+
+
+def kimi_digest(session: Path) -> dict:
+    logs = sorted(session.glob("logs/*.log"))
+    d: dict = {"backend": "kimi", "id": session.name}
+    if logs:
+        log = logs[-1]
+        tail = log.read_text(errors="replace").splitlines()[-400:]
+        req = resp = out = 0
+        step = None
+        errors = []
+        for line in tail:
+            m = LOG_TS_RE.match(line)
+            if not m:
+                continue
+            _, level, msg = m.groups()
+            req += "llm request" in msg
+            if "llm response" in msg:
+                resp += 1
+                tok = re.search(r"outputTokens=(\d+)", msg)
+                out += int(tok.group(1)) if tok else 0
+            s = re.search(r"turnStep=([\d.]+)", msg)
+            if s:
+                step = s.group(1)
+            if level in ("ERROR", "WARN"):
+                errors.append(f"{level}: {msg[:140]}")
+        d.update(step=step, requests=req, responses=resp, out_tokens=out,
+                 errors=errors[-3:], age_s=round(time.time() - log.stat().st_mtime))
+    # Kimi records every backgrounded agent and process; a running one explains log silence.
+    now = time.time() * 1000
+    tasks = []
+    for tf in session.glob("agents/*/tasks/*.json"):
+        try:
+            t = json.loads(tf.read_text())
+        except Exception:  # noqa: BLE001
+            continue
+        if t.get("status") != "running":
+            continue
+        started, budget = t.get("startedAt") or now, t.get("timeoutMs") or 0
+        tasks.append({"kind": t.get("kind"), "agent": t.get("agentId") or tf.parent.parent.name,
+                      "desc": (t.get("description") or "")[:70],
+                      "elapsed_s": round((now - started) / 1000),
+                      "budget_s": round(budget / 1000) if budget else None,
+                      "overrun": bool(budget) and (now - started) > budget})
+    d["tasks"] = sorted(tasks, key=lambda t: -t["elapsed_s"])
+    wires = [time.time() - f.stat().st_mtime for f in session.glob("agents/*/wire.jsonl")]
+    d["quiet_s"] = round(min(wires + [d.get("age_s", 1e9)])) if wires else d.get("age_s", 1e9)
+    return d
+
+
+# -------------------------------------------------------------- claude backend
+
+def claude_transcript(root: str, exclude: str | None) -> Path | None:
+    slug = "-" + root.strip("/").replace("/", "-").replace("_", "-")
+    proj = CLAUDE_PROJECTS / slug
+    if not proj.is_dir():
+        return None
+    files = [f for f in proj.glob("*.jsonl") if exclude not in f.name] if exclude \
+        else list(proj.glob("*.jsonl"))
+    return max(files, key=lambda f: f.stat().st_mtime, default=None)
+
+
+def claude_digest(path: Path) -> dict:
+    rows = []
+    for line in path.read_text(errors="replace").splitlines()[-600:]:
+        if line.startswith("{"):
+            try:
+                rows.append(json.loads(line))
+            except Exception:  # noqa: BLE001
+                pass
+    out = 0
+    tools: list[str] = []
+    errors: list[str] = []
+    last_text = None
+    for r in rows:
+        m = r.get("message") or {}
+        out += (m.get("usage") or {}).get("output_tokens") or 0
+        for b in (m.get("content") if isinstance(m.get("content"), list) else []):
+            if not isinstance(b, dict):
+                continue
+            if b.get("type") == "tool_use":
+                tools.append(b.get("name", "?"))
+            if b.get("type") == "text" and b.get("text", "").strip():
+                last_text = b["text"].strip().replace("\n", " ")[:160]
+            if b.get("type") == "tool_result" and b.get("is_error"):
+                errors.append(str(b.get("content"))[:140])
+    # The main transcript goes quiet while the turn waits on a shell or a subagent, so liveness
+    # has to come from whatever those are writing instead — otherwise a busy agent reads as dead.
+    side = []
+    tasks = []
+    now = time.time()
+    for sub in (path.parent / path.stem / "subagents").glob("*.jsonl"):
+        age = now - sub.stat().st_mtime
+        side.append(age)
+        if age < 180:
+            tasks.append({"kind": "agent", "agent": sub.stem[-8:], "desc": "subagent",
+                          "elapsed_s": round(age), "budget_s": None, "overrun": False})
+    scratch = Path("/tmp") / f"claude-{os.getuid()}" / path.parent.name / path.stem / "tasks"
+    for out_f in scratch.glob("*.output"):
+        age = now - out_f.stat().st_mtime
+        side.append(age)
+        if age < 180 and not out_f.is_symlink():
+            tasks.append({"kind": "shell", "agent": out_f.stem[:8], "desc": "background command",
+                          "elapsed_s": round(age), "budget_s": None, "overrun": False})
+    quiet = round(min([now - path.stat().st_mtime] + side))
+    return {"backend": "claude", "id": path.stem[:8], "out_tokens": out, "quiet_s": quiet,
+            "tasks": sorted(tasks, key=lambda t: t["elapsed_s"]),
+            "step": str(len([r for r in rows if r.get("type") == "assistant"])),
+            "requests": len([r for r in rows if r.get("type") == "assistant"]),
+            "responses": len([r for r in rows if r.get("type") == "assistant"]),
+            "tools": tools[-6:], "errors": errors[-3:], "last_text": last_text,
+            "age_s": round(now - path.stat().st_mtime)}
+
+
+# ------------------------------------------------------------------- terminal
+
+def orca_terminal(cwd: str) -> dict | None:
+    data = json.loads(run([ORCA, "terminal", "list", "--json"]) or "{}")
+    mine = os.environ.get("ORCA_TERMINAL_HANDLE")
+    cands = [t for t in data.get("result", {}).get("terminals", [])
+             if t.get("worktreePath") == cwd and t.get("handle") != mine]
+    return max(cands, key=lambda t: t.get("lastOutputAt", 0)) if cands else None
+
+
+def read_screen(handle: str, lines: int) -> list[str]:
+    probe = json.loads(run([ORCA, "terminal", "read", "--terminal", handle, "--json"]) or "{}")
+    term = probe.get("result", {}).get("terminal", {})
+    latest = term.get("latestCursor") or term.get("nextCursor")
+    if latest is None:
+        return term.get("tail") or []
+    # Read well past the requested screen: the context meter and any prompt banner are painted
+    # intermittently, so a tight window misses them.
+    start = max(0, int(latest) - max(lines * 20, 600))
+    full = json.loads(run([ORCA, "terminal", "read", "--terminal", handle,
+                           "--cursor", str(start), "--limit", "2000", "--json"]) or "{}")
+    t = full.get("result", {}).get("terminal", {})
+    return t.get("tail") or t.get("lines") or []
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--root", required=True, help="worktree path of the session to probe")
+    ap.add_argument("--exclude", help="session id to ignore (the watcher's own transcript)")
+    ap.add_argument("--backend", choices=("auto", "kimi", "claude"), default="auto")
+    ap.add_argument("--screen", type=int, default=25)
+    ap.add_argument("--stall-s", type=int, default=420)
+    ap.add_argument("--json", action="store_true")
+    args = ap.parse_args()
+
+    # A worktree can hold the corpses of previous agents. Whichever backend wrote most recently
+    # is the one actually running; anything older is a leftover and its verdict would be a lie.
+    cands = []
+    if args.backend in ("auto", "kimi"):
+        s = kimi_session(args.root)
+        if s is not None:
+            cands.append(kimi_digest(s))
+    if args.backend in ("auto", "claude"):
+        tr = claude_transcript(args.root, args.exclude)
+        if tr is not None:
+            cands.append(claude_digest(tr))
+    if not cands:
+        print(f"NO SESSION — no kimi or claude state found for {args.root}")
+        return 5
+    d = min(cands, key=lambda c: c.get("quiet_s", c.get("age_s", 1e9)))
+
+    term = orca_terminal(args.root)
+    screen = read_screen(term["handle"], args.screen) if term else []
+    text = "\n".join(screen)
+
+    hit = next((p for p in PROMPT_PATTERNS if re.search(p, text, re.I)), None)
+    hay = text + "\n" + "\n".join(d.get("errors") or [])
+    limit = next((p for p in LIMIT_PATTERNS if re.search(p, hay, re.I)), None)
+    ctx = CONTEXT_RE.search(text)
+    tasks = d.get("tasks") or []
+    quiet = d.get("quiet_s", 1e9)
+
+    if limit:
+        verdict, code = "LIMITED", 6
+    elif hit:
+        verdict, code = "BLOCKED", 3
+    elif any(t["overrun"] for t in tasks):
+        verdict, code = "OVERRUN", 4
+    elif quiet > args.stall_s and not tasks:
+        verdict, code = "STALLED", 4
+    else:
+        # A running task owns the silence; that is working, not stalling.
+        verdict, code = "WORKING", 0
+
+    live = [l.rstrip() for l in screen if l.strip()][-args.screen:]
+    if args.json:
+        print(json.dumps({"verdict": verdict, "agent": d, "context": ctx.group(0) if ctx else None,
+                          "terminal": term["handle"] if term else None, "screen": live}, indent=1))
+        return code
+
+    print(f"VERDICT  {verdict}")
+    print(f"AGENT    {d['backend']} {d.get('id')}  ({args.root})")
+    print(f"ACTIVITY {d.get('age_s')}s since last write | step {d.get('step')} | "
+          f"{d.get('requests')} req / {d.get('responses')} resp | {d.get('out_tokens')} out-tok")
+    if d.get("tools"):
+        print(f"TOOLS    {' '.join(d['tools'])}")
+    if d.get("last_text"):
+        print(f"SAYING   {d['last_text']}")
+    for e in d.get("errors") or []:
+        print(f"ERR      {e}")
+    print(f"TERM     {term['handle'] if term else None} | ctx {ctx.group(0) if ctx else None}")
+    if tasks:
+        print(f"QUIET    {quiet}s | {len(tasks)} task(s) running")
+        for t in tasks:
+            print(f"TASK     {t['kind']:7} {t['agent']:8} {t['elapsed_s']:5}s/{t['budget_s']}s  "
+                  f"{t['desc']}{'  OVERRUN' if t['overrun'] else ''}")
+    if limit:
+        print(f"LIMIT    QUOTA — matched /{limit}/")
+    if hit:
+        print(f"PROMPT   BLOCKING — matched /{hit}/")
+    print("SCREEN   ---")
+    for l in live:
+        print(f"  {l}")
+    return code
+
+
+if __name__ == "__main__":
+    sys.exit(main())

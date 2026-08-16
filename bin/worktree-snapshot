@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# worktree-snapshot — commit a worktree's current state to a rescue ref without touching it.
+#
+# For babysitting an autonomous agent: its uncommitted work is unrecoverable if the session
+# dies, but committing on its behalf would corrupt the index it is actively using. This writes
+# a real commit into the object store through a private index, leaving HEAD, the index and the
+# working tree untouched. The agent cannot tell it happened.
+#
+#   worktree-snapshot [<repo>] [<ref-suffix>]
+#   git log --oneline refs/snapshots/<suffix>      # inspect later
+#   git restore --source=refs/snapshots/<suffix> -- .   # recover if the worst happens
+set -euo pipefail
+
+repo="${1:-$PWD}"
+suffix="${2:-rescue}"
+cd "$repo"
+
+export GIT_INDEX_FILE="$(mktemp -t snapidx.XXXXXX)"
+trap 'rm -f "$GIT_INDEX_FILE"' EXIT
+
+git read-tree HEAD
+git add -A
+tree=$(git write-tree)
+ref="refs/snapshots/$suffix"
+parent=$(git rev-parse -q --verify "$ref" || true)
+
+# An unchanged tree is not worth a commit; say so and leave the ref where it is.
+if [ -n "$parent" ] && [ "$(git rev-parse "$parent^{tree}")" = "$tree" ]; then
+  echo "unchanged $ref $(git rev-parse --short "$parent")"
+  exit 0
+fi
+
+msg="snapshot $(date '+%F %T') on $(git rev-parse --short HEAD)"
+if [ -n "$parent" ]; then
+  commit=$(git commit-tree "$tree" -p "$parent" -m "$msg")
+else
+  commit=$(git commit-tree "$tree" -p HEAD -m "$msg")
+fi
+git update-ref "$ref" "$commit"
+echo "snapshot $ref $(git rev-parse --short "$commit") ($(git diff --stat HEAD "$tree" | tail -1))"

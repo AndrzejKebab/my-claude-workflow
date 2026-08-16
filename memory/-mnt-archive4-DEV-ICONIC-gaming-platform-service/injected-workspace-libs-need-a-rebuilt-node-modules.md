@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: f6c0487d-7e3a-4620-80e4-44de59385fb9
-  modified: 2026-08-11T19:44:57.330Z
+  modified: 2026-08-14T14:51:40.780Z
 ---
 
 `pnpm-workspace.yaml` sets `injectWorkspacePackages: true`, so a `workspace:` library is **hard-copied**
@@ -17,7 +17,12 @@ reading exactly like a broken branch.
 **Why:** absence of `dist` in the injected copy, while `libs/<lib>/dist` on disk is fine. Check with
 `ls node_modules/.pnpm/@gps+*@file+libs+*/node_modules/@gps/*/dist`.
 
-**How to apply:** try `pnpm turbo run build --force` first — turbo reports a *cache hit* for a lib
+**How to apply (2026-08-14):** `pnpm deps:relink` is now the repair —
+`.agents/scripts/relink-injected-libs.mjs`, documented in `docs/dev-stack.md` and named in
+`AGENTS.md` Commands. It copies each `libs/<lib>/dist` over its injected copy and refuses when a
+`dist` is absent, naming the build. Everything below is the hand version it replaced.
+
+Try `pnpm turbo run build --force` first — turbo reports a *cache hit* for a lib
 whose `dist` is absent and restores nothing, so an ordinary `pnpm turbo run build` says "18
 successful" over missing output; `--force` rebuilds and writes it, and that alone repaired a whole
 worktree (all local, unit and integration tiers) in seconds. Watch for the second layer: an injected

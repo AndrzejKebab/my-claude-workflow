@@ -10,7 +10,7 @@
 - [Verify real functionality](verify-real-functionality.md) — run the actual command + the FULL suite before "done"/recommending; `--print` and single-file runs hid two bugs
 - [Keep feature PRs scoped](keep-feature-prs-scoped.md) — surface unrelated mainline bugs, don't fix them in the feature branch; wallet txn gameId is intentionally `<gameId>_<skin>_<rtp>`
 - [player-service e2e green since PR #34](player-service-e2e-red-at-master.md) — the six wallet-counterparty tests are a documented park, not rot; 0 fail is the bar
-- [git diff redirect is empty](git-diff-redirect-is-empty.md) — an rtk git wrapper kills redirected diffs; pipe instead, and resolve refs to SHAs first
+- [rtk compacts agent shell output](rtk-compacts-agent-shell-output.md) — a PreToolUse hook proxies every bare command; measure with /usr/bin/git, /usr/bin/grep, /usr/bin/wc
 - [Shared postgres, cross-checkout push](shared-postgres-cross-checkout-push.md) — another worktree's service drops your branch's columns; re-`db:push` before diagnosing mass e2e failures
 - [Game figures have a source](game-figures-have-a-source.md) — max-win etc. exist upstream; look up, never guess; re-skins inherit by construction
 - [Replay is M2M, open until auth](replay-is-m2m-open.md) — replayWager/replayBet are service-to-service, intentionally unauthenticated; don't re-add player ownership
