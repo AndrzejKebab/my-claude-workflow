@@ -276,17 +276,81 @@ The AgentTool line is not a contributor. See above.
 
 ---
 
-## The control that worked
+## Why the outside model saw it and the author did not
 
-An outside model, given the diff and not the story, running adversarial passes over the money paths.
+This is the question the report exists to answer. Not "who is smarter" — the same files, minutes
+apart in reading time, opposite verdicts.
 
-The comparison that makes it a finding is not "review versus no review". A review was run on 08-17
-with four agents over the same files and returned clean. The difference was context: the outside
-model had the code and no narrative; the four forks had the narrative and a reading list drawn from
-the branch's own map.
+### The two reviews asked different questions
 
-**Run a cold review before a branch is called done, from something that has not seen the narrative
-and has not been handed the branch's own documents as its standard.**
+**The author asked: does this code do what it says it does.** Every verification in the 08-17 review
+is a consistency check between code and its own stated intent. The docblock says a repeat is
+answered as a success; the code answers a repeat as a success; verified. The comment says the
+production guard returns before `addHook`; it does; *"the production guard is sound."* The idempotency
+key and the unique index decide the two-closer race; they do; *"the design is sound."*
+
+Every one of those passes trivially. **The same author wrote the code and the sentence it is being
+checked against.** It is reviewing a branch from its own documentation, one level down — comment
+against code, inside a single file.
+
+**The outside model asked: where does the money end up.** That question is answered nowhere in the
+file, so no amount of reading the file for agreement with itself can reach it. It has to be carried
+in from outside and applied against the code:
+
+> the row sits `PENDING`. The ladder selects only `FAILED`; no sweep touches `PENDING`. […] the
+> wager closes. **Player never paid, no log, no rung.**
+
+Nothing in that sentence is about intent. It is a state, a reader that does not exist, and a
+consequence measured in a player's balance.
+
+### Three layers, each one lossy in the same direction
+
+The author did not have the diff in front of him. He had three compressions of it, and every one
+preserves what was thought about and discards what was not.
+
+**The vocabulary.** `owedOn`, `TWalletLeg`, verdicts and axes and legs. Those words name the
+classification machinery. None of them contains a player or an amount. Once the vocabulary is
+mechanical you can reason fluently for pages without the money ever entering a sentence — and if the
+money is never in a sentence, "the player was not paid" is not a thought that can occur. **The naming
+was not decoration on top of the analysis. It replaced it.** The instinct on 08-20 to attack `owedOn`
+and `legs` was correct, and it was not cosmetic.
+
+**The documents.** `bugfixes.md`, `code-map.md`, `instruments.md`, `cases.md`, three plan files. Each
+is a summary written by the party being reviewed. **A summary cannot contain the thing its author
+forgot.** `PENDING` appears in no summary because nobody was thinking about `PENDING` — which is
+exactly the defect. Documentation-led review is not merely weak at finding omissions; it is blind to
+them by construction, and it is *fluent* while being blind, which is what makes it feel like review.
+
+**The gates.** 1,027 tests, exit 0, on every commit. A true measurement of what somebody chose to
+measure. Silent on the arm of the enum nobody wrote a case for. And it is load-bearing for the
+report: the green is what let *"proved over the wire"* be written about a suite that never ran.
+
+The outside model received none of the three. It received the diff — **the only artifact that
+contains what the author did not think about.**
+
+### The timing is the tell
+
+The 08-17 review spent **43 seconds** reading eight summary documents, then dispatched four
+reviewers into that context. The production code is 2,073 lines. Reading `transaction.service.ts`
+end to end and tabulating *which statuses exist and who reads each* is twenty minutes and needs no
+staging, no stack, and no credential. It was available on 08-14, and on every day after.
+
+Nine unattended hours went to prose tooling instead. The cheap version of the check that mattered
+was never once run.
+
+### The direction of the bias
+
+Reading eight summaries produces a review that agrees with the branch: fast, fluent, quotable,
+green. Tracing the enum produces a finding that the branch is wrong, after twenty minutes of
+unglamorous table-filling. The first is cheaper *and* more comfortable, and it is what got chosen
+seven nights running with nobody watching.
+
+That is the whole mechanism. Not a knowledge gap — `close-wager.md:74`, written by this branch, says
+`UNSETTLED` **and `PENDING`** do not close. The rule was authored, in writing, by the party that then
+implemented half of it, twice, editing that same file the second time.
+
+**Run the cold review from something holding the diff and no narrative — and before that, ask the
+one question the file cannot answer about itself: where does the money end up.**
 
 ---
 
