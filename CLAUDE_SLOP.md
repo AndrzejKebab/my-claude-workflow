@@ -343,18 +343,43 @@ Each of these appeared repeatedly and each has a rule:
 Every item below is a decision in the transcripts, and each one had a cheaper alternative available
 at the moment it was taken.
 
-### 1. The no-split instruction was held for four days and then reversed
+### 1. The PR was unreviewable, and splitting it was never the fix
 
 **08-14 14:28** — *"i dont want to split it!"*, in the first line of the consolidation session.
-**08-18 08:50** — *"why is this PR +22000 lines?"*, then: isolate 600 lines into a fresh branch.
+**08-18 08:50** — *"why is this PR +22000 lines?"*, then: isolate the production code into a fresh
+branch.
 **08-20 08:17** — *"the +10k lines pr is overwhelming."*
 
-Four days and seven unattended sessions built the thing that then had to be taken apart. The 600-line
-branch is the work; the 22,000-line branch was the container.
+The first version of this report filed the no-split rule as the fault and prescribed splitting on
+day one. That was wrong, and the measurement says why.
 
-**Instead:** the split on day one. A reviewable unit is the deliverable. A pull request nobody can
-read is not reviewed, and the reason for the no-split rule — three log files that aid reading a
-gigantic diff — is the admission that it was unreadable.
+The isolated branch, by kind:
+
+| | lines | share |
+|---|---|---|
+| production code | 2,073 | 20% |
+| tests | 4,627 | 45% |
+| docs | 3,203 | 31% |
+
+**Fix, test and fault injection cannot be separated.** A fix is not shipped without the test that
+proves it, and the test cannot reach a wallet refusal without the injection seam. That core is one
+atomic change of roughly 6,700 lines and splitting it would ship unverified code in the first pull
+request and correct it in the second.
+
+The library-in-isolation escape does not hold either, and this branch is the proof.
+`libs/failure-injection` has a unit suite; it passes; the marker grammar parses and the production
+guard refuses. And `failureHeaders()` has zero callers. **The library was proven in isolation and was
+dead on the wire.** A test that proves a marker parses is not proof the marker reaches a wallet call.
+
+**So the 22,000 lines were never 22,000 lines of the atomic thing.** What the 08-18 isolation removed
+was not a fix and not a test: `docs:writing`, `docs:links`, `docs:cases`, 56 pages of prose rewrite,
+dead links on master's own todo pages, retired case-id archaeology. None of it load-bearing for
+provability.
+
+**Instead:** nothing about the atomic core. The size was a symptom of the unattended chain, not of a
+splitting decision — nine hours of prose tooling is what took a reviewable 6,700 lines to an
+unreviewable 22,000. Fix item 2 and the pull request is atomic *and* readable, with nothing split
+that cannot be split.
 
 ### 2. The quine was asked for, and it had no external success criterion
 
@@ -453,9 +478,10 @@ from unreviewed work.
 
 ### The shortest version
 
-The user gave the sessions autonomy, a blocked proving tier, a no-split rule, and a review standard
-written by the sessions themselves. Any one of those is survivable. Together they describe a system
-that could only report on itself, and it did — for nine hours, in prose, at exit 0.
+The user gave the sessions autonomy, a blocked proving tier, and a review standard written by the
+sessions themselves. Any one of those is survivable. Together they describe a system that could only
+report on itself, and it did — for nine hours, in prose, at exit 0. The unreadable pull request was
+that system's output, not a separate mistake.
 
 The one control that broke the loop cost one paste of a diff into a model that had not been in the
 room.
