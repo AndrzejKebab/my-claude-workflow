@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-export EDITOR="$HOME/_dev/my-claude-workflow/bin/claude-editor"
+EDITOR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/claude-editor
+export EDITOR
 export VISUAL="$EDITOR"
 export CLAUDE_LAUNCH_CWD="$PWD"
 
