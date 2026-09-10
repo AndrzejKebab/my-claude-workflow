@@ -44,7 +44,7 @@ new MyJob { ... }.ScheduleParallel(myQuery);       // implicit  state.Dependency
 new MyJob { ... }.ScheduleParallel(state.Dependency);   // explicit
 ```
 
-The implicit overloads **read and write `state.Dependency` automatically**. Cited example: `Assets/_Project/Scripts/ECS/Systems/SlimeLatticeSyncSystem.cs:21` — `}.ScheduleParallel();` with no arguments.
+The implicit overloads **read and write `state.Dependency` automatically**. A call such as `}.ScheduleParallel();` with no dependency argument uses this behavior.
 
 This is the **only** Schedule API across all of Unity's job interfaces that auto-tracks dependencies. Plain `IJob` / `IJobFor` / `IJobParallelFor` / `IJobChunk` all require manual `state.Dependency = ...` chaining.
 
@@ -194,5 +194,5 @@ Migration path: when converting a `SystemBase` to `ISystem`, every `Entities.For
 | `IJobEntity` codegen contract                | `Unity.Entities/IJobEntity.cs:11–544`                      |
 | `IJobChunk` schedule overloads               | `Unity.Entities/IJobChunk.cs:43–231`                       |
 | `ComponentTypeHandle<T>`                     | `Unity.Entities/ComponentTypeHandle.cs`                    |
-| Project example: implicit ScheduleParallel  | `Assets/_Project/Scripts/ECS/Systems/SlimeLatticeSyncSystem.cs:21` |
-| Project example: per-method [BurstCompile]  | `Assets/_Project/Scripts/ECS/Systems/SlimeLatticeSyncSystem.cs:11,15,19` |
+| Project example: implicit ScheduleParallel  | A representative `IJobEntity.ScheduleParallel()` call in the current project |
+| Project example: per-method [BurstCompile]  | A representative Burst-compiled `ISystem` in the current project |

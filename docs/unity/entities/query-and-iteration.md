@@ -247,4 +247,4 @@ Entities
 | `ChunkEntityEnumerator`                      | `Unity.Entities/IJobChunk.cs` (search "ChunkEntityEnumerator") |
 | `EntityQuery` API                            | `Unity.Entities/EntityQuery.cs`                       |
 | `SystemAPI.Query` codegen contract           | `Unity.Entities/SystemAPI.cs` + codegen              |
-| Project example: ISystem + IJobEntity        | `Assets/_Project/Scripts/ECS/Systems/SlimeLatticeSyncSystem.cs:21,25–82` |
+| Project example: ISystem + IJobEntity        | A representative `ISystem` and `IJobEntity` pair in the current project |

@@ -5,7 +5,7 @@
 - **`ISystem`** — default. A `partial struct` implementing the interface. Burst-compatible end-to-end. Cannot hold managed reference fields. Use for everything new.
 - **`SystemBase`** — fall-back. A managed `partial class`. Holds managed fields, allows the deprecated `Entities.ForEach` lambda (codegen). **Don't write new ones**; migrate existing ones to `ISystem` opportunistically.
 
-Project canon: every system in `Assets/_Project/Scripts/ECS/Systems/` is an `ISystem` (e.g. `SlimeLatticeSyncSystem.cs:7` — `partial struct ... : ISystem`).
+A common project convention is to prefer `ISystem` for unmanaged, performance-sensitive systems.
 
 ## `ISystem` interface
 
@@ -76,7 +76,7 @@ partial struct MySystem : ISystem {
 
 **Both layers are required.** The struct attribute marks the type as Burst-compilable; the per-method attribute is needed because `ISystem` lifecycle methods are dispatched via interface call from `ComponentSystemGroup`, and the IL post-processor needs the explicit attribute to rewrite the call site to a direct native call.
 
-Project example: `Assets/_Project/Scripts/ECS/Systems/SlimeLatticeSyncSystem.cs:7,11,15,19`.
+In the current project, verify this pattern against a representative Burst-compiled `ISystem` and its lifecycle methods.
 
 ## System groups
 
@@ -138,4 +138,4 @@ See [`query-and-iteration.md`](query-and-iteration.md) for the full Query API.
 | Standard groups                              | `Unity.Entities/DefaultWorld.cs:8–148`                     |
 | `[UpdateInGroup]`                            | `Unity.Entities/ScriptBehaviourUpdateOrder.cs:143–174`     |
 | `[UpdateBefore]` / `[UpdateAfter]`           | `Unity.Entities/ScriptBehaviourUpdateOrder.cs:22–42, 50–70`|
-| Project example: ISystem + Burst pattern     | `Assets/_Project/Scripts/ECS/Systems/SlimeLatticeSyncSystem.cs:7,11,15,19` |
+| Project example: ISystem + Burst pattern     | A representative Burst-compiled `ISystem` in the current project's `Assets/` or owned packages |
