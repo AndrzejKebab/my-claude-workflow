@@ -17,7 +17,11 @@ The rule binds only the two serialized engine base types whose references go thr
 
 This boundary is the whole point in an ECS authoring file: the `IComponentData` a baker emits, the `Baker<T>` itself, the `ISystem` that consumes the component, and tag structs can all sit beside the one authoring `MonoBehaviour` the file is named for — but a *second* authoring `MonoBehaviour` may not.
 
-`mara` evidence — `Packages/is.zori.entities.charactercontroller2d/Samples~/SideScrollerCharacter/SideScrollerAuthoring.cs` packs five serialized types in one file: the `SideScrollerSampleConfig` struct (`IComponentData`, not subject) plus four `MonoBehaviour`s — `SideScrollerSampleConfigAuthoring`, `SideScrollerCharacterAuthoring`, `SideScrollerPushableAuthoring`, `SideScrollerMovingPlatformAuthoring`. Only the type matching the file name (none of them — the file is `SideScrollerAuthoring`, which names no class in it) can hold `fileID: 11500000`, so every scene referencing those four MonoBehaviours showed missing scripts. The fix, visible in the deployed copy under `Assets/Samples/Zori Entities Character Controller 2D/0.1.0/Side-Scroller Character/`, splits each `MonoBehaviour` into its own correctly-named file (`SideScrollerCharacterAuthoring.cs`, `SideScrollerPushableAuthoring.cs`, `SideScrollerMovingPlatformAuthoring.cs`, `SideScrollerCharacterTuning.cs`), each then carrying its own `.cs.meta` guid and a valid `fileID: 11500000`.
+For example, a file named `CharacterAuthoring.cs` may contain a plain
+`IComponentData` struct and `CharacterAuthoring : MonoBehaviour`, but another
+serialized class such as `PlatformAuthoring : MonoBehaviour` belongs in its own
+`PlatformAuthoring.cs` file. Splitting serialized classes this way gives each
+one its own `.cs.meta` GUID and canonical script identity.
 
 ## Corollary for programmatic scene / prefab builders
 
@@ -25,7 +29,10 @@ An editor builder that authors assets via `gameObject.AddComponent<T>()` and sav
 
 Do not post-process the saved asset to repair MonoBehaviour references — inlining `MonoScript` stubs, hardcoding `fileID: 11500000`, or rewriting `m_Script` lines in the YAML. That hand-rolls an identity Unity owns, and it reintroduces the exact missing-script defect the moment a guid moves, a class is renamed, or a second type is added to the file. The robust approach is the negative one: keep one class per correctly-named file, let `AddComponent<T>` and the importer write the reference, and write no reference-repair pass at all.
 
-`mara` evidence — `Assets/Samples/Zori Entities Character Controller 2D/0.1.0/Side-Scroller Character/Editor/SideScrollerSceneBuilder.cs` is the correct pattern: it calls `AddComponent<SideScrollerCharacterAuthoring>()`, `AddComponent<SideScrollerPushableAuthoring>()`, `AddComponent<SideScrollerMovingPlatformAuthoring>()` (and the substrate physics authoring), then `EditorSceneManager.SaveScene(...)`, with no YAML post-processing. It produces resolvable references precisely because each of those types is now a one-class file.
+Use `AddComponent<T>()` followed by `EditorSceneManager.SaveScene(...)` or
+`PrefabUtility.SaveAsPrefabAsset(...)` and let Unity serialize the reference.
+That produces resolvable references when each serialized type is in its own
+correctly named file.
 
 ## Symptom and confirmation
 
@@ -34,21 +41,21 @@ The symptom is "The referenced script is missing on `<GameObject>`" in the Conso
 Confirm it at the YAML level rather than guessing:
 
 1. In the `.unity` / `.prefab` text, find the offending component's `m_Script: {fileID: <…>, guid: <…>, type: 3}` line.
-2. A valid authoring reference is `{fileID: 11500000, guid: <the target .cs.meta guid>, type: 3}`. In `mara`'s side-scroller scene, `Assets/Samples/…/Side-Scroller Character/Scenes/SideScrollerSample.unity` carries exactly that shape, e.g. `{fileID: 11500000, guid: 564ee9945f053b2d5b71affa1b9b0088, type: 3}`.
+2. A valid authoring reference is `{fileID: 11500000, guid: <the target .cs.meta guid>, type: 3}`.
 3. Read the target `.cs.meta` and check its `guid` against the reference's guid, and check that the `.cs` file is named after the referenced class. A guid that points at a multi-class file where the referenced type is *not* the file-named one, or a builder-written `fileID` that is not `11500000`, is the cause.
 
 The fix is structural, not a YAML edit: move the offending type into its own file named after it, let Unity reimport so the new `.cs.meta` guid and `fileID: 11500000` are assigned, and re-add or re-resolve the component (re-running a programmatic builder writes the corrected reference automatically).
 
 ## Source citations
 
-| Fact | Reference |
-|------|-----------|
-| `fileID: 11500000` is the canonical script slot, one per file | `Assets/Samples/…/Side-Scroller Character/Scenes/SideScrollerSample.unity` `m_Script` lines; per-class `.cs.meta` guids |
-| Multi-`MonoBehaviour` file → missing scripts (the defect) | `Packages/is.zori.entities.charactercontroller2d/Samples~/SideScrollerCharacter/SideScrollerAuthoring.cs` (five serialized types) |
-| Per-class split as the fix | `Assets/Samples/…/Side-Scroller Character/SideScroller{Character,Pushable,MovingPlatform}Authoring.cs`; Platformer `FrictionModifier2DAuthoring.cs` |
-| `AddComponent<T>` + `SaveScene`, no YAML post-processing | `Assets/Samples/…/Side-Scroller Character/Editor/SideScrollerSceneBuilder.cs` |
+| Fact | How to verify it in this project |
+|------|----------------------------------|
+| Canonical script identity | Inspect an imported `.unity` or `.prefab` `m_Script` reference and its target `.cs.meta` file. |
+| Multi-`MonoBehaviour` failure | Create a disposable prefab that references a second serialized class in the same file, then re-import it. |
+| Per-class split | Move that class to a correctly named file and confirm the prefab resolves after re-import. |
+| Programmatic authoring | Save an asset built with `AddComponent<T>()` and inspect the resulting `m_Script` reference. |
 
-## Unity 6000.7 alpha: scenes forgive, prefabs do not (observed 2026-07-21, swordgal)
+## Unity 6000.7 alpha caveat: scenes may forgive, prefabs may not
 
 On `6000.7.0a1` the failure mode diverges between container types for a MonoBehaviour
 living in a file not named after it:

@@ -2,7 +2,8 @@
 
 Local reference for the Unity rules that decide whether a scene, prefab, or SubScene can resolve a script reference at all, and for the package-sample workflow that delivers those assets to consumers. These are not API-signature facts — they are constraints on how source files map to the asset IDs Unity writes into YAML, and on where a sample compiles versus where it ships. Breaking the serialization rules produces a defect (a "missing script") that never shows at C# compile time and only surfaces when the asset is opened or imported; mishandling the sample lifecycle ships that same defect to a consumer.
 
-This docset is `mara`-local: the rules are the engine's, but the cited evidence is `mara`'s own authoring code under `Assets/Samples/…` and the character-controller-2D / physics-2D packages, where the same defect recurred three times during one orchestration.
+The rules are Unity serialization and package-management constraints. Confirm
+them against the Unity version and package layout used by the current project.
 
 ## Documents
 
@@ -24,4 +25,4 @@ This docset is `mara`-local: the rules are the engine's, but the cited evidence 
 - Custom serialization (`ISerializationCallbackReceiver`, `[SerializeReference]` polymorphism, `FormerlySerializedAs`). The rule here is about script *identity* (which type a `m_Script` reference resolves to), not about how a type's fields serialize.
 - Asset GUID assignment and `.meta` mechanics beyond the single `fileID: 11500000` fact the rule turns on. The full meta-file model is Unity-Manual territory.
 - ECS baking flow (`Baker<T>`, `IComponentData` emission). Authoring `MonoBehaviour`s are subject to this rule; the ECS types their bakers emit are not, and that boundary is the rule's whole point — see `monobehaviour-files.md` § "What is and is not subject".
-- The broader UPM model — `manifest.json` / `packages-lock.json` entries, `testables`, the `package.json` schema beyond its `samples[]` array, and the embedded-vs-registry distinction. `package-samples.md` covers only the sample's two homes (`Samples~/` delivery, `Assets/Samples/…` working copy) and the publish discipline that keeps GUIDs stable; the package-management surface is project-`CLAUDE.md` and Unity-Manual territory.
+- The broader UPM model — `manifest.json` / `packages-lock.json` entries, `testables`, the `package.json` schema beyond its `samples[]` array, and the embedded-vs-registry distinction. `package-samples.md` covers only the sample's two homes (`Samples~/` delivery, `Assets/Samples/…` working copy) and the publish discipline that keeps GUIDs stable; the rest belongs in project documentation and the Unity Manual.
