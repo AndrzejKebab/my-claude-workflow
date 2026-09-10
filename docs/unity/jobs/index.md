@@ -1,12 +1,12 @@
-# Unity.Jobs local reference (Unity 6.3 / Collections 2.x)
+# Unity.Jobs local reference
 
 Canonical local reference for "what does this Schedule overload actually accept" and "which job interface fits this work". Anchored to:
 
-- **`UnityEngine.CoreModule.dll`** at `/home/midori/Unity/Hub/Editor/6000.3.14f1/Editor/Data/Managed/UnityEngine/UnityEngine.CoreModule.dll`. The core `Unity.Jobs` namespace (`IJob`, `IJobFor`, `IJobParallelFor`, `JobHandle`, `JobsUtility`) lives in this DLL — there is no `Library/PackageCache/com.unity.jobs` entry (the package was rolled into the engine in 2023).
-- **`com.unity.collections@12999e356c23`** at `Library/PackageCache/com.unity.collections@12999e356c23/Unity.Collections/Jobs/`. Hosts the extra job interfaces shipped as source: `IJobParallelForBatch`, `IJobParallelForDefer`, `IJobFilter`, `RegisterGenericJobTypeAttribute`.
-- **`com.unity.entities@8b72e8a7d7d1`** at `Library/PackageCache/com.unity.entities@8b72e8a7d7d1/Unity.Entities/IJobChunk.cs` etc. Adds entity-aware job interfaces (`IJobChunk`, `IJobEntity` — covered in `docs/unity/entities/`).
+- **`UnityEngine.CoreModule.dll`** under the installed Unity Editor's `Editor/Data/Managed/UnityEngine/` directory. The core `Unity.Jobs` namespace (`IJob`, `IJobFor`, `IJobParallelFor`, `JobHandle`, `JobsUtility`) lives in this DLL — there is no `Library/PackageCache/com.unity.jobs` entry.
+- **Installed `com.unity.collections` package** at `Library/PackageCache/com.unity.collections@<version>/Unity.Collections/Jobs/`. Hosts extra job interfaces shipped as source: `IJobParallelForBatch`, `IJobParallelForDefer`, `IJobFilter`, and `RegisterGenericJobTypeAttribute`.
+- **Installed `com.unity.entities` package** at `Library/PackageCache/com.unity.entities@<version>/Unity.Entities/`. Adds entity-aware job interfaces (`IJobChunk`, `IJobEntity` — covered in `docs/unity/entities/`).
 
-DLL-only types are cited via `ilspycmd` decompilation captured at `/tmp/unity-decompile/CoreModule/UnityEngine.CoreModule.decompiled.cs` (line numbers stable for that decompile; see [`decompilation-workflow.md`](decompilation-workflow.md) for how to refresh). Source-package types are cited at their PackageCache `file:line` directly. Every cited line has been verified against the source.
+DLL-only types can be inspected with `ilspycmd`; see [`decompilation-workflow.md`](decompilation-workflow.md) for how to produce a local decompilation. Source-package types can be inspected directly in `Library/PackageCache`. Verify cited lines against the package and Editor versions used by the current project.
 
 ## Documents
 
@@ -20,7 +20,7 @@ DLL-only types are cited via `ilspycmd` decompilation captured at `/tmp/unity-de
 
 - [`empirical-examples.md`](empirical-examples.md) — workload-balancing examples for `IJobParallelFor`: moderate batches for uniform voxel work and batch size `1` for heterogeneous region work.
 
-- [`decompilation-workflow.md`](decompilation-workflow.md) — how to find the truth when you don't trust an LLM-written job call. Tier 1: PackageCache (source). Tier 2: Rider DecompilerCache (`~/.config/JetBrains/Rider*/resharper-host/DecompilerCache/decompiler/...` — fastest, but only populates on Rider visit). Tier 3: `ilspycmd` (bulk decompile any DLL). Includes the `dotnet tool install -g ilspycmd` install recipe and the right invocation for Unity engine modules.
+- [`decompilation-workflow.md`](decompilation-workflow.md) — how to verify a job API against source or decompiled assemblies: PackageCache first, IDE decompiler second, and `ilspycmd` for bulk inspection.
 
 ## Reading order for the "wrong named argument" bug
 

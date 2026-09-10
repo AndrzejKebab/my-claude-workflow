@@ -97,17 +97,15 @@ These appear on the **container type definition** (e.g. `NativeArray<T>`, `Nativ
 | `[NativeDisableUnsafePtrRestriction]`        | n/a (raw pointer) | n/a | n/a | n/a                    |
 | `[DeallocateOnJobCompletion]`                | auto-dispose | ✓     | ✓           | ✓                      |
 
-## Real project examples
+## Examples
 
-- `VoxelTileFiller.cs:60–92` (`is.zori.volumetrics`) — `IJobParallelFor` with `[ReadOnly]` on every input scalar, `[WriteOnly]` on every output `NativeArray`. The canonical clean shape.
-- `RegionMeshingService.cs:433` (`is.zori.heightfields`) — `_decodeHandle = job.Schedule(p.SlotCount, 1);` schedules a per-region decode. Each `Execute(int slotIndex)` writes a different sub-array; the parallel-for index restriction holds without need for `[NativeDisableParallelForRestriction]`.
+- A voxel-filling `IJobParallelFor` can mark every input container `[ReadOnly]` and every output `NativeArray` `[WriteOnly]`. This is the clean default shape.
+- A per-region decode can schedule with `job.Schedule(slotCount, 1)`. If each `Execute(int slotIndex)` writes a distinct sub-array, the normal parallel-for index restriction remains valid without `[NativeDisableParallelForRestriction]`.
 
 Search the project with:
 
-```bash
-grep -rn "NativeDisableParallelForRestriction\|NativeDisableContainerSafetyRestriction\|DeallocateOnJobCompletion" \
-  /mnt/archive4/UNITY/Projects/woweyreey/Packages/is.zori.* \
-  /mnt/archive4/UNITY/Projects/woweyreey/Assets/_Project
+```powershell
+rg -n "NativeDisableParallelForRestriction|NativeDisableContainerSafetyRestriction|DeallocateOnJobCompletion" Assets Packages
 ```
 
 to find every relaxation site and audit its rationale.
