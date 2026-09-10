@@ -1,6 +1,6 @@
-# Empirical examples — mara's in-project Burst-`ISystem` call sites
+# Empirical examples — Burst-`ISystem` call sites
 
-A survey of the Burst-`ISystem` and ECS systems shipping in `mara`'s own packages, with `file:line`, to copy from. These are `mara`-local — closer to what you are writing than any foreign sample. Three packages: the 2D physics binding (`Packages/is.zori.entities.physics2d`), the kinematic character controller (`Packages/is.zori.entities.charactercontroller2d`), and the NSprites sprite renderer (`Packages/NSprites`). Paths below are relative to `/mnt/archive4/UNITY/Projects/mara/`.
+A survey of Burst-`ISystem` and ECS systems from several Unity packages, with `file:line`, to copy from. The examples cover a 2D physics binding (`Packages/<physics-package>`), a kinematic character controller (`Packages/<character-controller-package>`), and the NSprites sprite renderer (`Packages/NSprites`). Paths are relative to a Unity project root.
 
 Find the closest call site to your task and mirror its shape — the `[BurstCompile]` placement, the group + ordering edges, the job-scheduling form, and the ECB/singleton usage.
 
@@ -10,13 +10,13 @@ Two distinct postures appear, and which one a system takes is decided by whether
 
 **Fully Burst** — `[BurstCompile]` on the struct and on every lifecycle method. The character controller's solve system is the reference:
 
-- `Packages/is.zori.entities.charactercontroller2d/Runtime/Systems/KinematicCharacterPhysicsSolveSystem2D.cs:44` — `[BurstCompile]` on the `partial struct … : ISystem`, repeated on `OnCreate` (`:59`), `OnDestroy` (`:84`), `OnUpdate` (`:87`).
+- `Packages/<character-controller-package>/Runtime/Systems/KinematicCharacterPhysicsSolveSystem2D.cs:44` — `[BurstCompile]` on the `partial struct … : ISystem`, repeated on `OnCreate` (`:59`), `OnDestroy` (`:84`), `OnUpdate` (`:87`).
 - Same posture in `StoreKinematicCharacterBodyPropertiesSystem2D.cs:28,33,43,46`, `KinematicCharacterDeferredImpulsesSystem2D.cs:41,46,55,58`.
 
 **Non-Burst by necessity** — no `[BurstCompile]` at all, because `OnUpdate` calls managed `Unity.U2D.Physics` instance methods on the main thread. The entire physics2d fixed-step pipeline is this:
 
-- `Packages/is.zori.entities.physics2d/Runtime/Systems/PhysicsWorld2DSystem.cs:37` — `public partial struct PhysicsWorld2DSystem : ISystem` with no attribute; the XML documents why (`:20-24`): the world/body calls are managed and main-thread.
-- Same for `PhysicsBody2DCleanupSystem.cs:43`, `PhysicsJoint2DCreationSystem.cs:40`, `PhysicsBody2DWriteBackSystem.cs:32`. The package note states it package-wide (`Packages/is.zori.entities.physics2d/Documentation~/runtime-systems.md:3`).
+- `Packages/<physics-package>/Runtime/Systems/PhysicsWorld2DSystem.cs:37` — `public partial struct PhysicsWorld2DSystem : ISystem` with no attribute; the XML documents why (`:20-24`): the world/body calls are managed and main-thread.
+- Same for `PhysicsBody2DCleanupSystem.cs:43`, `PhysicsJoint2DCreationSystem.cs:40`, `PhysicsBody2DWriteBackSystem.cs:32`. The package note states it package-wide (`Packages/<physics-package>/Documentation~/runtime-systems.md:3`).
 
 **Non-Burst holding a managed object** — an `ISystem` struct that stores a managed object on its own system entity via the managed API. NSprites:
 
@@ -26,7 +26,7 @@ Two distinct postures appear, and which one a system takes is decided by whether
 
 The physics2d package defines a custom public group and pins a five-system order inside it with explicit edges (no creation-order reliance):
 
-- `Packages/is.zori.entities.physics2d/Runtime/Systems/Physics2DSimulationSystemGroup.cs:14-15` — `[UpdateInGroup(typeof(FixedStepSimulationSystemGroup))] public partial class Physics2DSimulationSystemGroup : ComponentSystemGroup { }`.
+- `Packages/<physics-package>/Runtime/Systems/Physics2DSimulationSystemGroup.cs:14-15` — `[UpdateInGroup(typeof(FixedStepSimulationSystemGroup))] public partial class Physics2DSimulationSystemGroup : ComponentSystemGroup { }`.
 - All five members carry `[UpdateInGroup(typeof(Physics2DSimulationSystemGroup))]`; the edges: `PhysicsBody2DCleanupSystem.cs:41-42` (`[UpdateBefore(PhysicsWorld2DSystem)]`), `PhysicsJoint2DCreationSystem.cs:38-39` (`[UpdateBefore(PhysicsWorld2DSystem)]`), `PhysicsBody2DWriteBackSystem.cs:30-31` (`[UpdateAfter(PhysicsWorld2DSystem)]`). Resolved order: `Cleanup → JointCreation → World step → JointBreak → WriteBack` (`…/runtime-systems.md:75-82`).
 
 The character controller orders against the physics *group*, not its internal systems, and chains its own three systems with explicit edges:
@@ -84,21 +84,21 @@ NSprites lands in the standard presentation group: `SpriteRenderingSystem.cs:11-
 
 ## Field-cached `ComponentLookup` vs source-generated
 
-Two ways to get a lookup, both in `mara`:
+Two ways to get a lookup appear in the surveyed code:
 
 - **Explicit, field-cached** — `state.GetComponentLookup<T>(isReadOnly)` stored as a system field in `OnCreate`, refreshed with `.Update(ref state)` each `OnUpdate` before use. `PhysicsBody2DWriteBackSystem.cs:34-42` (create) and `:69-73` (update); `KinematicCharacterPhysicsSolveSystem2D.cs:81` (create) and `:92` (update).
 - **Source-generated** — `SystemAPI.GetComponentLookup<T>(isReadOnly)` / `SystemAPI.GetBufferLookup<T>(isReadOnly)`, obtained inline in `OnUpdate`; the generator caches and auto-updates it. `KinematicCharacterDeferredImpulsesSystem2D.cs:63-65`; `PhysicsWorld2DSystem.cs:870,904,939`.
 
 ---
 
-# Empirical examples — Entities usage in a sibling project (`SlimeLatticeSyncSystem`)
+# Empirical examples — minimal Entities usage (`SlimeLatticeSyncSystem`)
 
-A second survey, captured against a sibling Unity project (`woweyreey`), covering every `: ISystem`, `: IJobEntity`, `: IJobChunk`, `EntityCommandBuffer`, and `Baker<>` there. It documents the minimal single-system ECS shape; the `mara` survey above is the richer multi-package reference. Use either as a copy-from canon.
+A second survey covers every `: ISystem`, `: IJobEntity`, `: IJobChunk`, `EntityCommandBuffer`, and `Baker<>` in a small Unity project. It documents the minimal single-system ECS shape; the package survey above is the richer multi-package reference. Use either as a copy-from reference.
 
 Generated by:
 ```bash
-grep -rn -E ': ISystem\b|: IJobEntity\b|: IJobChunk\b|EntityCommandBuffer|: Baker<' \
-    Assets/_Project/Scripts Packages/is.zori.* 2>/dev/null \
+rg -n ': ISystem\b|: IJobEntity\b|: IJobChunk\b|EntityCommandBuffer|: Baker<' \
+    Assets Packages
   | grep -E '\.cs:[0-9]+:' | grep -v '\.meta:'
 ```
 
@@ -106,7 +106,7 @@ grep -rn -E ': ISystem\b|: IJobEntity\b|: IJobChunk\b|EntityCommandBuffer|: Bake
 
 | Call site                                                                  | Pattern                                                  |
 |----------------------------------------------------------------------------|----------------------------------------------------------|
-| `Assets/_Project/Scripts/ECS/Systems/SlimeLatticeSyncSystem.cs:7`         | `[BurstCompile] partial struct SlimeLatticeSyncSystem : ISystem` |
+| `SlimeLatticeSyncSystem.cs:7`         | `[BurstCompile] partial struct SlimeLatticeSyncSystem : ISystem` |
 
 This is the only active `ISystem` in that project at time of writing. Other ECS systems (`AppSettingsBridgeSystem`, `GIRendererTweaksSyncSystem`) exist as commented-out scaffolding for future systems following the same pattern.
 
@@ -114,7 +114,7 @@ This is the only active `ISystem` in that project at time of writing. Other ECS 
 
 | Call site                                                                  | Pattern                                                  |
 |----------------------------------------------------------------------------|----------------------------------------------------------|
-| `Assets/_Project/Scripts/ECS/Systems/SlimeLatticeSyncSystem.cs:23`        | `[BurstCompile] partial struct SlimeLatticeJob : IJobEntity` |
+| `SlimeLatticeSyncSystem.cs:23`        | `[BurstCompile] partial struct SlimeLatticeJob : IJobEntity` |
 
 ## `IJobChunk` declarations
 
@@ -122,11 +122,11 @@ No active `IJobChunk` jobs in that project. The volumetrics, atmospherics, and h
 
 ## `EntityCommandBuffer` usage
 
-No `EntityCommandBuffer` usage in `Packages/is.zori.*` or `Assets/_Project/Scripts/ECS/`. The `SlimeLatticeSyncSystem` only reads `LocalTransform` / writes managed Unity-side state — no entity mutations happen at runtime.
+No `EntityCommandBuffer` usage appeared in the surveyed ECS code. The `SlimeLatticeSyncSystem` only reads `LocalTransform` and writes managed Unity-side state, so no entity mutations happen at runtime.
 
 ## `Baker<TAuthoring>` declarations
 
-No active baker patterns in `Assets/_Project/Scripts/ECS/`. That project uses runtime-spawned entities (e.g. via `EntityManager.CreateEntity` from MonoBehaviour bridges) rather than authored sub-scenes.
+No active baker patterns appeared in the surveyed ECS code. That example uses runtime-spawned entities (for example, via `EntityManager.CreateEntity` from MonoBehaviour bridges) rather than authored sub-scenes.
 
 ## The reference pattern: `SlimeLatticeSyncSystem.cs`
 
@@ -159,10 +159,8 @@ This is the canonical minimal pattern for new ECS work. Mirror this structure fo
 ## How to refresh this survey
 
 ```bash
-cd /mnt/archive4/UNITY/Projects/woweyreey
-grep -rn -E ': ISystem\b|: IJobEntity\b|: IJobChunk\b|EntityCommandBuffer|: Baker<' \
-    Assets/_Project/Scripts Packages/is.zori.* 2>/dev/null \
-  | grep -E '\.cs:[0-9]+:' | grep -v '\.meta:'
+rg -n ': ISystem\b|: IJobEntity\b|: IJobChunk\b|EntityCommandBuffer|: Baker<' \
+    Assets Packages
 ```
 
 When new ECS code lands, slot it into the right bucket above.

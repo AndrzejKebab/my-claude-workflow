@@ -1,16 +1,16 @@
-# Burst-ISystem patterns — the discipline for a Burst-throughout DOTS engine
+# Burst-ISystem patterns for a Burst-oriented DOTS engine
 
-The `is.zori.pixelworld` falling-sand engine carries a hard requirement: it is Burst-compiled throughout, with the core simulation running inside `[BurstCompile]` jobs and `[BurstCompile] ISystem` structs, and no managed collections anywhere in runtime (`Packages/is.zori.pixelworld/docs/orchestrate/pixelworld-engine/01-context.md` § "Burst compatibility (hard requirement)"). This page is the copyable form of that discipline: each pattern is stated as what it is plus the failure it prevents, grounded in the engine's own code and in mara's other Burst-ISystem packages. The Burst-compiler mechanics each pattern leans on — the entry-point-only rule, `FunctionPointer<T>`, `SharedStatic<T>` — live in [`../burst/`](../burst/index.md) and are cross-referenced rather than restated. The system-organization side (groups, ordering edges, command buffers, singletons) lives in [`systems.md`](systems.md), [`system-groups.md`](system-groups.md), and [`command-buffers-singletons.md`](command-buffers-singletons.md).
+This page collects copyable patterns for keeping the core simulation inside `[BurstCompile]` jobs and `[BurstCompile] ISystem` structs, without managed collections on hot runtime paths. Each pattern states what it is and the failure it prevents. The Burst-compiler mechanics each pattern uses — the entry-point-only rule, `FunctionPointer<T>`, and `SharedStatic<T>` — live in [`../burst/`](../burst/index.md). System organization is covered in [`systems.md`](systems.md), [`system-groups.md`](system-groups.md), and [`command-buffers-singletons.md`](command-buffers-singletons.md).
 
 ## Every system is an unmanaged `ISystem`, `[BurstCompile]` on the type and the lifecycle methods
 
 A system on a per-tick hot path is an unmanaged `partial struct : ISystem` with `[BurstCompile]` on the type and on each of `OnCreate`, `OnUpdate`, and `OnDestroy`. The attribute on the type carries the compile settings to every nested entry point — including the system's own scheduled jobs — but each lifecycle method still needs its own attribute, because the system struct is a managed-callable type and only the explicitly-tagged methods become Burst entry points.
 
-`KinematicCharacterPhysicsSolveSystem2D` is the reference shape (`Packages/is.zori.entities.charactercontroller2d/Runtime/Systems/KinematicCharacterPhysicsSolveSystem2D.cs:44-115`): `[BurstCompile]` on the struct, on `OnCreate`, on `OnDestroy`, on `OnUpdate`, and on the nested `KinematicCharacterPhysicsSolveJob`. The whole solve is HPC#-clean, so `OnUpdate` schedules the job and the job Bursts and parallelizes.
+`KinematicCharacterPhysicsSolveSystem2D` is a representative shape: `[BurstCompile]` on the struct, on `OnCreate`, `OnDestroy`, and `OnUpdate`, and on the nested `KinematicCharacterPhysicsSolveJob`. The whole solve is HPC#-clean, so `OnUpdate` schedules the job and the job Bursts and parallelizes.
 
-The failure this prevents: a `SystemBase` (managed) system, or an `ISystem` whose `OnUpdate` touches managed code, forces the per-tick work onto the managed runtime — the engine's central cost, paid every tick on the main thread. The engine permits `SystemBase`/managed systems only for genuinely cold, non-per-tick work (authoring, editor tooling), and such a system must be justified (`01-context.md` § "Burst compatibility").
+The failure this prevents: a `SystemBase` (managed) system, or an `ISystem` whose `OnUpdate` touches managed code, forces per-tick work onto the managed runtime. Reserve managed systems for work that genuinely needs managed APIs, such as authoring bridges or editor tooling.
 
-The one sanctioned exception is a system whose API surface is itself managed. `PhysicsWorld2DSystem` is an `ISystem` deliberately **without** `[BurstCompile]`, because its body/shape calls are managed `Unity.U2D.Physics` instance methods on the main thread (`Packages/is.zori.entities.physics2d/Runtime/Systems/PhysicsWorld2DSystem.cs:20-35,37`). The shape is still an unmanaged `ISystem` struct holding only blittable state (a `NativeHashMap` of templates, `:46`); it forgoes Burst because the engine work it drives is managed, not because the struct could not be unmanaged.
+The necessary exception is a system whose API surface is itself managed. A physics integration may use an `ISystem` deliberately **without** `[BurstCompile]` because its body or shape calls are managed instance methods on the main thread. The struct can still hold only blittable state and schedule Burst jobs; it forgoes Burst because the work it drives is managed, not because the struct could not be unmanaged.
 
 ## Native collections only — no `System.Collections.Generic`
 
@@ -24,7 +24,7 @@ The failure this prevents: a managed collection in a `[BurstCompile]` region is 
 
 Where behavior must be swappable on a Burst path — a chunk seeder, a mesher policy, a sink, a character-movement processor — express it as a `struct` implementing an interface and consume it through a generic method constrained `where T : unmanaged, IFoo`. Burst monomorphizes the call: it compiles one specialized copy of the method per concrete `T`, and the interface call inside becomes a direct call to that struct's method with no boxing and no virtual dispatch.
 
-The engine's binding form of this rule (`01-context.md` § "Burst compatibility"): "Where behavior must be swappable on a Burst path … express it as a `struct` implementing an interface and consume it generically (`void Op<T>(in T impl) where T : unmanaged, I...`) so Burst monomorphizes the call with no boxing — the standard DOTS substitute for dynamic dispatch."
+Where behavior must be swappable on a Burst path, express it as a `struct` implementing an interface and consume it generically (`void Op<T>(in T impl) where T : unmanaged, I...`) so Burst monomorphizes the call with no boxing — the standard DOTS substitute for dynamic dispatch.
 
 ### Before — a managed interface, an AOT failure
 
@@ -61,9 +61,9 @@ struct SeedChunkJob<T> : IJob where T : unmanaged, ISeeder {
 
 `SeedChunkJob<SdfSeeder>` compiles to one specialized job in which `Seeder.Sample` is a direct, inlinable call. Swapping the seeder is choosing a different `T`; no runtime cost separates the swappable design from a hand-written specialized one.
 
-The in-engine reference for this seam is the character controller's solve chain: `KinematicCharacterPhysicsUpdate2D.PhysicsUpdate2D<T, C>(...) where T : unmanaged, IKinematicCharacterProcessor2D<C> where C : unmanaged` (`Packages/is.zori.entities.charactercontroller2d/Runtime/KinematicCharacterPhysicsUpdate2D.cs:121-133`). The processor interface `IKinematicCharacterProcessor2D<C> where C : unmanaged` (`Packages/is.zori.entities.charactercontroller2d/Runtime/Components/IKinematicCharacterProcessor2D.cs:16-17`) declares the six solve callbacks; the default `DefaultKinematicCharacterProcessor2D` struct implements them and is passed `in processor` into the generic solve from inside the job's `Execute` (`KinematicCharacterPhysicsSolveSystem2D.cs:182-206`). The consumer customizes the solve by passing their own `unmanaged` processor struct — dynamic-dispatch ergonomics with no managed interface on the Burst path.
+A representative character-controller seam is `PhysicsUpdate<T, C>(...) where T : unmanaged, IKinematicCharacterProcessor<C> where C : unmanaged`. The processor interface declares the solve callbacks; a default processor struct implements them and is passed by `in` into the generic solve from inside the job's `Execute`. Consumers customize the solve with their own unmanaged processor struct — dynamic-dispatch ergonomics without a managed interface on the Burst path.
 
-A generic Burst job benefits from `[GenerateTestsForBurstCompatibility(GenericTypeArguments = …)]`, which pins the concrete instantiations a Burst-compatibility test should exercise — `CellSurface<T>` tags itself for `Cell` this way (`Packages/is.zori.pixelworld/Runtime/CellSurface.cs:37`).
+A generic Burst job benefits from `[GenerateTestsForBurstCompatibility(GenericTypeArguments = …)]`, which pins the concrete instantiations a Burst-compatibility test should exercise — for example, a generic `CellSurface<T>` instantiated with a concrete voxel-cell type.
 
 ## `FunctionPointer<T>` — only for a genuinely runtime-dynamic seam
 
@@ -75,7 +75,7 @@ The failure this prevents runs both ways. A managed `delegate` or `Action` on a 
 
 ## Hash-based determinism, not stateful RNG
 
-The engine's randomness is a stateless integer hash that is a pure function of `(seed, tick, x, y)` — `PixelHash.Hash(...)` (`Packages/is.zori.pixelworld/Runtime/PixelHash.cs:52-74`). Identical inputs yield identical output on every thread and every run, which is what makes the world reproducible and the parallel simulation lock-free: there is no stored RNG and no indirection, and the seam is a free function by contract, never an interface or instance (`PixelHash.cs:6-18`). A `1/N` event test is "the hash is a multiple of N" (`ChanceOneIn`, `:92-95`); a left/right bias is the hash's low bit (`DirectionFlip`, `:103-106`); the per-tick grid jitter is derived from the tick alone (`JitterOffset`, `:116-130`).
+A voxel simulation can use a stateless integer hash that is a pure function of `(seed, tick, x, y, z)`. Identical inputs yield identical output on every thread and every run, which makes the world reproducible and parallel simulation lock-free: there is no stored RNG or shared mutable state. A `1/N` event test can use a bounded hash conversion; a directional bias can use selected hash bits; per-tick grid jitter can derive from the tick and spatial key.
 
 These are Burst helpers, not entry points — they carry no `[BurstCompile]` and auto-compile when reached from a Burst job, which is what lets `JitterOffset` return `int2` by value (the entry-point-only rule, [`../burst/compilation-context.md`](../burst/compilation-context.md) § "The entry-point rule"). The static methods are also direct-call-eligible when called from the main thread.
 
@@ -93,11 +93,11 @@ The failure this prevents: a managed class pool stored as a system field cannot 
 
 | Topic | Reference |
 |-------|-----------|
-| Engine Burst requirement, no managed collections, generic-seam rule | `Packages/is.zori.pixelworld/docs/orchestrate/pixelworld-engine/01-context.md` § "Burst compatibility (hard requirement)" |
-| Unmanaged `ISystem`, `[BurstCompile]` on type + lifecycle + nested job | `Packages/is.zori.entities.charactercontroller2d/Runtime/Systems/KinematicCharacterPhysicsSolveSystem2D.cs:44-115` |
-| Sanctioned non-Burst `ISystem` (managed engine API), native-field state + disposal | `Packages/is.zori.entities.physics2d/Runtime/Systems/PhysicsWorld2DSystem.cs:20-54,790-830` |
-| Generic-struct seam — solve chain, processor interface, default processor | `Packages/is.zori.entities.charactercontroller2d/Runtime/KinematicCharacterPhysicsUpdate2D.cs:121-133`; `.../Components/IKinematicCharacterProcessor2D.cs:16-17`; `KinematicCharacterPhysicsSolveSystem2D.cs:182-206` |
-| `[GenerateTestsForBurstCompatibility]` on a generic native struct | `Packages/is.zori.pixelworld/Runtime/CellSurface.cs:37` |
-| Hash-based determinism — stateless `(seed,tick,x,y)` hash | `Packages/is.zori.pixelworld/Runtime/PixelHash.cs:6-130` |
-| Non-owning by-value view of a native container; single-owner disposal | `Packages/is.zori.pixelworld/Runtime/CellSurface.cs:29-34` |
+| Burst requirement and no-managed-collections rule | The patterns and failure descriptions above |
+| Unmanaged `ISystem`, `[BurstCompile]` on type + lifecycle + nested job | A representative Burst-compiled system in the current project |
+| Non-Burst `ISystem` for a managed engine API | A representative managed integration system in the current project |
+| Generic-struct seam — solve chain, processor interface, default processor | The `ISeeder` and character-controller examples above |
+| `[GenerateTestsForBurstCompatibility]` on a generic native struct | A generic `CellSurface<T>` test instantiated with the project's cell type |
+| Hash-based determinism | A stateless `(seed,tick,x,y,z)` hash implementation in the current project |
+| Non-owning by-value view of a native container; single-owner disposal | The current project's native-container ownership tests |
 | Entry-point-only rule, HPC# subset, `FunctionPointer<T>`, `SharedStatic<T>` | [`../burst/compilation-context.md`](../burst/compilation-context.md), [`../burst/function-pointers.md`](../burst/function-pointers.md), [`../burst/shared-static.md`](../burst/shared-static.md) |
