@@ -122,7 +122,7 @@ If the rationale is "the test passes", the rationale is wrong. Move the offendin
 
 | Symbol                                         | File                                                                                                                |
 |------------------------------------------------|---------------------------------------------------------------------------------------------------------------------|
-| `[NativeContainer]`, `[ReadOnly]`, `[WriteOnly]` | `Library/PackageCache/com.unity.collections@.../Unity.Collections/...` (cited per-type — see `SharpTool_ViewDefinition` workflow in [`decompilation-workflow.md`](decompilation-workflow.md)) |
+| `[NativeContainer]`, `[ReadOnly]`, `[WriteOnly]` | `Library/PackageCache/com.unity.collections@.../Unity.Collections/...` (inspect package source directly; see [`decompilation-workflow.md`](decompilation-workflow.md)) |
 | `[DeallocateOnJobCompletion]`                  | `UnityEngine.CoreModule.decompiled.cs` (search `class DeallocateOnJobCompletion`)                                   |
 | `[NativeDisableParallelForRestriction]`        | `UnityEngine.CoreModule.decompiled.cs` (Unity.Collections.LowLevel.Unsafe namespace)                                |
 | `JobsUtility.MaxJobThreadCount = 128`          | `UnityEngine.CoreModule.decompiled.cs:2877`                                                                         |
