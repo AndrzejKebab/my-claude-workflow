@@ -47,19 +47,57 @@ link_file() {
     ln -s "$target" "$link"
 }
 
-mkdir -p "$CLAUDE_DIR" "$CODEX_DIR/skills"
+restore_legacy_claude_skills() {
+    local skills_dir="$CLAUDE_DIR/skills"
 
-link_dir skills "$CLAUDE_DIR"
+    # Earlier installers linked the entire Claude skills directory to this
+    # repository. Convert that layout before installing per-skill links.
+    if [[ -L "$skills_dir" && "$(readlink -f "$skills_dir")" == "$(readlink -f "$SCRIPT_DIR/skills")" ]]; then
+        echo "Replacing legacy Claude skills-directory symlink"
+        rm "$skills_dir"
+    fi
+
+    mkdir -p "$skills_dir"
+
+    # Preserve user-installed skills that an earlier whole-directory install
+    # moved aside. Do not overwrite a current skill or one this repo owns.
+    local backup skill name destination
+    for backup in "$CLAUDE_DIR"/skills.bak.*; do
+        [[ -d "$backup" ]] || continue
+        for skill in "$backup"/*; do
+            [[ -d "$skill" ]] || continue
+            name="$(basename "$skill")"
+            destination="$skills_dir/$name"
+            if [[ ! -e "$destination" && ! -e "$SCRIPT_DIR/skills/$name" ]]; then
+                echo "Restoring user skill: $name"
+                cp -a "$skill" "$destination"
+            fi
+        done
+    done
+}
+
+restore_legacy_claude_skills
+mkdir -p "$CODEX_DIR/skills"
+
 link_dir agents "$CLAUDE_DIR"
 
-# Codex discovers individual skills under ~/.codex/skills. Link every skill
-# directory separately so it coexists with skills installed from other sources.
-echo ""
-echo "Installing skills for Codex..."
-for skill in "$SCRIPT_DIR"/skills/*; do
-    [[ -d "$skill" ]] || continue
-    link_dir "$(basename "$skill")" "$CODEX_DIR/skills" "$skill"
-done
+# Both Claude and Codex discover individual skill directories. Linking the
+# repository's skills one at a time leaves skills installed from other sources
+# in place instead of moving the whole directory into a timestamped backup.
+install_skills() {
+    local tool_name="$1"
+    local destination="$2"
+
+    echo ""
+    echo "Installing skills for $tool_name..."
+    for skill in "$SCRIPT_DIR"/skills/*; do
+        [[ -d "$skill" ]] || continue
+        link_dir "$(basename "$skill")" "$destination" "$skill"
+    done
+}
+
+install_skills Claude "$CLAUDE_DIR/skills"
+install_skills Codex "$CODEX_DIR/skills"
 
 # Global config files — symlinked into ~/.claude so they travel with this repo.
 # RTK.md is intentionally excluded: it is private (mode 600) and stays machine-local,
