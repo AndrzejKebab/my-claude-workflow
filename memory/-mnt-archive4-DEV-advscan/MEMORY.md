@@ -1,1 +1,0 @@
-- [ZIP packaging cadence](feedback_zip_packaging_cadence.md) — Don't repackage the submission ZIP after every iteration; packaging is the final step only.

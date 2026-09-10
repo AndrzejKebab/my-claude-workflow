@@ -1,3 +1,0 @@
-- [Wine Qt/CEF webviews → wine-cachyos](feedback_wine_qt_webviews.md) — pure-white Wine webview dialogs on Hyprland+NVIDIA fix; skip the GL/QT_QUICK env workarounds, go straight to /opt/wine-cachyos
-- [PipeWire-JACK breaks Bluetooth audio](feedback_pipewire_jack_bluetooth.md) — clear pw-metadata force-rate/quantum after JACK clients exit
-- [Ableton Live 11 + Wine setup](project_ableton_wine_setup.md) — install gotchas, WineASIO manual register, launch command at /mnt/archive4/wine-audio/prefix

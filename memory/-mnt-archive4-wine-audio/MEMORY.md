@@ -1,2 +1,0 @@
-- [Wine version choice for WebView2/Electron apps](feedback_wine_version_for_webview2.md) — try newer wine-staging before tweaking Chromium flags; version was the fix for Beatport Access
-- [wine-audio prefix layout](project_wine_audio_layout.md) — non-standard prefix/runner layout in `/mnt/archive4/wine-audio/`

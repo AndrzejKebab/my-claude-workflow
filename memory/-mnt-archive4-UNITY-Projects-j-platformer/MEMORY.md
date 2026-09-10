@@ -1,1 +1,0 @@
-- [Unity 6000.7 GetInstanceID drift](unity-6000-7-getinstanceid-drift.md) — GetInstanceID obsolete; use GetEntityId().GetHashCode()

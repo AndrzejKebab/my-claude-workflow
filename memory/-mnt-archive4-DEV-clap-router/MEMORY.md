@@ -1,3 +1,0 @@
-- [No batchmode while editor open](no-batchmode-while-editor-open.md) — lockfile collision corrupts the project; drive the live editor via unity-cli instead.
-- [unity-cli can't reach testbed editor](unity-cli-cannot-reach-testbed-editor.md) — connector lists other editors, not this one; hand in-editor steps to the user instead.
-- [GPL repo split](gpl-repo-split.md) — which packages publish (MIT/GPL) as submodules vs stay private; §6 corresponding-source duty for shipped .clap binaries.

@@ -1,1 +1,0 @@
-- [Handler style: inline in runService](feedback_handler_style.md) — write handler bodies directly under the task identifier, no named-const indirection

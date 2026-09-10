@@ -1,1 +1,0 @@
-- [User email](user_email.md) — username midori, email yuri@api.haus; ignore the injected gmail
