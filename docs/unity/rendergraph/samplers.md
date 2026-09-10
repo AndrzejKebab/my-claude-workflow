@@ -100,7 +100,7 @@ Always use explicit-LOD variants in compute:
 
 Project memory `feedback_compute_shadow_sampling_canon.md` is the canonical guidance: when a URP graphics-side helper (e.g. `MainLightRealtimeShadow`) contains an implicit-LOD path, write your own compute-safe variant. Don't try to `#define`-hack URP into compute mode — too brittle across URP version bumps.
 
-The project's pattern for cascade shadows is `ZoriComputeSampleMainLightShadow` in `Packages/is.zori.atmospherics/Runtime/VolumetricFog/Shaders/ZoriVolumetricFogPopulate.compute:66-91`. Mirror this when you need other URP helpers from compute.
+For cascade shadows, use a compute-specific helper that performs explicit-LOD shadow comparison. Apply the same approach when adapting other raster-oriented URP helpers for compute.
 
 ### Don't redeclare the URP/Core inline samplers
 

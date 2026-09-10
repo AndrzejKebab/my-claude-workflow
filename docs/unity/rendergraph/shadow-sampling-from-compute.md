@@ -151,7 +151,7 @@ What is **NOT** needed:
 
 Because `MainLightRealtimeShadow`'s `_MAIN_LIGHT_SHADOWS_SCREEN` branch uses `SAMPLE_TEXTURE2D` (implicit-LOD), do not call it from a compute kernel even if you also disable the screen-space keyword on the compute shader — the variant has to compile, and if any other consumer later flips `_MAIN_LIGHT_SHADOWS_SCREEN` global on for graphics, the compute variant compiled with that keyword would still trip the validator.
 
-The project's pattern (`Packages/is.zori.atmospherics/Runtime/VolumetricFog/Shaders/ZoriVolumetricFogPopulate.compute:66-91`) is to write a local explicit-LOD-only helper:
+The reusable pattern is to write a local explicit-LOD-only helper:
 
 ```hlsl
 half ZoriComputeSampleMainLightShadow(float3 wp)

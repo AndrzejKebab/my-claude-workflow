@@ -1,6 +1,6 @@
 # RenderGraph local reference (Unity 6.3 / URP 17.5)
 
-Canonical local reference for "how RenderGraph passes work in URP6 for this project". Anchored to source under `/home/midori/Unity/Hub/Editor/6000.3.14f1/Editor/Data/Resources/PackageManager/BuiltInPackages/com.unity.render-pipelines.{core,universal}` (Unity 6.3 ships URP and Core RP as built-in packages — no `Library/PackageCache/com.unity.render-pipelines.*` entry exists for this project) and to project passes under `/mnt/archive4/UNITY/Projects/woweyreey/Packages/is.zori.{atmospherics,heightfields}`.
+Canonical local reference for how RenderGraph passes work in URP. Inspect the Render Pipeline sources installed with the active Editor under `F:\Unity Editors\<version>\Editor\Data\Resources\PackageManager\BuiltInPackages\com.unity.render-pipelines.{core,universal}` or, when resolved as project packages, under `Library/PackageCache/com.unity.render-pipelines.*@<version>`.
 
 All file:line citations refer to those two roots verbatim. Every line citation has been verified against source.
 
@@ -24,9 +24,9 @@ All file:line citations refer to those two roots verbatim. Every line citation h
 
 - [`samplers.md`](samplers.md) — how samplers reach compute kernels. URP's `GlobalSamplers.hlsl` declares `sampler_LinearClamp` etc. inline; `sampler_LinearClampCompare` is an inline-name-encoded `SamplerComparisonState` declared in `Shadows.hlsl`. Documents the rule, the redeclaration-collision pitfall (`feedback_urp_sampler_linearclamp_collision.md`), and how comparison samplers wire up across DX/Vulkan via `SAMPLE_TEXTURE2D_SHADOW` macro expansion to `SampleCmpLevelZero`.
 
-- [`empirical-examples.md`](empirical-examples.md) — survey of every RG pass in URP 17.5 source and in this project's atmospherics + heightfields packages. Bucketed: compute passes that read URP globals, raster passes that publish globals, transient texture patterns, shadow-receiver patterns. Each entry has file:line + builder-method list. Use as a copy-from canon: "find the closest existing pass and mirror its declarations".
+- [`empirical-examples.md`](empirical-examples.md) — reusable RenderGraph patterns for compute passes reading URP globals, raster passes publishing textures, transient and history resources, Hi-Z generation, and resource declarations.
 
-- [`surface-cache-gi.md`](surface-cache-gi.md) — Unity's realtime Surface Cache GI renderer feature: how it discovers scene geometry (`ObjectDispatcher`-driven `MeshRenderer`/`Terrain`/`Light`/`Material` sync, one-shot `GeometryPool` ingest, the Meta-pass material requirement), why the raw-heightfield `AddTerrainInstance` ingestion path exists but isn't wired to the realtime cache, and a concrete integration verdict for a GPU-driven/indirect-draw heightfield renderer (`is.zori.miniheightfields`) that has none of the component shapes the discovery path looks for.
+- [`surface-cache-gi.md`](surface-cache-gi.md) — Unity's realtime Surface Cache GI renderer feature: geometry discovery, `GeometryPool` ingestion, Meta-pass requirements, and an integration checklist for GPU-driven voxel or heightfield renderers.
 
 - [`resource-attributes.md`](resource-attributes.md) — the attribute/class vocabulary for organizing a `ScriptableRendererFeature`'s own shader/material/compute dependencies as versioned, categorized Editor assets: `[ResourcePath]` + `IRenderPipelineGraphicsSettings`, `[SupportedOnRenderPipeline]`, `[Categorization.CategoryInfo]` + `[HideInInspector]`, `[DisallowMultipleRendererFeature]`, the `Handle<T>`/`HandleSet<T>` strongly-typed-handle idiom, `ObjectDispatcher` for incremental scene-object change tracking, and the cached-`ShaderIDs` pattern.
 

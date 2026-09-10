@@ -36,9 +36,9 @@ void UseTexture(in TextureHandle input, AccessFlags flags = AccessFlags.Read);
 - Cannot be called for the same handle that you also passed to `SetRenderAttachment*` on the same pass — the validator at `RenderGraphBuilders.cs:352-401` flags that as "alreadyUsed".
 
 Project examples:
-- `Packages/is.zori.atmospherics/Runtime/VolumetricFog/VolumetricFogPass.cs:1143` — declares the URP main-shadow atlas as a Read dep so `MainLightShadowCasterPass` schedules before the fog populate compute.
-- `Packages/is.zori.atmospherics/Runtime/VolumetricClouds/VolumetricCloudsPass.cs:537-539` — three 3D textures (shape/detail/weather) declared Read for the raymarch raster pass.
-- `Packages/is.zori.heightfields/Heightfields/Runtime/HeightfieldRenderFeature.cs:543-545` — HiZ downsample reads `depthCopy` and ping-pongs `mipA`/`mipB` ReadWrite.
+- A volumetric-fog pass declares the URP main-shadow atlas as a Read dependency so `MainLightShadowCasterPass` schedules before fog population compute.
+- A cloud raymarch pass declares its shape, detail, and weather 3D textures as Read.
+- A Hi-Z downsample reads the depth copy and declares its ping-pong mip textures ReadWrite.
 
 ### `UseGlobalTexture(int propertyId, AccessFlags = Read)`
 
@@ -70,11 +70,8 @@ void UseAllGlobalTextures(bool enable);
 - RG handles: at builder `Dispose` it iterates `m_RenderGraph.AllGlobals()` and calls `UseTexture(t, Read)` on every valid handle (`RenderGraphBuilders.cs:131-140`). So this is **purely a textures-only mechanism** — matrix arrays, vectors, floats published via `cmd.SetGlobalMatrixArray` / `cmd.SetGlobalVector` are NOT covered. Compute uniforms travel through a different path (see [global-state.md](global-state.md)).
 - Critical constraint: only declares dependencies on textures that some prior pass has registered through `SetGlobalTextureAfterPass`. Globals set host-side via `Shader.SetGlobalTexture` outside the graph are unknown to RG and unaffected.
 
-Project examples (50+ usages in atmospherics):
-- `Packages/is.zori.atmospherics/Runtime/VolumetricClouds/VolumetricCloudsPass.cs:583,726,830,882`
-- `Packages/is.zori.atmospherics/Runtime/DistantShadows/AtmosphericsScreenSpaceShadowsPass.cs:287,321,383`
-- `Packages/is.zori.atmospherics/Runtime/DistantShadows/CloudShadowSource.cs:662`
-- `Packages/is.zori.atmospherics/Runtime/VolumetricClouds/CloudHemiOctCapturePass.cs:230`
+Typical uses include cloud history textures, screen-space shadow intermediates,
+cloud-shadow maps, and probe or hemispherical capture textures.
 
 ### `SetGlobalTextureAfterPass(in TextureHandle, int propertyId)`
 
@@ -90,9 +87,9 @@ void SetGlobalTextureAfterPass(in TextureHandle input, int propertyId);
 - When `RENDER_GRAPH_CLEAR_GLOBALS` is defined, slots set this way are cleared at end of graph execution.
 
 Project examples:
-- `Packages/is.zori.atmospherics/Runtime/DistantShadows/CloudShadowSource.cs:792` — `builder.SetGlobalTextureAfterPass(finalHandle, PropCloudShadowmap);`
-- `Packages/is.zori.atmospherics/Runtime/VolumetricClouds/VolumetricCloudsPass.cs:589-590` — publishes `_CloudsTraceLighting` and `_CloudsTraceDepth` for the reproject pass.
-- `Packages/is.zori.atmospherics/Runtime/VolumetricFog/VolumetricFogPass.cs:1885` — `builder.SetGlobalTextureAfterPass(integrated, ID_IntegratedGlobal);`
+- Publish a final cloud-shadow map with `builder.SetGlobalTextureAfterPass(finalHandle, PropCloudShadowmap)`.
+- Publish cloud lighting and depth outputs for a later reprojection pass.
+- Publish an integrated fog texture for later composition.
 - URP `MainLightShadowCasterPass.cs:505` — `builder.SetGlobalTextureAfterPass(shadowTexture, MainLightShadowConstantBuffer._MainLightShadowmapID);` — this is the publication point that lets receivers `UseGlobalTexture(_MainLightShadowmapID)`.
 
 ### `UseBuffer(in BufferHandle, AccessFlags = Read) → BufferHandle`
@@ -108,7 +105,7 @@ BufferHandle UseBuffer(in BufferHandle input, AccessFlags flags = AccessFlags.Re
 - For UAV buffers in raster/unsafe passes use `UseBufferRandomAccess` instead (declares it as a u-register slot).
 
 Project examples:
-- StructuredBuffers used by atmospherics fog/cloud passes (additive volumes, alpha volumes, particles) follow this — see grep below.
+- Structured buffers used by fog, cloud, particle, and voxel passes follow this pattern.
 
 ### `CreateTransientTexture(in TextureDesc) → TextureHandle`<br>`CreateTransientTexture(in TextureHandle) → TextureHandle`
 
@@ -163,10 +160,8 @@ void AllowPassCulling(bool value);
 - Caller responsibility: pass `false` whenever the pass has side effects RG cannot observe — e.g. it publishes a global via a render-func `cmd.SetGlobal*` that the compiler doesn't track, or it writes to an imported persistent RT used by next-frame.
 - RG handles: marks the pass as un-cullable. Note: `AllowGlobalStateModification(true)` already implies `AllowPassCulling(false)` (`RenderGraphBuilders.cs:64-77`).
 
-Project examples (very common): every atmospherics pass calls `builder.AllowPassCulling(false)` because they write to history textures used next frame:
-- `Packages/is.zori.atmospherics/Runtime/PhysicalSky/PhysicalSkyPass.cs:378`
-- `Packages/is.zori.atmospherics/Runtime/RealtimeGI/RealtimeGIPass.cs:960`
-- `Packages/is.zori.atmospherics/Runtime/VolumetricFog/VolumetricFogPass.cs:1321`
+This is common for passes that write history textures consumed next frame,
+because the current graph cannot otherwise see the future-frame consumer.
 
 ### `AllowGlobalStateModification(bool value)`
 
@@ -182,7 +177,7 @@ void AllowGlobalStateModification(bool value);
 - The unsafe pass type forces this to true (`RenderGraph.cs:1505: renderPass.AllowGlobalState(true);`) — every `AddUnsafePass` already opts in.
 
 Project examples:
-- `Packages/is.zori.atmospherics/Runtime/VolumetricClouds/VolumetricCloudsPass.cs:584,727,831,883`
+- Use it only where a pass intentionally reads shader globals that cannot be declared individually.
 - URP `MainLightShadowCasterPass.cs:502` — needed because the render func issues `SetGlobalMatrixArray(_MainLightWorldToShadow, ...)` and `SetGlobalVector(_CascadeShadowSplitSpheres0..3, ...)` etc.
 - URP `CopyDepthPass.cs:378` — needed because the render func sets `_CameraDepthTexture` global.
 - URP `RendererFeatures/ScreenSpaceShadows.cs:220` — the post-blit keyword flip needs it.
@@ -229,7 +224,7 @@ void SetRenderAttachment(TextureHandle tex, int index, AccessFlags flags, int mi
 - Reading via `Read` flag means rasterization stage will read the buffer (blending, z-test). Not for shader sampling — for that use `SetInputAttachment` (raster only) or a separate `UseTexture` declaration on a different handle.
 
 Project examples:
-- `Packages/is.zori.atmospherics/Runtime/DistantShadows/CloudShadowSource.cs:656,725,760,788` — single-RT attachment per pass for the cloud-shadow blur chain.
+- A cloud-shadow blur chain typically declares one render-target attachment per pass.
 - URP `MainLightShadowCasterPass.cs:495` — `builder.SetRenderAttachmentDepth(shadowTexture, AccessFlags.Write);` is the depth variant.
 
 ### `SetRenderAttachmentDepth(TextureHandle, AccessFlags = Write)` (+ mip/slice overload)
@@ -306,7 +301,7 @@ void SetRenderFunc<PassData>(BaseRenderFunc<PassData, ComputeGraphContext> rende
 
 `IRenderGraphBuilder.cs:291`. Mandatory. `ComputeGraphContext` exposes `cmd` of type `ComputeCommandBuffer` — only compute / copy commands.
 
-Note: project's compute work is currently routed via `AddUnsafePass` (see `AtmosphericsScreenSpaceShadowsPass.cs:306,369`, `VolumetricFogPass.cs:1039`, `RealtimeGIPass.cs:852`, `RWVTFulfillerDispatch.cs:94`) — see [pass-types.md](pass-types.md) for why.
+Some compute work may still require `AddUnsafePass` when it uses command-buffer operations not exposed by the typed compute builder; see [pass-types.md](pass-types.md) for the trade-offs.
 
 ---
 

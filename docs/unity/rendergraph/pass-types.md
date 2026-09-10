@@ -31,9 +31,9 @@ Mergeable: the native render-pass compiler can merge consecutive raster passes t
 XR friendly: `EnableFoveatedRasterization` only meaningful here (and the post-process raster passes).
 
 Project examples:
-- `Packages/is.zori.atmospherics/Runtime/VolumetricClouds/VolumetricCloudsPass.cs:522` — fullscreen blit raymarch, single MRT (lighting + depth).
-- `Packages/is.zori.atmospherics/Runtime/DistantShadows/CloudShadowSource.cs:612,713,748,776` — bake/temporal/blur chain, all raster.
-- `Packages/is.zori.atmospherics/Runtime/DistantShadows/Heightfields/HeightfieldShadowSource.cs:356,379,434,468,568` — bake → temporal → blurH → blurV → fold.
+- A fullscreen cloud raymarch can use a raster pass with lighting and depth attachments.
+- A cloud-shadow bake, temporal, and blur chain can remain entirely raster.
+- A heightfield-shadow chain can use raster passes for bake → temporal → blurH → blurV → fold.
 - URP `MainLightShadowCasterPass.cs:482` — `using (var builder = graph.AddRasterRenderPass<PassData>(passName, out var passData, profilingSampler))` — shadow-caster draws the cascades into a depth attachment.
 
 ## AddComputePass
@@ -82,17 +82,13 @@ builder.SetRenderFunc(static (BakeData d, UnsafeGraphContext ctx) => {
   cmd.DispatchCompute(d.PopulateCS, d.PopulateKernel, gx, gy, d.ResZ);
 });
 ```
-(Pattern from `Packages/is.zori.atmospherics/Runtime/VolumetricFog/VolumetricFogPass.cs:1323-1326`.)
+(This is a common pattern for multi-kernel volumetric processing.)
 
 Project examples — most compute work is here:
-- `Packages/is.zori.atmospherics/Runtime/VolumetricFog/VolumetricFogPass.cs:1039` — populate + integrate kernels in a single unsafe pass (so the two compute dispatches share a barrier-free range).
-- `Packages/is.zori.atmospherics/Runtime/RealtimeGI/RealtimeGIPass.cs:852` — clipmap voxelization compute.
-- `Packages/is.zori.atmospherics/Runtime/PhysicalSky/PhysicalSkyPass.cs:345` — sky LUT computes.
-- `Packages/is.zori.atmospherics/Runtime/VolumetricFog/DistantFogPass.cs:289` — distant fog 3D-LUT bake.
-- `Packages/is.zori.atmospherics/Runtime/VolumetricClouds/VolumetricCloudsPass.cs:810` — post-process compute.
-- `Packages/is.zori.atmospherics/Runtime/DistantShadows/AtmosphericsScreenSpaceShadowsPass.cs:306,369` — compose + upsample (use `Blitter.BlitTexture` + extra `cmd.SetGlobal*` so they're unsafe).
-- `Packages/is.zori.heightfields/Heightfields/Runtime/HeightfieldRenderFeature.cs:521,1142,1231` — HiZ downsample, BVH reset, height capture.
-- `Packages/is.zori.heightfields/VirtualTextures/Runtime/RWVTFulfillerDispatch.cs:94` — RWVT page fulfillment.
+- Populate and integrate kernels recorded together when an explicit barrier-free sequence is required.
+- Clipmap voxelization, sky LUT generation, volumetric post-processing, and virtual-texture page fulfillment.
+- Compose or upsample passes that mix `Blitter.BlitTexture` with global state changes.
+- Hi-Z downsample, GPU hierarchy reset, and height or voxel capture.
 
 URP precedent for unsafe-instead-of-compute:
 - URP `RendererFeatures/ScreenSpaceShadows.cs:208-214` documents the rationale: "UUM-85291: Using UnsafePass to not allow this pass to merge with other passes as it can cause issues when using Deferred Lighting by breaking up the Draw GBuffer and Deferred Lighting passes ... For now, using an UnsafePass ensures that this pass won't be merged as a fix is found for the other underlying issues."
@@ -104,7 +100,7 @@ Decision rule:
 2. Single compute dispatch, no extra `cmd.SetGlobal*` outside what RG handles? → `AddComputePass`. Cleaner contract; future-proof against compiler-vs-unsafe divergence.
 3. Mixed compute + raster sub-blits, manual `cmd.SetRenderTarget`, multiple compute dispatches that share state, or any need to call `cmd.SetGlobalKeyword` / `cmd.EnableKeyword` / `cmd.SetGlobalMatrixArray` / `cmd.SetGlobalTexture` from the render func? → `AddUnsafePass`.
 
-The project leans heavily on (3) because the compute kernels read URP shadow globals (matrix arrays, vectors) that don't auto-route through RG's compute-context, and because some passes do `Blitter.BlitTexture` + `cmd.SetGlobalVector(MainLightShadowParams, ...)` keyword flips (`AtmosphericsScreenSpaceShadowsPass.cs:306-355`) that would be illegal on a `RasterCommandBuffer`.
+Use (3) when compute kernels depend on URP shadow globals that do not route through the typed compute context, or when a pass mixes operations such as `Blitter.BlitTexture` with `cmd.SetGlobal*` state changes that are unavailable on a `RasterCommandBuffer`.
 
 ## The deprecated AddRenderPass
 
