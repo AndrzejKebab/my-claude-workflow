@@ -33,7 +33,7 @@ new CountingJob { Input = a, Sum = sum }.Schedule(prevHandle).Complete();
 
 Use when the whole task is sequential or fits comfortably on one worker. Frees a thread, no batching overhead.
 
-Project example: `OctreeBuilder.cs:49` (`is.zori.volumetrics`) — `job.Schedule().Complete();` for a CPU octree build.
+Example: `job.Schedule().Complete();` for a CPU octree build that must finish before its result is consumed immediately.
 
 ## `IJobFor` — sequential indexed for-loop
 
@@ -73,7 +73,7 @@ The default. Use when each index's work is independent.
 
 `innerloopBatchCount` heuristics: Unity divides `arrayLength` into chunks of size `innerloopBatchCount` and dispatches them across workers. Too small → scheduling overhead dominates. Too large → poor load balance. Typical values: 32–128 for cheap per-index work, 1–16 for expensive per-index work, 1 for very heterogeneous workloads. **Match to roughly one worker's worth of work per chunk** (~10–100 µs).
 
-Project example: `VoxelTileFiller.cs:54` (`is.zori.volumetrics`) — `job.Schedule(VoxelsPerTile, 64).Complete();` (positional). With `VoxelsPerTile = 16³ = 4096` and `innerloopBatchCount = 64` → 64 batches of 64 voxels, comfortably more than the worker count.
+Example: `job.Schedule(VoxelsPerTile, 64).Complete();` (positional). With `VoxelsPerTile = 16³ = 4096` and `innerloopBatchCount = 64` → 64 batches of 64 voxels, comfortably more than the worker count.
 
 ## `IJobParallelForBatch` — parallel per-batch
 

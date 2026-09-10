@@ -18,7 +18,7 @@ DLL-only types are cited via `ilspycmd` decompilation captured at `/tmp/unity-de
 
 - [`safety-and-attributes.md`](safety-and-attributes.md) — `[ReadOnly]` / `[WriteOnly]` / `[NativeDisableParallelForRestriction]` / `[NativeDisableContainerSafetyRestriction]` / `[DeallocateOnJobCompletion]`. Which attribute relaxes which AtomicSafetyHandle check, and the failure modes you trade for the perf.
 
-- [`empirical-examples.md`](empirical-examples.md) — survey of every `Schedule`/`ScheduleParallel` call in this project's packages (`is.zori.volumetrics`, `is.zori.atmospherics`, `is.zori.heightfields`, `com.api-haus.steamdeck-deploy`) plus a sampling of canonical Unity package usage (Entities, Collections, Mathematics). Bucketed by interface. Use as a copy-from canon: "find the closest existing call site and mirror its overload + named-arg style".
+- [`empirical-examples.md`](empirical-examples.md) — workload-balancing examples for `IJobParallelFor`: moderate batches for uniform voxel work and batch size `1` for heterogeneous region work.
 
 - [`decompilation-workflow.md`](decompilation-workflow.md) — how to find the truth when you don't trust an LLM-written job call. Tier 1: PackageCache (source). Tier 2: Rider DecompilerCache (`~/.config/JetBrains/Rider*/resharper-host/DecompilerCache/decompiler/...` — fastest, but only populates on Rider visit). Tier 3: `ilspycmd` (bulk decompile any DLL). Includes the `dotnet tool install -g ilspycmd` install recipe and the right invocation for Unity engine modules.
 
@@ -28,7 +28,7 @@ The bug `job.Schedule(VoxelsPerTile, batchSize: 64).Complete();` does not compil
 
 1. [`scheduling-overloads.md`](scheduling-overloads.md) §"Named arguments cheat sheet" — the canonical parameter is `innerloopBatchCount` (IJobParallelFor / IJobFor.ScheduleParallel) or `indicesPerJobCount` (IJobParallelForBatch). `batchSize` is the **internal** field name on `Unity.Jobs.LowLevel.Unsafe.JobRanges.BatchSize` (`UnityEngine.CoreModule.decompiled.cs:2775`), not a public parameter — easy mistranscription.
 2. [`job-types.md`](job-types.md) — confirm whether the work is per-index (`IJobParallelFor`) or per-batch (`IJobParallelForBatch`). The two have different parameter names; picking the right interface settles the named-arg question.
-3. [`empirical-examples.md`](empirical-examples.md) — find a sibling call in the same package and mirror its parameter style.
+3. [`empirical-examples.md`](empirical-examples.md) — choose an initial batch size based on workload cost and variance, then profile it.
 
 ## What this docset deliberately does NOT cover
 
