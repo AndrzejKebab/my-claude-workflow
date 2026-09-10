@@ -1,148 +1,72 @@
-# Backing up the Claude Code transcripts
+# Backing up agent transcripts
 
-`~/.claude/projects` holds every session transcript this machine has produced —
-6.9 GB across 114 project directories as of 2026-08-14. Nothing else records what
-was decided, measured or tried in a session. It is also the corpus
-`cc-rule-audit` measures against, so losing it loses the baseline as well as the
-history.
+Agent transcripts may contain useful decisions and evidence, but also source
+code, command output, images, paths, personal data, and accidentally pasted
+credentials. Treat a transcript archive as sensitive project data.
 
-Claude Code does prune it. `cleanupPeriodDays` deletes any transcript whose last
-activity is older than the period, and the default is 30 days. Measured
-2026-08-14, before the setting was written: the oldest surviving transcript on
-this machine was 2026-07-14, and the sweep had run that morning at 11:58.
-`~/.claude/settings.json` now sets `cleanupPeriodDays` to 3650. **That setting is
-what makes this backup an archive instead of a rolling 30-day window** — restore
-it first on a new machine, because a fresh install starts deleting again.
+## Decide whether to back them up
 
-`bin/cc-transcript-backup` pushes it to MEGA on a timer.
+Prefer promoting durable knowledge into repository documentation. Back up raw
+transcripts only when their recovery or audit value justifies the privacy,
+storage, and retention cost.
 
-## Why not MEGAcmd
+Claude Code and Codex use provider- and version-specific local storage. Discover
+the active locations from the installed client's documentation or settings;
+do not hard-code another user's home directory or assume both tools share a
+format.
 
-MEGAcmd (`mega-sync`, `mega-login`) is available as `megacmd` in the
-`DEB_Arch_Extra` repo, and it is the wrong tool here for two reasons.
+## Backup properties
 
-MEGAsync is already running and already syncing `~/_dev/my-claude-workflow`,
-`~/_dev/_unity/ironvale`, `~/_dev/_unity/voxelmission` and `~/Documents/ARDOUR`.
-MEGAcmd carries its own independent sync engine and its own session; two engines
-on one account contend over the same remote state.
+A safe transcript backup should be:
 
-More importantly, a live sync is the wrong shape for this data. Transcripts are
-append-only JSONL that grow while a session runs, and the largest here are 52 MB.
-MEGA replaces a whole file when it changes, so a live sync re-uploads 52 MB on
-every append. The goal is durability, not liveness.
+- **Copy-oriented:** local deletion should not silently delete the archive.
+- **Settled:** skip files still being written, or use a snapshot mechanism.
+- **Encrypted:** protect data in transit and at rest with credentials stored
+  outside the repository.
+- **Excluded from Git:** transcripts are not normal source files.
+- **Restorable:** test recovery into a separate scratch directory.
+- **Retained deliberately:** define when old data expires.
 
-## Why `copy` and not `sync`
+## Windows example with `rclone`
 
-`rclone sync` makes the destination match the source, which means a local
-deletion propagates and the remote copy disappears. `rclone copy` only ever adds
-and overwrites. Delete a project directory locally, or lose the disk, and the
-remote still has it. "Never lost" is the literal behaviour of `copy`.
+Configure an encrypted or trusted remote interactively:
 
-The cost is that the remote grows monotonically and never reclaims space from
-deleted sessions. That is the intended trade.
-
-## Why `--min-age 15m`
-
-A transcript being appended to by a live session would upload, change, and upload
-again. `--min-age` skips anything touched in the last 15 minutes, so each file
-uploads once it has settled. An active session's transcript arrives on the next
-run instead of the current one.
-
-## Setup
-
-The MEGA login is interactive and has to be done by hand:
-
-```
+```powershell
 rclone config
+rclone listremotes
 ```
 
-`n` for a new remote, name it `mega`, pick the `mega` backend, enter the account
-email and password, decline the advanced config. Then confirm it works:
+Dry-run a copy from the transcript directory discovered for the active client:
 
-```
-rclone about mega:
-rclone lsd mega:
-```
+```powershell
+$transcriptSource = 'C:\path\to\agent-transcripts'
+$backupTarget = 'remote-name:agent-transcripts'
 
-Measured 2026-08-14: 3 TiB total, 303 GiB used, 2.7 TiB free. 6.9 GB is not a
-sizing question, so the archive goes up uncompressed and stays browsable.
-
-**Close any interactive `rclone config` session first.** Login writes `session_id`
-and `master_key` back into `rclone.conf`, and a config session holding that file
-stalls the write — the symptom is `rclone about mega:` sitting forever on
-`Using username and password to initialize the Mega API`. With the file free,
-that login takes about 26 seconds.
-
-First run, without uploading anything:
-
-```
-cc-transcript-backup --dry-run
+rclone copy $transcriptSource $backupTarget --min-age 15m --dry-run
 ```
 
-Then install the timer:
+After reviewing the dry run, repeat without `--dry-run`. Use Windows Task
+Scheduler if recurring backup is wanted. Keep source, destination, retention,
+and exclusions in a user-owned configuration outside this repository.
 
-```
-mkdir -p ~/.config/systemd/user
-ln -sf ~/_dev/my-claude-workflow/share/systemd/cc-transcript-backup.{service,timer} \
-       ~/.config/systemd/user/
-systemctl --user daemon-reload
-systemctl --user enable --now cc-transcript-backup.timer
-systemctl --user list-timers cc-transcript-backup.timer
-```
+Do not use destructive mirroring by default. A sync operation can propagate a
+local deletion to the archive.
 
-The first run uploads the full 6.9 GB and will take as long as the uplink takes;
-every run after that moves only what changed. Progress lands in
-`~/.claude/transcript-backup.log`.
+## Restore test
 
-## Restoring
+Restore a small subset into a new temporary directory, never over the live
+client state:
 
-A backup nobody has restored is a hypothesis. Verify the round trip once, into a
-scratch directory rather than over the live tree:
-
-```
-rclone copy mega:claude-transcripts/-home-midori /tmp/restore-test --max-depth 1
+```powershell
+$restoreTarget = Join-Path $env:TEMP 'agent-transcript-restore-test'
+rclone copy 'remote-name:agent-transcripts' $restoreTarget --max-depth 1
 ```
 
-Full restore:
+Confirm that files open, expected metadata is present, and encrypted storage can
+be recovered with the credentials available to the user.
 
-```
-rclone copy mega:claude-transcripts ~/.claude/projects
-```
+## Repository scripts
 
-## Knobs
-
-Environment variables, all optional:
-
-| Variable | Default |
-|---|---|
-| `CC_BACKUP_REMOTE` | `mega:claude-transcripts` |
-| `CC_BACKUP_SRC` | `~/.claude/projects` |
-| `CC_BACKUP_LOG` | `~/.claude/transcript-backup.log` |
-| `CC_BACKUP_SETTLE` | `15m` |
-
-To include the small configuration alongside the transcripts — `settings.json`,
-`memory/`, `todos/` — point `CC_BACKUP_SRC` at `~/.claude` instead. That pulls in
-`statsig/` and the shell snapshots too, which are churn with no recovery value,
-so an `--exclude` list is the price of doing it.
-
-## Images are already in here
-
-A pasted image is written into the transcript as base64, verbatim. Measured on a
-1218x514 screenshot: the record decodes to 158039 bytes and the source file in
-`/tmp` is 158039 bytes, same `image/png` media type — no re-encode, no downscale.
-The images a session reads off disk are embedded the same way. The corpus held
-10923 of them on 2026-08-14, jpeg and png together.
-
-So backing up `~/.claude/projects` backs up every image, and the terminal's own
-paste files under `/tmp` are a copy that a reboot is welcome to take. Nothing
-extra needs syncing. The cost is that an image is only reachable by decoding the
-JSONL record that carries it — the archive stores images, it does not browse
-them.
-
-## What is in these files
-
-Everything typed into and read out of a session: source, file contents, command
-output, and anything pasted, including a credential pasted by mistake. The
-archive is as sensitive as the most sensitive thing that ever crossed a prompt.
-Compression is not encryption — MEGA encrypts at rest under the account key, and
-that account's password is what guards 6.9 GB of working history.
+`bin/cc-transcript-backup` and `share/systemd/` are legacy Claude Code/Linux
+helpers. They are not installed as the Windows backup mechanism and should only
+be used after reviewing their configured source, remote, and retention behavior.

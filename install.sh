@@ -225,27 +225,14 @@ else
     echo "  WARNING: no 'unity' on PATH — add $SCRIPT_DIR/bin"
 fi
 
-# Per-project memories. Same reasoning as the hooks: they live under
-# ~/.claude/projects/<slug>/memory/, which nothing tracks, so every memory ever
-# written is one machine rebuild from gone. cc-memory-link moves them into
-# memory/ here and symlinks them back; it copies-then-verifies before removing
-# anything, and refuses to overwrite a differing file.
-echo ""
-echo "Memories:"
-if [[ -x "$SCRIPT_DIR/bin/cc-memory-link" ]]; then
-    "$SCRIPT_DIR/bin/cc-memory-link" | sed 's/^/  /'
-else
-    echo "  bin/cc-memory-link missing — skipped"
-fi
-
 echo ""
 echo "Hooks:"
 # Refuses no-op spin loops (`echo .`, `true`) and any command repeated 7+ times
 # in 120s. See docs/no-op-spin.md for why. Fails open if jq is missing.
 install_hook PreToolUse Bash cc-nospin
 
-# Rules that measurement showed prose could not carry. docs/rule-compliance.md
-# holds the baseline each one was wired against, and cc-rule-audit re-measures.
+# Deterministic checks for rules that prose alone cannot guarantee. See
+# docs/rule-compliance.md; cc-rule-audit can inspect Claude transcripts.
 install_hook SessionStart "" cc-doctrine
 install_hook Stop "" cc-no-hedge
 install_hook PreToolUse "Read|Bash" cc-whole-file-reads

@@ -7,9 +7,8 @@ acceptance signal exists. The gate is the only channel that cannot be talked pas
 gate logically excludes accepting an invalid or partially falsified result. Gate quality bounds
 result quality; a weak gate converts confident agent reports into silent regressions.
 
-Sidecar: `skills/delegate/e2e-gates.md` — the authoring workflow for gates that capture a
-user-described visual symptom (user verifies captures before threshold calibration). This page is
-the general criteria; that page is the visual-capture dispatch shape.
+For visual symptoms, capture what the user sees and have the user verify the representative images
+before calibrating a metric or threshold.
 
 ## Criteria
 
@@ -37,9 +36,8 @@ the general criteria; that page is the visual-capture dispatch shape.
    over-eager behavior entirely.
 8. **Bite proof.** Red on the pre-change artifact, green after, non-vacuously. A gate that never
    failed proves nothing about what it guards.
-9. **Durable.** Gates land as permanent suite members maintained with the codebase (user law,
-   2026-07-14: "all gates should land as durable e2e tests that we intend to maintain as part of
-   this package") — not one-shot acceptance scripts.
+9. **Durable.** Gates land as permanent suite members maintained with the codebase, not as one-shot
+   acceptance scripts.
 10. **Human eye is the final tier, not a substitute.** Mechanical gate first (SSIM/exact against
     representatives), then human-eye PNG review tops off visual claims
     (verification-representatives protocol).
@@ -115,10 +113,9 @@ capability available, and it is available immediately.
 **The red must land at the gate's own oracle, not at a precondition.** A sabotage arm that fails an
 earlier assertion — a settle check, a fixture steering step, an arm-equality precondition — proves
 the fixture noticed *something*, not that the oracle measures the subject. Check *where* the arm
-went red before crediting it. Observed 2026-07-23 (swordgal locomotion-D, three iterations lost to
-this): a sabotage installed before the fixture's own steering cancelled that steering and reddened a
-precondition 30 m from the thing under test; moved after the steer, both arms reached the identical
-start state and the red moved to the oracle, which is what made the one moved variable the subject.
+went red before crediting it. For example, sabotage installed before fixture steering may cancel
+that steering and fail a distant precondition; moving it after steering lets both arms reach the
+same start state and moves the failure to the oracle.
 Corollary: install the sabotage at the last point before the measured window, so both arms share
 every precondition.
 
@@ -178,7 +175,7 @@ That is a unit test. It asserts an intermediate stage emits what its author assu
 unit tests do and why they are banned. Realness is not additive: nine real stages and one internal
 readout is not 90 % end-to-end, it is a unit test on stage ten's input.
 
-**Worked example, measured 2026-07-25 (voxelworld).** Users reported material boundaries "flowing
+**Worked example.** Users reported material boundaries "flowing
 wrong from one material into another". A shader gate was built to guard the fix. It drove the real
 render pipeline over the real generated world with the real shipping material, toggled exactly one
 variable, measured a good-vs-good noise floor of zero first, chose its threshold in the measured
@@ -246,7 +243,7 @@ prints what it examined.** Around that core:
 - **Never loosen an assertion to reach green.** If the assertion is wrong, the claim was wrong —
   restate the claim and say so; do not widen the epsilon.
 
-## Worked examples (miniheightfields testbed, shadow rework 2026-07)
+## Worked examples for terrain and voxel rendering
 
 - **Two-camera isolation** (criteria 3, 4, 5): cameras A and B at different poses; three runs —
   A solo, B solo, A+B every frame — each capturing rendered frame AND internal shadow buffers
@@ -273,12 +270,11 @@ prints what it examined.** Around that core:
   static output must equal the S=64 reference (near-equality SSIM + an artifact detector showing
   no S-dependent structure) — an invariance cross-reference: the setting buys convergence time,
   and the gate forbids it buying anything else.
-- **Config-gated observables** (criteria 1, 6): per-pass app-config toggles
-  (`HeightfieldBenchmarkGates.Shadow*`) and internal counters
-  (`HeightfieldDiagnostics.AccumulateShadowBake`) let gates isolate and count mechanism events
+- **Config-gated observables** (criteria 1, 6): per-pass app-config toggles and internal counters
+  let gates isolate and count mechanism events
   without forking the loop — feature gates are APP CONFIG, the test stays black-box.
-- **One real-pipeline driver** (criterion 1): a single fixture (`TerrainRenderTestFixture`,
-  26 suites) stands up the real pipeline, spawns terrain/sun/camera, ticks `Camera.Render()` —
+- **One real-pipeline driver** (criterion 1): a shared fixture stands up the real pipeline,
+  spawns terrain, sun, and camera, then ticks `Camera.Render()` —
   every gate drives the shipped loop through it; none reimplements a sim step.
 
 ## Anti-patterns

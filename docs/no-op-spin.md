@@ -1,96 +1,51 @@
-# No-op spin loops, and the two scripts that stop them
+# Avoiding no-op polling loops
 
-A dispatched subagent waiting on something long — a Unity suite, a build, a remote queue — will
-sometimes poll *itself* awake with commands that do nothing, rather than simply stopping. Measured on
-one agent waiting out a PlayMode run: **205 `echo .` calls in 12 minutes**, 17.2 per minute, median
-gap 2.9 s.
+An agent waiting for a Unity run, build, test suite, delegated task, or remote
+job should wait on the subject itself. Repeated `echo`, `true`, empty polling,
+or rapid status checks add cost and noise without making completion happen
+sooner.
 
-Two things are wrong with that, and only one of them is the agent's.
+## Rules
 
-**It buys nothing.** When a background command or a tracked task finishes, the harness re-invokes the
-agent automatically. There is no wakefulness to maintain, so every poll is pure cost.
+- Use the client's task-wait primitive when one exists.
+- For a running terminal process, wait on that process or session rather than
+  launching new commands.
+- For a background service, poll at a bounded interval and stop when a concrete
+  state changes.
+- Do not use foreground sleeps merely to keep an agent active.
+- Report unchanged state only when the user asked for periodic status.
+- Time out with a clear diagnostic rather than polling forever.
 
-**It lands in the human's terminal.** Each one renders as `● Background command "Idle" completed
-(exit code 0)`. The agent pays a tool call; the person watching pays a screenful. That asymmetry is
-why this is worth a hook and not just a line of advice — advice only reaches agents that read it, and
-the failure mode is invisible to the agent producing it.
+## Claude Code hook
 
-## `cc-nospin` — the hook
+`bin/cc-nospin` is a Claude Code `PreToolUse` hook. It rejects commands that are
+entirely no-ops and detects excessive repetition. It is a provider-specific
+backstop; the general waiting rules above apply equally to Codex.
 
-`bin/cc-nospin`, wired as the **first** `PreToolUse(Bash)` hook by `install.sh` so a refusal
-short-circuits before the other Bash hooks do any work. Two rules, deliberately asymmetric:
+The hook must fail open on malformed input or unavailable dependencies. A broken
+pre-tool hook must not block every shell command.
 
-1. **A whole command that does nothing is refused on first use** — `echo .`, `echo idle`, `true`, `:`,
-   bare `echo`/`printf`. There is no legitimate reason to run one of these as an entire command, so
-   this rule has no false positives. A command that merely *contains* `echo` (`echo hi > f`,
-   `echo "$(date)" && git log`) is untouched.
-2. **Any command repeated ≥ 7 times inside 120 s is refused as a spin.** This is the rule that catches
-   spins rule 1 cannot enumerate. The threshold is set high on purpose: a few repeated `git status`es
-   while iterating is normal work, and a hook that blocks real work is worse than the spam it prevents.
+## Unity process checks
 
-Both refusals carry the fix rather than just a "no" — wait on the subject in one call, use `unity-ps`
-for liveness, and remember the harness re-invokes you anyway.
+On Windows, prefer checking the actual Unity process plus the project lock and
+log state. A broad command-line substring search can match the checking command
+itself or an unrelated Editor.
 
-**It fails open by construction.** Malformed JSON, absent `command`, and a missing `jq` all exit 0
-with no output. A broken `PreToolUse` hook blocks *every* Bash call in *every* session, so failing
-open matters more than catching every case.
+Useful evidence includes:
 
-State lives in `/tmp/cc-nospin-$UID/`, one file of timestamps per command hash, trimmed to the window
-and capped at 64 entries.
+- The process executable is `Unity.exe`.
+- The expected project has a `Temp\UnityLockfile` while open.
+- The batch-mode log continues to advance.
+- The process exit code or terminal session reports completion.
 
-## `unity-ps` — because `pgrep -f` reports phantoms
+`bin/unity-ps` is a Unix helper retained for compatible environments. Do not use
+it as the Windows implementation; use PowerShell process inspection or the Unity
+CLI integration available in the current environment.
 
-`pgrep -f "Editor/Unity -projectPath …"` **matches the shell running the pgrep**, because that pattern
-sits in the shell's own command line. Every liveness check written that way reports an editor that
-isn't there, and the report then gets relayed as fact. This produced three false "unity RUNNING"
-claims in a single session before it was caught.
+## Prompt guidance
 
-`bin/unity-ps` matches the *executable* instead — Unity's process comm is exactly `Unity`, and
-`pgrep -x` cannot match a shell.
+When delegating long-running work, say:
 
-    unity-ps                        # pid + project path per running editor; exit 1 if none
-    unity-ps -q <substring>         # silent; exit 0 if a matching editor is live
-    until unity-ps -q myrepo; do sleep 30; done    # wait for a run to start
-    while  unity-ps -q myrepo; do sleep 30; done   # wait for a run to finish
-
-The general rule behind it: **match the executable, not the command line**, for any liveness check
-whose pattern the checking process also contains.
-
-## What to put in a dispatch prompt
-
-The hook is the backstop, not the teaching. Any agent that will wait on a gate should be told:
-
-> Do not poll with no-op commands to stay awake. When a background command or tracked task finishes,
-> the harness re-invokes you automatically. If you must block, wait on the *subject* in one call —
-> `while unity-ps -q <project>; do sleep 30; done` — not four hundred calls that wait on nothing.
-> Use `unity-ps` for liveness, never `pgrep -f`. Bare foreground `sleep` is blocked; wait on a
-> condition.
-
-## Counting them after the fact
-
-Subagent transcripts are symlinks under the session's `tasks/` dir pointing at
-`~/.claude/projects/<slug>/<session>/subagents/agent-<id>.jsonl`. **Never read or tail one** — they
-run to megabytes and will bury the reader's context. Count with `grep -oF`, or a small Python pass
-that parses each line and filters on `tool_use.name == "Bash"`. Note that `grep -o` with a
-`.\{0,60\}` context window is catastrophic on those very long JSON lines and will time out; and that
-`stat -c%s` on the `tasks/` entry reports 145 bytes, which is the symlink, not the file.
-
-## The Bash tool runs zsh, and that breaks globs
-
-The tool executes `/usr/bin/zsh -c 'source ~/.claude/shell-snapshots/… && eval "<command>"'` —
-despite the tool's name and despite a session brief reporting the shell as `/bin/fish`.
-
-- **An unmatched glob aborts the whole command.** `grep --include=*.cs …` dies with
-  `(eval):1: no matches found` before grep ever runs; so does `[ -f /tmp/dir-*/x.xml ]`. Quote the
-  pattern or use `find`/explicit paths.
-- Errors prefixed `(eval):N:` are the tell you are in zsh.
-- `#!/usr/bin/env bash` scripts are unaffected — they are executed, not sourced. Anything
-  non-trivial is safer written to a file and run than inlined.
-
-## `ps aux | grep` under-reports Unity runs
-
-The inverse of the `pgrep -f` phantom: `ps aux | grep -i unity` once reported **zero** processes
-while **four** batchmode runs were live and contending for one project. Batchmode children get
-re-parented and renamed in ways the naive grep misses, and the grep also loses to its own quoting in
-zsh. Before assuming a project is free, check `Temp/UnityLockfile` and the run's own log tail — never
-a bare `ps | grep`. A run you believe is dead can still hold the lockfile and hang the next one.
+> Wait on the running task or process. Do not issue no-op commands to remain
+> active. Poll only when no event-based wait exists, use a bounded interval,
+> and report only completion, failure, or required user action.

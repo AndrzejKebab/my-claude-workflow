@@ -1,52 +1,38 @@
-# Durable memory
+# Durable project knowledge
 
-Claude Code writes per-project memories to `~/.claude/projects/<slug>/memory/`. **Nothing tracks
-`~/.claude`** — it is not a git repo, and before this the installer only symlinked `skills`, `agents`
-and the `CLAUDE.md` @imports into it. Everything else there was one machine rebuild from gone.
+Agent-generated memory is useful only when it is accurate, scoped, reviewable,
+and stored with the project that owns it. Provider-specific cache directories
+are not the source of truth.
 
-At migration time that was **33 project directories and 402 files**, some of them years of accumulated
-project knowledge — `woweyreey` alone held 163.
+## Storage policy
 
-The fix is the shape the installer already used for `skills` and `agents`: the real files live in this
-repo, a symlink points at them from `~/.claude`.
+- Put architecture, workflows, commands, and decisions in the owning
+  repository's documentation.
+- Put reusable cross-project guidance in this workflow repository.
+- Keep personal preferences in user-level agent instructions.
+- Do not copy unrelated project memories into this repository.
+- Do not automatically restore old memory archives into active agent context.
 
-    ~/.claude/projects/<slug>/memory  ->  <repo>/memory/<slug>/
+Claude Code and Codex may maintain their own local task state or caches. Those
+locations can change and may contain sensitive material. The installer should
+install shared skills and configuration without treating either provider's
+transcript or memory cache as version-controlled project data.
 
-`bin/cc-memory-link` performs the migration and `install.sh` runs it, so a fresh machine gets every
-memory back with the same command that installs everything else.
+## Promoting knowledge into documentation
 
-    cc-memory-link -n              # dry run — say what would happen, touch nothing
-    cc-memory-link                 # do it
-    cc-memory-link -n <substring>  # limit to slugs matching a substring
+Before preserving a memory, check:
 
-## How it avoids losing anything
+1. Is it still true in the current codebase?
+2. Does it belong to this project or to a reusable workflow?
+3. Can it be written without private paths, credentials, or unrelated names?
+4. Is the evidence or verification method included?
+5. Will a future maintainer know when the note has become stale?
 
-The order is **copy → verify → replace**, never move:
+Rewrite the result as a focused document or update an existing one. Prefer a
+small number of maintained references over a large archive of agent summaries.
 
-1. `cp -an` into the store (`-n` so an existing file is never clobbered).
-2. `cmp` every source file against its copy. Any mismatch aborts *that slug* and leaves the originals
-   untouched.
-3. Only then remove the original directory and put a symlink in its place.
+## Backup boundary
 
-An interrupted run therefore leaves originals intact and can simply be re-run. A file present on both
-sides with **differing content** is never overwritten — the slug is reported as `CONFLICT`, skipped,
-and left unlinked to resolve by hand. Re-running when everything is already linked is a no-op.
-
-## Privacy
-
-The store holds memories about **every** project, including client work. This repo is private, and it
-must stay that way — check with `gh repo view <owner>/my-claude-workflow --json isPrivate` before ever
-changing its visibility, and treat `memory/` as the reason not to.
-
-If a project's memories should not live here at all, the honest options are to keep that slug
-unlinked (delete the symlink and restore a real directory from the store), or to add the slug to
-`.gitignore` — not to quietly hope nobody looks.
-
-## The general lesson
-
-`~/.claude` is a **cache with some config in it**, not storage. Anything written there that would hurt
-to lose needs a symlink into a tracked repo and a line in `install.sh`. That already covers `skills`,
-`agents`, the `CLAUDE.md` @imports, hooks (see [no-op-spin.md](no-op-spin.md)) and now `memory`.
-
-`settings.json` is the deliberate exception: Claude Code writes to it during a session, so it is
-merged into rather than symlinked — a link would make this repo churn on every run.
+Back up repositories through the normal version-control and backup process.
+Back up provider transcripts separately only when required, with appropriate
+privacy controls; see [`transcript-backup.md`](transcript-backup.md).
