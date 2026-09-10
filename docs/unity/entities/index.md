@@ -1,19 +1,16 @@
-# Unity.Entities — Burst ISystem / ECS systems (com.unity.entities 1.x / 6.5.0)
+# Unity.Entities — Burst ISystem / ECS systems
 
-Canonical local reference for "what does this `ISystem` / `IJobEntity` / `EntityCommandBuffer` API actually do", "how do I chain dependencies across an ECS system", and "how do I write, order, and schedule Burst-compiled systems". This subdocset merges two captures from sibling Unity projects: a multi-package survey from a DOTS falling-sand project (`mara`, where the package `is.zori.pixelworld` is Burst-compiled throughout, with the 2D physics binding `is.zori.entities.physics2d`, the kinematic character controller `is.zori.entities.charactercontroller2d`, and the NSprites sprite renderer also ECS), and a focused single-system capture from a sibling project (`woweyreey`). Read it for writing, ordering, and scheduling Burst `ISystem`s.
+Canonical local reference for "what does this `ISystem` / `IJobEntity` / `EntityCommandBuffer` API actually do", "how do I chain dependencies across an ECS system", and "how do I write, order, and schedule Burst-compiled systems". Read it for writing, ordering, and scheduling Burst `ISystem`s.
 
-## Engine roots and version anchors
+## Package root and version
 
-The two captures were anchored to two different resolved entities packages; cited `file:line` references name which root they came from.
-
-- **`com.unity.entities@e00d2f1d321e` (version 6.5.0)** at `/mnt/archive4/UNITY/Projects/mara/Library/PackageCache/com.unity.entities@e00d2f1d321e/`. Source of the multi-package survey and the system-writing pages; the editor that project runs is `6000.6.0a6`.
-- **`com.unity.entities@8b72e8a7d7d1` (1.x)** at `Library/PackageCache/com.unity.entities@8b72e8a7d7d1/`. Source-shipped; sub-asmdefs of interest:
+- Use the installed **`com.unity.entities`** package at `Library/PackageCache/com.unity.entities@<version>/`. Source-shipped sub-assemblies of interest:
   - `Unity.Entities/` — core: `ISystem`, `SystemBase`, `EntityManager`, `EntityCommandBuffer`, `IJobEntity`, `IJobChunk`, `EntityQuery`.
   - `Unity.Entities.Hybrid/Baking/` — `IBaker`, `Baker<TAuthoring>`, baking systems.
   - `Unity.Transforms/` — `LocalTransform`, `LocalToWorld`, `Parent`, `Child`, `TransformSystemGroup`.
   - `Unity.Scenes/` — sub-scene loading (out of scope for this docset).
 
-All `file:line` citations refer to those roots verbatim, verified on disk. The empirical-examples page carries both surveys: real, copyable call sites from the multi-package project and from the single-system project.
+Verify all `file:line` citations against the package version installed in the current Unity project.
 
 ## Documents
 
@@ -45,10 +42,6 @@ All `file:line` citations refer to those roots verbatim, verified on disk. The e
 
 - [`latios-idioms.md`](latios-idioms.md) — idioms drawn from the Latios Framework and regarded DOTS packages for structuring a large system graph. *(written by a sibling agent)*
 
-### Examples
-
-- [`empirical-examples.md`](empirical-examples.md) — two surveys in one page. First, a multi-package survey of a DOTS project's in-project Burst-`ISystem` call sites (the physics2d, character-controller, and NSprites packages) with `file:line`: how each declares `[BurstCompile] ISystem`, organizes into groups with explicit ordering, schedules jobs, and uses ECBs / singletons. Second, a single-system survey from a sibling project (`SlimeLatticeSyncSystem`) covering every `: ISystem`, `: IJobEntity`, `: IJobChunk`, `EntityCommandBuffer`, and `Baker<>`. Real, copyable examples.
-
 ## Reading order for "I am writing a new Burst ISystem"
 
 1. [`systems.md`](systems.md) / [`system-types.md`](system-types.md) — the `ISystem` shell, `[BurstCompile]` placement, the `ref SystemState` surface, and what `SystemAPI` you may call inside Burst; pick `ISystem` (default) or `SystemBase` (only if you need managed types in `OnUpdate`).
@@ -57,7 +50,6 @@ All `file:line` citations refer to those roots verbatim, verified on disk. The e
 4. [`jobs-on-systems.md`](jobs-on-systems.md) — wire `state.Dependency` correctly.
 5. [`command-buffers-singletons.md`](command-buffers-singletons.md) / [`entity-mutations.md`](entity-mutations.md) — if it makes structural changes (create/destroy/add/remove), the ECB pattern; if it reads or publishes shared state, the singleton pattern.
 6. [`burst-isystem-patterns.md`](burst-isystem-patterns.md) — apply the unmanaged-generic seam where a behavior must be swappable on the Burst path, and confirm the `[BurstCompile]` surface against the entry-point-only rule.
-7. [`empirical-examples.md`](empirical-examples.md) — find the closest in-project system and mirror its shape.
 
 ## Reading order for the "deferred mutation" pattern
 
