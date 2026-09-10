@@ -1,24 +1,24 @@
-# `docs/unity/` — model-aware Unity API canon
+# `docs/unity/` — Unity API reference
 
-Local references for "what does this Unity API actually do, in this version, on this project's setup". Each subdocset:
+Local references for "what does this Unity API actually do in the current project and Editor version?" Each subdocset:
 
 - Cites engine sources by `file:line` (verified on disk, not recalled from training).
 - Documents one Unity subsystem at the depth needed to write or modify code without guessing.
-- Includes an `empirical-examples.md` page surveying existing call sites.
-- Has an `index.md` that lists the topical pages and a "reading order for X" recipe.
+- Uses focused examples or empirical notes where they add reusable guidance.
+- Has an `index.md` that lists the topical pages and practical reading orders.
 
-This canon is the shared, project-agnostic home in the workflow repo, merged from copies that had diverged across several sibling Unity projects. The engine `file:line` citations and the `empirical-examples.md` surveys point at the source trees of the projects they were captured against, not at any one consuming project. The API content is the engine's and is project-agnostic; treat the citations as engine-API provenance, and re-survey against a consuming project's own call sites when you need a project-local example. Where two captures of the same page diverged, the merged page keeps both surveys. The version caveat is in "What is NOT covered here" below.
+This is the shared, project-neutral home for Unity guidance in the workflow repository. Treat `file:line` citations as navigation aids, not permanent identifiers: package hashes and source lines change between Unity versions. Verify exact APIs against the packages and Editor used by the current project.
 
 ## Subdocsets
 
-- [`rendergraph/`](rendergraph/index.md) — Unity 6.3 / URP 17.5 RenderGraph.
+- [`rendergraph/`](rendergraph/index.md) — Unity 6+ URP RenderGraph.
   Builder API (`IBaseRenderGraphBuilder`, `IRasterRenderGraphBuilder`,
   `IComputeRenderGraphBuilder`, `IUnsafeRenderGraphBuilder`), pass-type
   restrictions, global-state propagation, depth-target selection,
   camera-state isolation, samplers, shadow-sampling-from-compute,
-  shader-globals-vs-compute-kernel binding, empirical examples. Also:
-  Surface Cache GI's scene-discovery mechanism and its integration gap
-  with GPU-driven/indirect-draw geometry (`surface-cache-gi.md`), and the
+  shader-globals-vs-compute-kernel binding, and reusable examples. Also:
+  Surface Cache GI's scene-discovery mechanism and integration constraints
+  for GPU-driven/indirect-draw geometry (`surface-cache-gi.md`), and the
   `[ResourcePath]`/`IRenderPipelineGraphicsSettings`/`ObjectDispatcher`
   family of SRP resource-organization idioms (`resource-attributes.md`).
 
@@ -40,7 +40,7 @@ This canon is the shared, project-agnostic home in the workflow repo, merged fro
 
 - [`authoring/`](authoring/index.md) — the serialization rules that decide whether a scene / prefab / SubScene can resolve a script at all, plus the package-sample lifecycle that ships those assets. The one-`MonoBehaviour`-per-correctly-named-file rule and why `fileID: 11500000` binds only the file-name-matching type (a second `MonoBehaviour`/`ScriptableObject` in the same file is unreferenceable); the corollary for programmatic (`-executeMethod`) scene/prefab builders; the missing-script symptom and the YAML-level confirmation. And the sample workflow: `Samples~/` is tilde-ignored delivery (no compile, no import), the `Assets/Samples/…` import is the working copy you develop and test in, publishing back to `Samples~/` happens when ready, re-import/publish is additive (stale files linger), and publishing must preserve `.cs.meta` GUIDs or a consumer's import gets the same missing scripts. As binding as the jobs/burst entries: read it before authoring any `MonoBehaviour`/`ScriptableObject`, building a scene programmatically, or developing/publishing a package sample, because the defects it prevents show nothing at C# compile time and only surface when the asset is imported — by this project or by a consumer of the sample.
 
-- [`entities/`](entities/index.md) — Unity.Entities / DOTS on entities 1.x / 6.5.0, the engine canon for a Burst-compiled DOTS falling-sand engine (`is.zori.pixelworld`) and its sibling ECS packages, with systems as `[BurstCompile] ISystem`. Pages: `systems.md` and `system-types.md` (`ISystem` vs `SystemBase`, lifecycle, `[BurstCompile]` placement, `ref SystemState`, the source-generated `SystemAPI` surface usable inside Burst, `state.Dependency` chaining, scheduling `IJobEntity`/`IJobChunk`), `system-groups.md` (`ComponentSystemGroup`, the `[UpdateInGroup]`/`[UpdateBefore]`/`[UpdateAfter]`/`[CreateAfter]` edges, the standard + fixed-step groups and their ECB systems), `query-and-iteration.md` (`EntityQuery`, `SystemAPI.Query`, `IJobEntity` schedule overloads, `IJobChunk`, the `[WithAll]`/`[WithAny]`/`[WithNone]` family), `jobs-on-systems.md` (`state.Dependency` chaining rules), `entity-mutations.md` and `command-buffers-singletons.md` (`EntityManager` vs `EntityCommandBuffer` + `ParallelWriter`, the standard ECB-system singletons, the native-collection-bearing struct on a singleton component), `baking.md` (`Baker<TAuthoring>`, `TransformUsageFlags`, the component-type taxonomy), `transforms-and-hierarchy.md` (`LocalTransform`/`LocalToWorld`/`Parent`/`Child`, `TransformSystemGroup`), `burst-isystem-patterns.md`, `latios-idioms.md`, and `empirical-examples.md`.
+- [`entities/`](entities/index.md) — Unity.Entities / DOTS guidance for Burst-oriented simulation, including voxel games. Pages cover `ISystem` vs `SystemBase`, lifecycle and `[BurstCompile]` placement, source-generated `SystemAPI`, job dependency chaining, explicit system groups and ordering, `EntityQuery`, `IJobEntity`/`IJobChunk`, entity mutations and command buffers, singleton-owned native state, baking, transforms and hierarchy, Burst-system patterns, and relevant Latios idioms.
 
 ## When to read each
 
@@ -64,19 +64,17 @@ This canon is the shared, project-agnostic home in the workflow repo, merged fro
 
 The DOTS / engine-module APIs live partly as source under `Library/PackageCache/com.unity.*/` and partly as compiled DLLs under `Editor/Data/Managed/UnityEngine/`. The full canonical lookup chain:
 
-1. **PackageCache source** — direct Read of `Library/PackageCache/com.unity.<pkg>@<hash>/...`.
+1. **PackageCache source** — read `Library/PackageCache/com.unity.<pkg>@<version>/...`.
 2. **Editor BuiltInPackages** — `Editor/Data/Resources/PackageManager/BuiltInPackages/com.unity.render-pipelines.{core,universal}/...`.
-3. **Rider DecompilerCache** — `~/.config/JetBrains/Rider*/resharper-host/DecompilerCache/decompiler/...`. Free if Rider has navigated there.
-4. **SharpTools MCP** (`mcp__sharptools__*`) — Roslyn workspace + ILSpy-based decompile fallback. Use `SharpTool_LoadSolution` then `SharpTool_ViewDefinition` / `SharpTool_SearchDefinitions`.
-5. **`ilspycmd`** — `dotnet tool install -g ilspycmd` (run from `/tmp` to dodge multi-csproj). Bulk decompile any DLL.
+3. **Rider or another IDE decompiler** — navigate to the declaration in the referenced assembly.
+4. **`ilspycmd`** — `dotnet tool install --global ilspycmd`; use it for searchable local decompilation.
 
 Full recipe in [`jobs/decompilation-workflow.md`](jobs/decompilation-workflow.md).
 
 ## What is NOT covered here
 
-- **Version drift, and which way it runs.** This canon was captured against a *higher* engine than `mara`'s declared `6000.0` baseline (the source project sat on URP 17.5 / Unity 6000.4, while `mara` resolves URP 17.6 against an installed `6000.6.0a6` editor). The drift therefore reverses from the usual "watch for newer APIs": watch instead for an API the docs reference that the engine `mara` actually runs may not expose, and verify every signature in doubt against `mara`'s installed editor rather than against the doc. The RenderGraph subdocset is the most exposed, since URP RenderGraph signatures move between minors.
-- Unity.Entities / DOTS **is** covered — `mara` hosts the `is.zori.pixelworld` DOTS engine and several sibling ECS packages, so the `entities/` subdocset is a real reference (Burst `ISystem`, system groups, command buffers, singletons). The entity-side *baking/authoring* path and the DLL-only entity-job scheduling tables are the deliberately omitted parts (see that subdocset's "does NOT cover").
-- Unity Manual prose / ScriptReference guides — consult the Manual for `mara`'s installed version, treat it as often stale, and cross-check against the source.
-- HDRP-specific API. `mara` uses URP exclusively.
-- Game-design specifics and project architecture — those live in `docs/` at the repository root (for example `docs/rc2d-jfa-assessment.md`) and in the orchestration journals under `docs/orchestrate/`.
-- General programming style — see project `CLAUDE.md` § "C# codestyle".
+- **Version guarantees.** These docs span multiple Unity 6 and package versions. RenderGraph is particularly sensitive to minor-version changes, so verify signatures against the active project before editing production code.
+- Full Unity Manual or ScriptReference coverage. Use the documentation matching the installed Editor, then cross-check exact signatures against local source.
+- HDRP-specific APIs; the RenderGraph material here is URP-oriented unless stated otherwise.
+- Project-specific game architecture and design decisions. Keep those in the consuming project's own documentation.
+- General C# style conventions. Keep those in shared agent instructions or the consuming project's contributor guidance.
