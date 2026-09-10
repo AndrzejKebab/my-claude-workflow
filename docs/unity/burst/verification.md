@@ -11,7 +11,7 @@ How to know whether your `[BurstCompile]` attribute is doing what you think it i
 
 ## Confirm via the Unity console
 
-Project canon (`docs/CLAUDE.md` § "unity-cli console"):
+Use Unity CLI to inspect recent errors:
 
 ```bash
 unity-cli console --filter error --lines 5
@@ -65,11 +65,12 @@ CLI: `--burst-disable-compilation` flag to the editor / player. Env: `UNITY_BURS
 After editing a `[BurstCompile]` source file:
 
 ```bash
-unity-recompile                                       # focus + refresh + sleep 30 + console-error tail
-unity-cli console --filter error --lines 5            # double-check no Burst errors
+unity-recompile
+unity-cli console --filter error --lines 5
 ```
 
-`unity-recompile` is the project-canonical wrapper (project `CLAUDE.md` § "Recompile Protocol"); it handles focus, deferred init, and the post-recompile freeze. Always use it — never raw `unity-cli editor refresh`.
+Use `unity-recompile` to refresh after an edit, then inspect the Unity Console
+with `unity-cli console --filter error --lines 5`.
 
 ## When `[BurstCompile]` produces no native code silently
 
@@ -91,5 +92,5 @@ Diagnosis: in Burst Inspector, search for the job name. If absent → reflection
 | `BurstCompilerOptions.ForceEnableBurstSafetyChecks` | `Runtime/BurstCompilerOptions.cs:357`  |
 | `BurstCompilerOptions.EnableBurstDebug`      | `Runtime/BurstCompilerOptions.cs:375`         |
 | `[RegisterGenericJobType]`                   | `Library/PackageCache/com.unity.collections@.../Unity.Collections/Jobs/RegisterGenericJobTypeAttribute.cs` |
-| Project recompile wrapper                    | `~/_dev/my-claude-workflow/bin/unity-recompile` |
-| Project console-error recipe                 | `unity-cli console --filter error --lines 5` (CLAUDE.md) |
+| Recompile command                            | `unity-recompile` |
+| Console-error command                        | `unity-cli console --filter error --lines 5` |

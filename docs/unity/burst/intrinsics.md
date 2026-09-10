@@ -74,11 +74,16 @@ Intrinsics use the **canonical names from the vendor reference**:
 
 This mirrors the ISA reference manuals so existing C/asm intrinsic knowledge transfers.
 
-## Steam Deck targeting
+## Target CPU architecture
 
-Steam Deck is x86_64 with AVX2 + FMA + BMI1/2 (Zen 2 architecture). Project canon (`docs/unity/burst/empirical-examples.md`) prefers the AVX2 path for Deck builds. The fallback paths handle older Linux desktops (SSE4.2 baseline) and ARM (e.g. mobile, M1/M2 if ever targeted).
+Choose an intrinsic path from the CPUs your game ships on, not from the
+development machine. For a desktop x86_64 target, an AVX2 path may be useful;
+retain an SSE4.2 or scalar fallback for older processors. For ARM targets, use
+the corresponding Neon path and retain a scalar fallback.
 
-When writing a Burst kernel targeted at Deck, gate on `X86.Avx2.IsAvx2Supported` first; fall back to `X86.Sse4_2.IsSse42Supported` for the broader Linux baseline; then scalar.
+Always guard each path with its matching `IsXyzSupported` property. Profile on
+target hardware before adding hand-written intrinsics; scalar
+`Unity.Mathematics` code often auto-vectorizes well.
 
 ## Inspecting generated code
 

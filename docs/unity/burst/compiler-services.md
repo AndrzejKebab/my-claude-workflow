@@ -121,7 +121,9 @@ Marks a method to be compiled as **SPMD** (Single Program Multiple Data — like
 
 ## Source citations
 
-`Runtime/CompilerServices/` directory (file paths inferred — confirm with `SharpTool_ViewDefinition` or `find /mnt/archive4/UNITY/Projects/woweyreey/Library/PackageCache/com.unity.burst@*/Runtime/CompilerServices -name '*.cs'`):
+`Runtime/CompilerServices/` directory in the installed Burst package. On
+Windows, inspect `Library/PackageCache/com.unity.burst@*/Runtime/CompilerServices/`
+from the Unity project root:
 
 - `HintAttribute.cs` — `Hint.Likely/Unlikely/Assume`
 - `LoopAttributes.cs` — `Loop.ExpectVectorized/ExpectNotVectorized`

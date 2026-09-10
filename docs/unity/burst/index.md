@@ -1,8 +1,8 @@
-# Unity.Burst local reference (com.unity.burst@1.8.x / Unity 6.3)
+# Unity.Burst reference
 
 Canonical local reference for "what does this Burst attribute / API actually do" and "how do I make this code Burst-compile". Anchored to:
 
-- **`com.unity.burst@6bb9aca3ef38`** at `Library/PackageCache/com.unity.burst@6bb9aca3ef38/`. Source-shipped: every public type lives in `Runtime/`, with sub-namespaces in `Runtime/CompilerServices/` and `Runtime/Intrinsics/`.
+- **Installed `com.unity.burst` package** at `Library/PackageCache/com.unity.burst@<version>/`. Source-shipped: every public type lives in `Runtime/`, with sub-namespaces in `Runtime/CompilerServices/` and `Runtime/Intrinsics/`.
 
 All `file:line` citations refer to that root verbatim. The `Runtime/` prefix is omitted in cites for brevity.
 
@@ -22,7 +22,7 @@ All `file:line` citations refer to that root verbatim. The `Runtime/` prefix is 
 
 - [`verification.md`](verification.md) — confirming Burst actually compiled. Inspector window, console error filter, `BurstCompilerOptions.EnableBurstCompileSynchronously` for forcing sync compile in tests, the `unity-cli console --filter error` recipe.
 
-- [`empirical-examples.md`](empirical-examples.md) — every `[BurstCompile]` in this project, bucketed by how it's parameterised. Default attribute, FloatMode-tweaked, struct-level vs method-level, with `FunctionPointer` patterns called out.
+- [`empirical-examples.md`](empirical-examples.md) — a reusable inventory template for the current project's `[BurstCompile]` usage.
 
 ## Reading order for "is this code Burst-compatible?"
 

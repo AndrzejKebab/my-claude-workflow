@@ -1,6 +1,6 @@
 # Compilation context — the HPC# subset and the entry-point rule
 
-What actually compiles in Burst, and the project rule about which methods need `[BurstCompile]`.
+What actually compiles in Burst, and which methods need `[BurstCompile]`.
 
 ## HPC# — the allowed subset
 
@@ -30,16 +30,15 @@ Non-HPC# code in a `[BurstCompile]` method is flagged at Burst-compile time, **n
 
 ## The entry-point rule
 
-**Project canon (`feedback_burst_entrypoints_only.md`)**:
-
-> `[BurstCompile]` only on **entry points** — helpers auto-compile from Burst context.
+**Default rule:** apply `[BurstCompile]` to **entry points**; helpers reached
+from those entry points compile in the same Burst context.
 
 An entry point is a type the job system calls into:
 
 ```csharp
 // Entry point:
 [BurstCompile]
-public struct VoxelTileFillJob : IJobParallelFor {
+public struct DensityFillJob : IJobParallelFor {
     public void Execute(int i) {
         var n = Fbm3(uvw, seed);     // helper — NO [BurstCompile] needed
         DensityOut[i] = ApplyMask(n);
@@ -51,9 +50,11 @@ public struct VoxelTileFillJob : IJobParallelFor {
 }
 ```
 
-Cited example: `Packages/is.zori.volumetrics/Runtime/Authoring/VoxelTileFiller.cs:58–199` — `[BurstCompile]` only on the struct; `Hash3i`, `ValueNoise3`, `Fbm3`, `Smin` are plain `static` methods reached from `Execute`.
-
-**Why the rule matters**: redundantly tagging helpers with `[BurstCompile]` makes them direct-call-eligible (the IL post-processor rewrites managed call sites to call the native function pointer directly), which is fine. But it also publishes them as **delegate-callable function pointers** with their own reflection-data slots and forces a separate Burst compile entry per helper. Project canon is to keep one entry point per logical job and let helpers auto-compile.
+**Why the rule matters**: redundantly tagging helpers with `[BurstCompile]` makes
+them direct-call-eligible (the IL post-processor rewrites managed call sites to
+call the native function pointer directly), which is fine. But it also publishes
+them as separate Burst entry points. Prefer one entry point per logical job and
+let private helpers auto-compile unless a managed caller needs a direct call.
 
 ## Helpers can return structs by value
 
@@ -65,7 +66,8 @@ static float3 ComputeNormal(float3 p) {
 }
 ```
 
-Project canon (`feedback_burst_entrypoints_only.md`): "helpers auto-compile from Burst context and CAN return structs by value." This makes it safe to write small helper functions that take and return Unity.Mathematics types without falling back to ref-out parameters.
+This makes it safe to write small helper functions that take and return
+Unity.Mathematics types without falling back to ref-out parameters.
 
 ## Static methods + direct call
 
@@ -108,5 +110,4 @@ This **does not Burst-compile the class itself** — classes are reference types
 |--------------------------------------------------|------------------------------------------------------------------------|
 | HPC# subset, attribute targets                   | `Runtime/BurstCompileAttribute.cs`                                     |
 | Direct-call IL post-processor mechanism          | `Unity.Burst.CodeGen/` (internal — black-box for users)                |
-| Project entry-point-only rule                    | `feedback_burst_entrypoints_only.md` (memory)                          |
-| Project example: entry-point + helpers           | `Packages/is.zori.volumetrics/Runtime/Authoring/VoxelTileFiller.cs:58–199` |
+| Entry-point and helper pattern                   | The `DensityFillJob` example above; verify against current Burst Inspector output. |
