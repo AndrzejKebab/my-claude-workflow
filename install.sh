@@ -1,23 +1,25 @@
 #!/usr/bin/env bash
-# install.sh: Symlink skills, agents, and global config (CLAUDE.md + @imports) into ~/.claude/
+# install.sh: Install shared skills for Codex and the Claude-specific workflow into ~/.claude/.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLAUDE_DIR="${HOME}/.claude"
+CODEX_DIR="${CODEX_HOME:-${HOME}/.codex}"
 
 echo "Installing my-claude-workflow..."
 echo ""
 
 link_dir() {
     local name="$1"
-    local target="$SCRIPT_DIR/$name"
-    local link="$CLAUDE_DIR/$name"
+    local destination="$2"
+    local target="${3:-$SCRIPT_DIR/$name}"
+    local link="$destination/$name"
 
     if [[ -d "$link" && ! -L "$link" ]]; then
         local backup_name="${name}.bak.$(date +%Y%m%d-%H%M%S)"
-        echo "Backing up existing $name to $CLAUDE_DIR/$backup_name"
-        mv "$link" "$CLAUDE_DIR/$backup_name"
+        echo "Backing up existing $name to $destination/$backup_name"
+        mv "$link" "$destination/$backup_name"
     elif [[ -L "$link" ]]; then
         echo "Removing existing symlink at $link"
         rm "$link"
@@ -45,8 +47,19 @@ link_file() {
     ln -s "$target" "$link"
 }
 
-link_dir skills
-link_dir agents
+mkdir -p "$CLAUDE_DIR" "$CODEX_DIR/skills"
+
+link_dir skills "$CLAUDE_DIR"
+link_dir agents "$CLAUDE_DIR"
+
+# Codex discovers individual skills under ~/.codex/skills. Link every skill
+# directory separately so it coexists with skills installed from other sources.
+echo ""
+echo "Installing skills for Codex..."
+for skill in "$SCRIPT_DIR"/skills/*; do
+    [[ -d "$skill" ]] || continue
+    link_dir "$(basename "$skill")" "$CODEX_DIR/skills" "$skill"
+done
 
 # Global config files — symlinked into ~/.claude so they travel with this repo.
 # RTK.md is intentionally excluded: it is private (mode 600) and stays machine-local,
