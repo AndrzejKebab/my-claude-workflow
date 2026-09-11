@@ -175,6 +175,7 @@ install_claude_item VERIFY.md
 install_claude_item NONDUAL.md
 install_claude_item PROSE.md
 install_claude_item MODEL.md
+install_claude_item docs
 mv "$CLAUDE_ITEMS_NEXT_MANIFEST" "$CLAUDE_ITEMS_MANIFEST"
 
 prune_workflow_backups() {

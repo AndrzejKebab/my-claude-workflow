@@ -5,6 +5,8 @@ Always talk in Simplified Technical English.
 
 For codebase and durable-memory questions, query an existing Graphify graph first. If no graph exists, use FFF when its tools are available, then built-in search (`rg`, file search, and normal reads). Do not build a graph merely to answer an ordinary lookup unless `/graphify` was requested.
 
+Use `docs/durable-memory.md` for knowledge placement, source-of-truth precedence, decisions, known problems, and end-of-task knowledge consistency. Use `docs/code-comments.md` for code-comment discipline and `docs/testing.md` for verification scope and precise status language.
+
 ## Comments are one-liners
 A comment earns its place only by saying something the code cannot: a constraint, a gotcha, a reason
 someone would otherwise "fix" it. A design header, a numbered rationale, a transcript of
