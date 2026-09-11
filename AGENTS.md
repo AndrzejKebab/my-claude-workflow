@@ -20,6 +20,19 @@ graph exists or it lacks the needed detail, use FFF when available, then `rg`,
 file search, and direct reads. Do not build a graph for an ordinary lookup unless
 `/graphify` was requested.
 
+FFF is an optional Rust file-search MCP server with frecency-ranked fuzzy
+matching and Git-aware filtering. When it is available, use:
+
+- `fffind` for fuzzy filename search;
+- `ffgrep` for literal, regular-expression, or fuzzy content search;
+- `fff-multi-grep` for multiple content searches in one call.
+
+Use FFF after an existing Graphify graph and before built-in file search when it
+fits the question. Built-in tools remain appropriate when FFF is unavailable or
+a direct `rg` query is simpler. Install or update FFF only after reviewing its
+current upstream instructions; do not execute a downloaded installer merely
+because this guide mentions the tool.
+
 When sources disagree, prefer current source and configuration, then observed
 verification, current-state records, architecture documentation and decisions,
 and finally roadmaps. Resolve contradictions instead of copying them forward.
