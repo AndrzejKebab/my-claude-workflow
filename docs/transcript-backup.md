@@ -67,6 +67,13 @@ be recovered with the credentials available to the user.
 
 ## Repository scripts
 
-`bin/cc-transcript-backup` and `share/systemd/` are legacy Claude Code/Linux
-helpers. They are not installed as the Windows backup mechanism and should only
-be used after reviewing their configured source, remote, and retention behavior.
+`bin/cc-transcript-backup` is an optional `rclone copy` wrapper. It requires
+`AGENT_BACKUP_SOURCE` and `AGENT_BACKUP_REMOTE`; optional settings are
+`AGENT_BACKUP_LOG` and `AGENT_BACKUP_SETTLE`. The older `CC_BACKUP_*` names
+remain accepted for compatibility. Run the script once with `--dry-run` before
+scheduling it.
+
+`share/systemd/` provides an optional Linux user-service template. Its
+`%h/.config/my-claude-workflow/transcript-backup.env` file must define the
+backup variables and `WORKFLOW_ROOT`. Windows users should configure the same
+script and variables through Task Scheduler instead.

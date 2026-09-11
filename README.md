@@ -103,7 +103,7 @@ writes to it — so without this step a hook lives only on the machine that crea
 | `cc-no-hedge` | `Stop` | Refuses to end a turn that hedges ("want me to") or counts ("three of them") |
 | `cc-whole-file-reads` | `PreToolUse(Read\|Bash)` | Denies partial reads of `AGENTS.md` / `CONTEXT.md` |
 | `cc-comment-wall` | `PostToolUse(Write\|Edit)` | Refuses a wall of narration comments — that block is a doc page |
-| `cc-transcript-backup` | `systemd --user` timer | Pushes `~/.claude/projects` to MEGA hourly — see [docs/transcript-backup.md](docs/transcript-backup.md) |
+| `cc-transcript-backup` | Optional rclone/Task Scheduler/systemd job | Copies an explicitly configured Claude or Codex transcript directory — see [docs/transcript-backup.md](docs/transcript-backup.md) |
 
 A rule in `CLAUDE.md` is a hypothesis, not a mechanism. `cc-rule-audit` scores each one against the
 transcript record so an ignored rule can be moved down the ladder — prose, then skill file, then hook

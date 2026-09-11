@@ -1,10 +1,10 @@
 [Unit]
-Description=Back up Claude Code transcripts to MEGA
-Documentation=file:///home/midori/_dev/my-claude-workflow/docs/transcript-backup.md
+Description=Back up configured agent transcripts with rclone
 After=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/home/midori/_dev/my-claude-workflow/bin/cc-transcript-backup
+EnvironmentFile=%h/.config/my-claude-workflow/transcript-backup.env
+ExecStart=/usr/bin/env bash -lc 'exec "$WORKFLOW_ROOT/bin/cc-transcript-backup"'
 Nice=10
 IOSchedulingClass=idle

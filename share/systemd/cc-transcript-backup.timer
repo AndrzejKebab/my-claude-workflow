@@ -1,5 +1,5 @@
 [Unit]
-Description=Hourly Claude Code transcript backup
+Description=Hourly agent transcript backup
 
 [Timer]
 OnBootSec=10min

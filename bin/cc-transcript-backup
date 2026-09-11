@@ -1,14 +1,20 @@
 #!/usr/bin/env bash
-# Push ~/.claude/projects to MEGA. copy, never sync — see docs/transcript-backup.md.
+# Copy an explicitly configured agent transcript directory to an rclone remote.
 set -euo pipefail
 
-REMOTE="${CC_BACKUP_REMOTE:-mega:claude-transcripts}"
-SRC="${CC_BACKUP_SRC:-$HOME/.claude/projects}"
-LOG="${CC_BACKUP_LOG:-$HOME/.claude/transcript-backup.log}"
-SETTLE="${CC_BACKUP_SETTLE:-15m}"
+REMOTE="${AGENT_BACKUP_REMOTE:-${CC_BACKUP_REMOTE:-}}"
+SRC="${AGENT_BACKUP_SOURCE:-${CC_BACKUP_SRC:-}}"
+LOG="${AGENT_BACKUP_LOG:-${CC_BACKUP_LOG:-}}"
+SETTLE="${AGENT_BACKUP_SETTLE:-${CC_BACKUP_SETTLE:-15m}}"
+
+if [[ -z "$SRC" || -z "$REMOTE" ]]; then
+    echo "Set AGENT_BACKUP_SOURCE and AGENT_BACKUP_REMOTE before running this command." >&2
+    echo "Example remote: encrypted-remote:agent-transcripts" >&2
+    exit 2
+fi
 
 if ! command -v rclone >/dev/null; then
-    echo "rclone missing — pacman -S rclone" >&2
+    echo "rclone is not installed or is not on PATH." >&2
     exit 1
 fi
 
@@ -17,7 +23,10 @@ if ! rclone listremotes 2>/dev/null | grep -q "^${REMOTE%%:*}:$"; then
     exit 1
 fi
 
-[[ -d "$SRC" ]] || { echo "no such source: $SRC" >&2; exit 1; }
+[[ -d "$SRC" ]] || { echo "No such transcript source: $SRC" >&2; exit 1; }
+
+log_args=()
+[[ -z "$LOG" ]] || log_args=(--log-file "$LOG" --log-level INFO)
 
 exec rclone copy "$SRC" "$REMOTE" \
     --min-age "$SETTLE" \
@@ -27,6 +36,5 @@ exec rclone copy "$SRC" "$REMOTE" \
     --low-level-retries 20 \
     --stats 5m \
     --stats-one-line \
-    --log-file "$LOG" \
-    --log-level INFO \
+    "${log_args[@]}" \
     "$@"
