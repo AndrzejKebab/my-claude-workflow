@@ -1,57 +1,75 @@
 ---
 name: refine
-description: "refine a reusable skill from anything you describe (dirs, URLs, this chat, notes) and save it to persistent memory."
+description: Turn a conversation, file, directory, URL, or pasted notes into a reusable Claude-and-Codex skill. Use when the user asks to preserve or refine a repeatable workflow, technique, or decision pattern.
 ---
 
-# refine
-`/refine [source or description]`
+# Refine a reusable skill
 
-## System Prompt / Execution Instructions
+Use `/refine [source or description]` to extract durable, actionable guidance and save it in this workflow repository.
 
-When the `/refine` command is invoked, execute the following steps based on the user's input:
+## Understand the source
 
-### Step 1: Content Acquisition & Parsing
-Determine the type of source provided by the user and use your tools to ingest the content:
-*   **URLs:** If a URL is provided, use your web/bash tools (e.g., `curl`, or native fetch capabilities) to read the documentation, tutorial, or article.
-*   **Directories/Files (`dirs`):** If a local path is provided, use your file system tools to scan the directory, read the relevant code files, and understand the architectural pattern or library usage.
-*   **"This chat":** If the user specifies the chat, review our current conversation history for the problem we just solved.
-*   **Notes/Text:** If the user pastes raw text, parse it directly.
+Read only what is needed to understand the reusable technique:
 
-### Step 2: Skill Extraction & Synthesis
-Analyze the ingested content specifically looking for **reusable skills**. Do not just summarize the text. Extract the following:
-*   **The Core Concept:** What is the overarching pattern, rule, or technique?
-*   **Trigger Context:** When should you (the AI) use this skill in the future?
-*   **Actionable Steps:** How exactly is it implemented?
-*   **Code Examples:** Extract a minimal, working code snippet if applicable.
+- For this conversation, use the problem, evidence, corrections, and successful outcome already present in context.
+- For local files or directories, inspect the relevant implementation and documentation rather than scanning unrelated content.
+- For a URL, retrieve the referenced source with the available web tooling and preserve source attribution where it materially supports the skill.
+- For pasted notes, distinguish tested guidance from hypotheses or personal preference.
 
-### Step 3: Skill Formatting
-Format the extracted skill into a standardized Markdown structure:
+Do not merely summarize the source. Identify:
+
+- the repeatable outcome;
+- the requests or situations that should trigger the skill;
+- non-obvious constraints, failure modes, and stopping conditions;
+- the smallest reliable workflow or supporting script;
+- which details are examples rather than universal rules.
+
+## Decide what should be created
+
+A reusable capability belongs in `skills/<skill-name>/SKILL.md` in this repository. Use lowercase letters, digits, and hyphens for the folder and skill name, keep the name under 64 characters, and write a concise description that makes activation clear.
+
+Do not create a skill when the extracted material is only:
+
+- a project-specific fact that belongs in that project's documentation;
+- a general preference that belongs in shared Claude/Codex instructions;
+- a one-off fix with no repeatable decision or procedure;
+- speculative guidance without enough evidence to act on safely.
+
+If the best destination is an existing instruction document such as `CLAUDE.md` or `AGENTS.md`, explain the proposed change and obtain the user's confirmation before editing it. If a skill with the chosen name already exists, inspect it and ask before replacing or substantially changing its scope unless the user explicitly requested that update.
+
+## Write the skill
+
+Keep `SKILL.md` focused on guidance that changes an agent's decisions. Use this minimum structure:
+
 ```markdown
 ---
-name:  [Clear, descriptive name of the skill max 64 characters]
-description: [Short description max 1024 characters]
+name: skill-name
+description: What the skill does and when it should be used.
 ---
-#SkillName
 
-**When to use this:**
-[Brief description of the context or prompt that should trigger this skill]
+# Skill title
 
-**Rules & Implementation:**
-- [Actionable rule 1]
-- [Actionable rule 2]
+Purpose and essential workflow.
 
-**Example:**
-` ` `[language]
-[Code snippet]
-` ` `
-Step 4: Write to Claude Memory
-Using your file editing tools, save this newly formatted skill permanently to the project's memory:
-Create a new file in the rules directory, naming it appropriately based on the skill (e.g., .claude/rules/[name-of-skill]-skill.md).
-Note: If the .claude/rules/ directory does not exist, use your tools to create it first.
-If the skill modifies a general project preference (rather than a specific technical skill), append it to CLAUDE.md instead.
+## Constraints
 
-Step 5: Acknowledgment
-Respond to the user with a brief message confirming:
-What source you successfully read.
-The name of the reusable skill you extracted.
-The exact file path where it was saved (e.g., "Saved to .claude/rules/zustand-setup-skill.md").
+Only the non-obvious safety rules, invariants, or boundaries needed for reliable use.
+```
+
+Add `scripts/`, `references/`, or `assets/` only when they provide a concrete reusable benefit. Keep conditional or substantial detail in a linked reference instead of bloating `SKILL.md`. Do not add placeholder resources, a separate README, or duplicated instructions.
+
+Preserve the user's intent without turning one incident or local path into a universal rule. Use project-neutral examples unless the skill is deliberately project-specific. Never copy credentials, private transcript content, machine-specific paths, or unrelated source material into the skill.
+
+## Validate and report
+
+Run the available skill validator against the completed folder. Also check that:
+
+- YAML frontmatter parses and the folder name matches `name`;
+- every referenced file exists;
+- included scripts pass syntax checks and a meaningful safe test;
+- the description is specific enough for Claude and Codex to discover correctly;
+- no existing user content was overwritten unintentionally.
+
+Keep the repository's `skills/` folder canonical; do not edit installed copies directly. Run the repository installer only when the user asks to update the active installations.
+
+Report the source used, the extracted skill name, its exact repository path, and validation performed. If the source was not reusable enough for a skill, say where the knowledge belongs instead.
