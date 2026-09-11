@@ -6,7 +6,7 @@ reasoning runs on. Wrong shape and every downstream defence — the validator, t
 comment — is maintaining an invariant the type could have held for free.
 
 Distilled from Alexis King, *The Unreasonable Effectiveness of Constructive Data Modeling*, SSW
-2026. Full extraction: `/mnt/archive4/PAPERS/Prepared/king-2026-constructive-data-modeling.md`.
+2026. Store the full extraction in `research-library/Prepared/` when it is available locally.
 
 ## The move
 

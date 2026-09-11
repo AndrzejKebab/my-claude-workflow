@@ -1,20 +1,10 @@
-# Files cc-doctrine injects at SessionStart and after every compaction.
-# One path per line, relative to this repo unless absolute. Paid on every session
-# AND after every compaction — keep it short.
+# Files that cc-doctrine should inject at SessionStart and after compaction.
+# Add one path per line. Relative paths resolve from this repository; absolute
+# paths are supported but make the configuration machine-specific.
 #
-# Almost nothing belongs here. Every CLAUDE_*.md, VOICE.md, PROSE.md, NONDUAL.md,
-# VERIFY.md, HARNESS.md, EDITING.md, MODEL.md, DISPATCH.md and
-# negative-space-expanded.md in this repo is a REJECTED DRAFT of CLAUDE.md. They
-# are the graveyard. Do not wire them, however binding their own headings claim to
-# be — a rejected rule that reaches a session outranks a live one that does not.
+# Keep this list short because every entry consumes context on every injection.
+# Prefer the main Claude/Codex instruction files for ordinary workflow rules and
+# use this list only when a separate document genuinely must always be loaded.
 #
-# The live doctrine is CLAUDE.md, kept deliberately small: only what can be
-# justified as a preference over the model's default behaviour. A rule that
-# survives goes there, not here.
-#
-# This file exists for the one case CLAUDE.md cannot cover — a rule whose body
-# lives somewhere else and which an "invoke X" line fails to load. Measured with
-# cc-rule-audit: `/i-have-adhd` in CLAUDE.md fired in 9 of 637 sessions, because a
-# slash command in an injected file is text, not an invocation.
-
-/home/midori/i-have-adhd/skills/i-have-adhd/SKILL.md    # 1302 tok
+# Example:
+# docs/team-conventions.md
