@@ -6,6 +6,17 @@ The files in this repository are canonical. Change them here, commit the change,
 
 ## Install
 
+For a Linux Claude cloud environment, run the bootstrap and optionally pass the
+project that should receive the Graphify graph and Git hook:
+
+```bash
+./setup-claude-cloud.sh /workspace/my-project
+```
+
+It installs Graphify and FFF, registers FFF as a user-scoped Claude MCP server,
+clones or fast-forward-updates this workflow under `$HOME/my-claude-workflow`,
+runs the workflow installer, and prepares Graphify inside the selected project.
+
 On Windows, run the installer from Git Bash:
 
 ```bash
