@@ -58,6 +58,44 @@ install_claude_item() {
     printf '%s\n' "$name" >> "$CLAUDE_ITEMS_NEXT_MANIFEST"
 }
 
+install_codex_item() {
+    local name="$1"
+    local target="${2:-$SCRIPT_DIR/$name}"
+    local installed="$CODEX_DIR/$name"
+    local manifest="$CODEX_DIR/my-claude-workflow-managed-items.txt"
+    local backup_dir="$CODEX_DIR/backups/my-claude-workflow/$INSTALL_STAMP/codex-items"
+    local managed=0
+
+    if grep -Fxq "$name" "$manifest" 2>/dev/null; then
+        managed=1
+    elif [[ -L "$installed" && "$(readlink -f "$installed")" == "$(readlink -f "$target")" ]]; then
+        managed=1
+    elif [[ -f "$installed" && -f "$target" ]] && cmp -s "$installed" "$target"; then
+        managed=1
+    elif [[ -d "$installed" && -d "$target" ]] && diff -qr "$installed" "$target" >/dev/null 2>&1; then
+        managed=1
+    fi
+
+    if [[ -e "$installed" || -L "$installed" ]]; then
+        if [[ "$managed" -eq 1 ]]; then
+            case "$installed" in
+                "$CODEX_DIR"/*) rm -rf -- "$installed" ;;
+                *) echo "Refusing to replace unexpected path: $installed" >&2; exit 1 ;;
+            esac
+            echo "Updating managed Codex item: $name"
+        else
+            mkdir -p "$backup_dir"
+            echo "Backing up user Codex item: $name"
+            mv "$installed" "$backup_dir/$name"
+        fi
+    else
+        echo "Installing Codex item: $name"
+    fi
+
+    cp -a "$target" "$installed"
+    printf '%s\n' "$name" >> "$CODEX_ITEMS_NEXT_MANIFEST"
+}
+
 restore_legacy_claude_skills() {
     local skills_dir="$CLAUDE_DIR/skills"
 
@@ -175,8 +213,16 @@ install_claude_item VERIFY.md
 install_claude_item NONDUAL.md
 install_claude_item PROSE.md
 install_claude_item MODEL.md
+install_claude_item AGENTS.md
 install_claude_item docs
 mv "$CLAUDE_ITEMS_NEXT_MANIFEST" "$CLAUDE_ITEMS_MANIFEST"
+
+CODEX_ITEMS_MANIFEST="$CODEX_DIR/my-claude-workflow-managed-items.txt"
+CODEX_ITEMS_NEXT_MANIFEST="$CODEX_ITEMS_MANIFEST.tmp"
+: > "$CODEX_ITEMS_NEXT_MANIFEST"
+install_codex_item AGENTS.md
+install_codex_item docs
+mv "$CODEX_ITEMS_NEXT_MANIFEST" "$CODEX_ITEMS_MANIFEST"
 
 prune_workflow_backups() {
     local tool_root="$1"
