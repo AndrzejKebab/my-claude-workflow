@@ -1,113 +1,104 @@
-#!/bin/bash
-# Convenience wrapper: unity <project-path> [extra unity args...]
-#
-# Detects Unity version from ProjectSettings/ProjectVersion.txt and dispatches:
-#
-#   GUI mode (no `-batchmode` in args):
-#     Launches detached via unity-launch + nohup. Refuses to start if a Unity
-#     editor is already open ON THE SAME PROJECT (project-path-scoped lookup
-#     via /proc/<pid>/cmdline). Other Unity instances on OTHER projects are
-#     fine and don't block — useful when an agent is running batchmode on
-#     zority_6_3 while the user has a GUI editor open on zority_6_0.
-#
-#   Batchmode (`-batchmode` present in args):
-#     Runs synchronously (exec) so the caller receives Unity's exit code and
-#     can stream the log. Skips the "already running" guard — Unity itself will
-#     refuse if another instance holds the project lock, which is the correct
-#     behavior for per-project batchmode runs alongside an open GUI editor on
-#     a different project.
+#!/usr/bin/env bash
+# Launch the Unity Editor version required by a project.
 
-if [[ -z "$1" ]]; then
-    echo "Usage: unity <project-path> [unity args...]" >&2
-    echo "  GUI:       unity /path/to/project" >&2
-    echo "  Batchmode: unity /path/to/project -batchmode -quit -nographics -logFile -" >&2
-    exit 1
+set -euo pipefail
+
+if [[ $# -lt 1 ]]; then
+    echo "Usage: unity-editor <project-path> [Unity arguments...]" >&2
+    exit 2
 fi
 
-PROJECT_PATH=$(realpath "$1" 2>/dev/null || echo "$1")
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_INPUT="$1"
 shift
 
-VERSION_FILE="$PROJECT_PATH/ProjectSettings/ProjectVersion.txt"
+if [[ ! -d "$PROJECT_INPUT" ]]; then
+    echo "Project directory not found: $PROJECT_INPUT" >&2
+    exit 1
+fi
+
+PROJECT_PATH_UNIX="$(cd "$PROJECT_INPUT" && pwd -P)"
+PROJECT_PATH="$PROJECT_PATH_UNIX"
+case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*) PROJECT_PATH="$(cygpath -w "$PROJECT_PATH_UNIX")" ;;
+esac
+VERSION_FILE="$PROJECT_PATH_UNIX/ProjectSettings/ProjectVersion.txt"
 if [[ ! -f "$VERSION_FILE" ]]; then
-    echo "Error: $VERSION_FILE not found" >&2
+    echo "Unity version file not found: $VERSION_FILE" >&2
     exit 1
 fi
 
-VERSION=$(grep -oP 'm_EditorVersion:\s*\K\S+' "$VERSION_FILE")
+VERSION="$(sed -n 's/^m_EditorVersion:[[:space:]]*//p' "$VERSION_FILE" | head -n 1 | tr -d '\r')"
 if [[ -z "$VERSION" ]]; then
-    echo "Error: could not parse version from $VERSION_FILE" >&2
+    echo "Could not read m_EditorVersion from $VERSION_FILE" >&2
     exit 1
 fi
 
-UNITY_EDITOR="/home/midori/Unity/Hub/Editor/$VERSION/Editor/Unity"
-if [[ ! -x "$UNITY_EDITOR" ]]; then
-    echo "Error: Unity editor not found at $UNITY_EDITOR" >&2
+resolve_unity_cli() {
+    if [[ -n "${UNITY_CLI_BIN:-}" && -x "${UNITY_CLI_BIN}" ]]; then
+        printf '%s\n' "$UNITY_CLI_BIN"
+        return
+    fi
+    case "$(uname -s)" in
+        MINGW*|MSYS*|CYGWIN*)
+            local_app_data="${LOCALAPPDATA:-}"
+            [[ -z "$local_app_data" ]] || local_app_data="$(cygpath -u "$local_app_data")"
+            candidate="$local_app_data/Unity/bin/unity.exe"
+            ;;
+        *) candidate="" ;;
+    esac
+    [[ -n "$candidate" && -x "$candidate" ]] && printf '%s\n' "$candidate"
+}
+
+UNITY_CLI="$(resolve_unity_cli || true)"
+EDITOR_INSTALL=""
+if [[ -n "$UNITY_CLI" ]]; then
+    EDITOR_INSTALL="$($UNITY_CLI editors path "$VERSION" --no-banner --no-color 2>/dev/null | tail -n 1 | tr -d '\r')"
+fi
+
+case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*)
+        UNITY_EDITOR_ROOT="${UNITY_EDITOR_ROOT:-F:/Unity Editors}"
+        [[ -n "$EDITOR_INSTALL" ]] || EDITOR_INSTALL="$UNITY_EDITOR_ROOT/$VERSION"
+        UNITY_EDITOR="$EDITOR_INSTALL/Editor/Unity.exe"
+        ;;
+    Darwin*)
+        UNITY_EDITOR_ROOT="${UNITY_EDITOR_ROOT:-/Applications/Unity/Hub/Editor}"
+        [[ -n "$EDITOR_INSTALL" ]] || EDITOR_INSTALL="$UNITY_EDITOR_ROOT/$VERSION"
+        UNITY_EDITOR="$EDITOR_INSTALL/Unity.app/Contents/MacOS/Unity"
+        ;;
+    *)
+        UNITY_EDITOR_ROOT="${UNITY_EDITOR_ROOT:-${HOME}/Unity/Hub/Editor}"
+        [[ -n "$EDITOR_INSTALL" ]] || EDITOR_INSTALL="$UNITY_EDITOR_ROOT/$VERSION"
+        UNITY_EDITOR="$EDITOR_INSTALL/Editor/Unity"
+        ;;
+esac
+
+if [[ ! -f "$UNITY_EDITOR" ]]; then
+    echo "Unity $VERSION was not found at: $UNITY_EDITOR" >&2
+    echo "Set UNITY_CLI_BIN or UNITY_EDITOR_ROOT if editors are stored elsewhere." >&2
     exit 1
 fi
 
-# Detect -batchmode anywhere in the forwarded args.
 BATCHMODE=0
 for arg in "$@"; do
-    if [[ "$arg" == "-batchmode" ]]; then
+    if [[ "${arg,,}" == "-batchmode" ]]; then
         BATCHMODE=1
         break
     fi
 done
 
-rm -rf "$PROJECT_PATH/Temp/__Backupscenes" 2>/dev/null
-
-if [[ $BATCHMODE -eq 1 ]]; then
-    echo "[unity] Batchmode: Unity $VERSION on $PROJECT_PATH"
-    echo "[unity] Args: -projectPath $PROJECT_PATH $*"
-    exec unity-launch "$UNITY_EDITOR" -projectPath "$PROJECT_PATH" "$@"
+if (( BATCHMODE )); then
+    echo "[unity-editor] Unity $VERSION batch mode: $PROJECT_PATH"
+    exec "$UNITY_EDITOR" -projectPath "$PROJECT_PATH" "$@"
 fi
 
-# GUI mode: refuse to double-launch for THIS specific project. A second
-# editor on the same project silently hangs on the project lock — agents
-# then loop "launch → hang → launch" forever. Other projects are fine.
-#
-# Match strategy: enumerate all Unity editor PIDs, parse each one's
-# -projectPath arg from /proc/<pid>/cmdline, resolve it against
-# /proc/<pid>/cwd (Unity is often launched with a relative path), then
-# compare to PROJECT_PATH after canonicalization. Path-equality match —
-# no substring false positives between sibling project directories.
-RUNNING_PIDS=""
-for pid in $(pgrep -f "/home/midori/Unity/Hub/Editor/.*/Editor/Unity" 2>/dev/null); do
-    [[ -r /proc/$pid/cmdline ]] || continue
-    mapfile -d $'\0' -t args < /proc/$pid/cmdline
-    project_arg=""
-    # Unity rewrites /proc/self/cmdline at startup, lowercasing the flag to
-    # `-projectpath` regardless of what casing the caller passed. Compare
-    # case-insensitively so both `-projectPath` (pre-rewrite, briefly visible
-    # during launch) and `-projectpath` (steady state) match.
-    for ((i=0; i<${#args[@]}; i++)); do
-        if [[ "${args[i],,}" == "-projectpath" && $((i+1)) -lt ${#args[@]} ]]; then
-            project_arg="${args[i+1]}"
-            break
-        fi
-    done
-    [[ -n "$project_arg" ]] || continue
-
-    if [[ "$project_arg" != /* ]]; then
-        proc_cwd=$(readlink /proc/$pid/cwd 2>/dev/null) || continue
-        project_arg="$proc_cwd/$project_arg"
-    fi
-
-    resolved=$(realpath -m "$project_arg" 2>/dev/null) || continue
-    if [[ "$resolved" == "$PROJECT_PATH" ]]; then
-        RUNNING_PIDS="$RUNNING_PIDS $pid"
-    fi
-done
-RUNNING_PIDS=$(echo "$RUNNING_PIDS" | sed 's/^[[:space:]]*//')
-
-if [[ -n "$RUNNING_PIDS" ]]; then
-    echo "Unity is already running on this project (pids: $RUNNING_PIDS)." >&2
-    echo "  project: $PROJECT_PATH" >&2
-    echo "  Wait for it to finish or kill it — do NOT launch a second instance on the same project." >&2
-    echo "  Inspect with: ps -fp $(echo $RUNNING_PIDS | tr ' ' ',')" >&2
+if "$SCRIPT_DIR/unity-ps" -q "$PROJECT_PATH"; then
+    echo "Unity is already running for this project: $PROJECT_PATH" >&2
+    echo "Use unity-ps to inspect the matching process." >&2
     exit 1
 fi
 
-nohup unity-launch "$UNITY_EDITOR" -projectPath "$PROJECT_PATH" "$@" > /dev/null 2>&1 &
-disown
+"$UNITY_EDITOR" -projectPath "$PROJECT_PATH" "$@" >/dev/null 2>&1 &
+disown 2>/dev/null || true
 echo "Launched Unity $VERSION for: $PROJECT_PATH"

@@ -1,34 +1,34 @@
 #!/usr/bin/env bash
-# unity-cli-recompile — live-editor recompile helper (unity-cli / editor-open path).
-#
-# Sequence:
-#   1. Focus Unity window (Hyprland) so the editor processes the refresh request.
-#      Without focus, the IPC signal stalls and unity-cli returns immediately
-#      (or backgrounds), leaving the editor un-recompiled.
-#   2. Trigger Unity asset refresh + force compile (waits until compilation finishes).
-#   3. Sleep 30 s — covers Unity's post-recompile freeze (domain reload,
-#      assembly reload, deferred initialisation).
-#   4. Print up to 5 console error/warning lines.
-#
-# This script targets the editor that is already open; it MUST NOT be used
-# when no editor is running (use batchmode instead).  It MUST NOT launch
-# batchmode, pass -nographics, or delete any lockfile.
-#
-# DO NOT decompose this into raw `unity-cli editor refresh ...` calls.
-# All live-editor recompile triggers must go through this script.
-#
-# Long compiles: if a Bash invocation of this script runs in background mode,
-# wait for its completion notification — DO NOT set up polling / monitoring.
+# Recompile through a connected Unity Editor using the Unity CLI.
 
-set -uo pipefail
+set -euo pipefail
 
-hyprctl dispatch focuswindow "class:Unity" >/dev/null 2>&1 || true
+PROJECT_PATH="${1:-${UNITY_PROJECT_PATH:-}}"
+if [[ -z "$PROJECT_PATH" ]]; then
+    echo "Usage: unity-cli-recompile <project-path>" >&2
+    echo "Alternatively set UNITY_PROJECT_PATH." >&2
+    exit 2
+fi
 
-unity-cli editor refresh --compile "$@"
-refresh_status=$?
+case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*)
+        local_app_data="${LOCALAPPDATA:-}"
+        [[ -z "$local_app_data" ]] || local_app_data="$(cygpath -u "$local_app_data")"
+        UNITY_CLI="${UNITY_CLI_BIN:-$local_app_data/Unity/bin/unity.exe}"
+        ;;
+    *) UNITY_CLI="${UNITY_CLI_BIN:-unity}" ;;
+esac
 
-sleep 5
+if ! command -v "$UNITY_CLI" >/dev/null 2>&1 && [[ ! -x "$UNITY_CLI" ]]; then
+    echo "Unity CLI not found. Set UNITY_CLI_BIN to its executable." >&2
+    exit 1
+fi
 
-unity-cli console --type error,warning --lines 5 "$@"
+echo "Requesting script recompile: $PROJECT_PATH"
+"$UNITY_CLI" command recompile --project-path "$PROJECT_PATH" --no-banner --no-color
 
-exit "$refresh_status"
+echo "Recompile status:"
+"$UNITY_CLI" command recompile_status --project-path "$PROJECT_PATH" --no-banner --no-color
+
+echo "Recent compiler errors:"
+"$UNITY_CLI" command console --project-path "$PROJECT_PATH" --no-banner --no-color -- --tail 5 --level error || true

@@ -1,15 +1,37 @@
 #!/usr/bin/env bash
-# Kill all Unity editor and worker processes (not Unity Hub)
+# Preview or force-stop Unity Editors matching one project path/filter.
 
-pids=$(pgrep -f 'Unity.*-projectPath|Unity.*-batchMode|UnityShaderCompiler|Unity.ILPP.Runner|VBCSCompiler.dll|AssetImportWork' | grep -v $$)
+set -euo pipefail
 
-if [ -z "$pids" ]; then
-    echo "No Unity processes found."
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ $# -lt 1 ]]; then
+    echo "Usage: killunity <project-path-or-filter> [--force]" >&2
+    echo "Without --force this command only previews matching editors." >&2
+    exit 2
+fi
+
+FILTER="$1"
+FORCE="${2:-}"
+if ! "$SCRIPT_DIR/unity-ps" "$FILTER"; then
+    echo "No matching Unity Editor process found."
     exit 0
 fi
 
-echo "Killing Unity processes:"
-ps -o pid,comm,args --no-headers -p $pids 2>/dev/null
+if [[ "$FORCE" != "--force" ]]; then
+    echo "Preview only. Re-run with --force to stop these editors; unsaved work may be lost."
+    exit 0
+fi
 
-kill -9 $pids 2>/dev/null
-echo "Done."
+case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*)
+        PS_SCRIPT="$(cygpath -w "$SCRIPT_DIR/unity-processes.ps1")"
+        powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$PS_SCRIPT" -Filter "$FILTER" -Terminate
+        ;;
+    *)
+        while read -r pid _; do
+            [[ -n "$pid" ]] || continue
+            kill -TERM "$pid"
+            echo "Stopped Unity process $pid"
+        done < <("$SCRIPT_DIR/unity-ps" "$FILTER")
+        ;;
+esac

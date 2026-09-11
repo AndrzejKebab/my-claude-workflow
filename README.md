@@ -178,6 +178,5 @@ my-claude-workflow/
     ├── unity -> unity-editor
     ├── unity-cli-recompile
     ├── unity-editor
-    ├── unity-launch
     └── unity-ps
 ```
