@@ -145,7 +145,7 @@ my-claude-workflow/
 │   ├── enforce/               #   SKILL.md + enforce.sh
 │   ├── handoff/
 │   ├── merge/
-│   ├── profile/               #   SKILL.md + build-zority.sh
+│   ├── profile/               #   Unity profiling workflow
 │   ├── prune/
 │   ├── rebase/
 │   ├── refactor/

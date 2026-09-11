@@ -1,72 +1,80 @@
 ---
 name: profile
-description: Build, run, and analyze Unity profiler data with perf-report-style call-stack attribution
+description: Profile Unity projects and attribute CPU, memory, jobs, rendering, and ECS performance costs using repeatable captures.
 ---
 
-Profile the game with call-stack-level GC allocation and CPU time attribution.
+# Unity profiling
 
-This global skill entry covers **methodology cross-references only**. The full per-project
-implementation lives in each project's own `.claude/skills/profile/`. Read the project-local
-SKILL.md for script inventory, argument grammar, benchmark sections, and pitfall catalogue.
+Measure a specific performance question with a repeatable scenario. Do not optimize from code inspection alone, and do not compare captures made with different scenes, build settings, workloads, or profiler configurations.
 
-- **woweyreey** (production project): `/mnt/archive4/UNITY/Projects/woweyreey/.claude/skills/profile/SKILL.md`
-  Uses `unity-cli exec` (IPC into live editor) for build. `deploy-deck.sh` is pure bash.
-- **zori_test_bed** (testbed): `/mnt/archive4/UNITY/Projects/zori_test_bed/.claude/skills/profile/SKILL.md`
-  Uses batchmode exclusively — no live editor, no unity-cli. Build step is `build.sh <project>`.
+## Establish the target
 
-## zori_test_bed build path (canonical, batchmode-only)
+Before capturing, record:
 
-For any profile dispatch targeting `zority_6_0 | zority_6_3 | zority_6_4`, the build step is:
+- project path and Unity version from `ProjectSettings/ProjectVersion.txt`;
+- Editor or Player, build configuration, platform, graphics API, and Burst/jobs safety settings;
+- scene, camera position, world seed, warm-up duration, measured duration, and workload size;
+- the symptom and metric being tested, such as frame time, a spike, allocation rate, memory growth, or job starvation.
 
-```bash
-${CLAUDE_SKILL_DIR}/build-zority.sh zority_6_4
-# or absolute path:
-${CLAUDE_SKILL_DIR}/build-zority.sh /mnt/archive4/UNITY/Projects/zori_test_bed/zority_6_4
-```
+Prefer a Development Player for representative CPU and rendering measurements. Use Editor captures for iteration and editor-only problems, but do not treat Editor timings as Player timings.
 
-`build-zority.sh` is the **permanent canonical form** of the ad-hoc script that was written to
-`/tmp/build-zority-6-4.sh` during the fog-detail-perf Step 9 dispatch (2026-05-18). It is
-parameterised: accepts any `zority_6_*` shorthand or an absolute path.
+On Windows, resolve the matching editor under the configured Unity Hub installation (commonly `F:\Unity Hub\Editor\<version>\Editor\Unity.exe`). Do not assume a Linux/macOS path. The repository's `unity-editor` launcher or Unity CLI may be used when available; inspect their help before relying on version-specific commands or flags.
 
-**Do NOT write ad-hoc build scripts to `/tmp/` for this testbed.** The entry point exists here.
+## Capture narrowly
 
-### Why batchmode, not unity-cli
+Enable only the Profiler modules and call-stack options needed for the question because profiling itself has overhead. Warm up asset loading, shader compilation, Burst compilation, and world generation before the measured interval unless one of those is the subject.
 
-The zori_test_bed CLAUDE.md explicitly removed `unity-cli` from its skillset:
-> "The unity-cli (IPC-into-running-editor) tooling is gone from this project's skillset. It was
-> unaffordable: it required keeping an editor process open and focused, and a single domain reload
-> during agent work killed the assumption it relied on."
+Capture a baseline before changing code. For each candidate change, repeat the same scenario and retain enough frames to distinguish steady-state cost from isolated spikes. Prefer medians or distributions over one favorable frame.
 
-Every Unity invocation in the testbed goes through:
-```bash
-unity <project> -batchmode -quit [-executeMethod ...] -logFile -
-```
+Useful tools by question:
 
-### The -nographics prohibition
+- Unity Profiler: frame timing, main thread, jobs, rendering, GC allocations, and counters.
+- Profile Analyzer: compare frame ranges or two captures and find regressions hidden by frame variance.
+- Memory Profiler: snapshots, retained objects, native allocations, fragmentation, and growth between equivalent checkpoints.
+- Burst Inspector: generated code and vectorization for a known hot Burst job.
+- Entities Systems window and system timing data: ECS update order and expensive systems.
+- Frame Debugger or GPU tooling: draw calls, passes, uploads, overdraw, and GPU-bound work.
 
-**Never pass `-nographics`** to any batchmode invocation in this testbed. From CLAUDE.md:
-> "Never pass -nographics. Caps RenderTexture at 4096 and breaks anything that allocates GPU
-> resources during import / EditMode fixtures (RenderTexture.Create failed). Applies to compile
-> checks, tests, and -executeMethod runs alike."
+Do not enable Deep Profile for the primary benchmark. It changes execution substantially; use it only as a short diagnostic capture when ordinary samples cannot identify managed call paths.
 
-The ad-hoc script `/tmp/build-zority-6-4.sh` correctly omitted `-nographics`. The testbed
-skill's `build.sh` had this flag present as a latent bug — that's why the profile agent wrote
-the ad-hoc script instead of using the existing file. `build-zority.sh` (this skill) is the
-corrected, permanent version.
+## ECS voxel workloads
 
-### FD limit workaround
+Separate the pipeline into independently measurable stages rather than reporting one total "voxel cost":
 
-`build-zority.sh` applies `ulimit -n 8192` before spawning Unity. This works around a Mono
-`NamedPipeServerStream` FD-assertion in Unity 6000.4.x (corefx bugfix), which asserts when an
-accepted-socket FD exceeds the cached `_SC_OPEN_MAX`. 8192 is sufficient for asset import and
-IL post-process; it does not restrict the build output.
+1. world/chunk selection and streaming;
+2. voxel generation or edits;
+3. meshing and collider generation;
+4. entity creation and structural changes;
+5. job scheduling, dependencies, and completion points;
+6. mesh or buffer upload;
+7. culling and rendering;
+8. disposal, pooling, and memory reuse.
 
-## Relationship to /build-run
+Check these common failure modes:
 
-`/build-run` (at `/mnt/archive4/UNITY/Projects/zori_test_bed/.claude/skills/build-run/SKILL.md`)
-covers **release** builds via `Zori.TestBed.Editor.BuildScript.BuildLinuxRelease`.
-`build-zority.sh` here covers **development** builds (profiler-enabled) via
-`Zori.TestBed.Editor.ProfileBuild.BuildDevelopmentLinux`. Use `/build-run` when you want a
-production binary; use `build-zority.sh` (via `/profile`) when you need a profiler capture.
+- forced synchronization through `Complete`, main-thread reads, or dependency mistakes;
+- many tiny jobs whose scheduling overhead exceeds their work;
+- heterogeneous work assigned in batches too large for effective work stealing;
+- structural changes or command-buffer playback concentrated into spikes;
+- temporary native allocations, buffer resizing, managed allocations, or failed pooling;
+- false sharing or memory access that defeats Burst vectorization and cache locality;
+- remeshing unchanged chunks, duplicate collider work, or redundant GPU uploads;
+- performance scaling with visible chunks, edited chunks, voxel density, or triangle count differently than expected.
 
-Both share the same `-nographics` prohibition and `ulimit -n 8192` workaround.
+When testing batch sizes, keep the workload identical and compare worker utilization and total stage time. Uniform per-element work can tolerate moderate batches; heterogeneous chunk or mesh work often benefits from smaller batches.
+
+## Report evidence
+
+For every conclusion, report:
+
+- capture conditions and the exact measured range;
+- baseline and candidate values with units;
+- the responsible marker, system, job, allocation, render pass, or synchronization point;
+- whether the result is CPU-bound, GPU-bound, memory-bound, scheduling-bound, or inconclusive;
+- capture limitations and the next discriminating measurement.
+
+Save profiler captures outside source-controlled project assets unless the user explicitly wants benchmark artifacts committed. Do not add custom build entry points or instrumentation to a project unless the task authorizes code changes.
+
+## Important caveat
+
+Avoid `-nographics` when the scenario imports, creates, or measures GPU resources. Headless graphics behavior can invalidate RenderTexture, shader, rendering, and GPU measurements. For CPU-only automation, confirm the behavior with the Unity version and target platform instead of treating this as a universal ban.
