@@ -1,182 +1,125 @@
-# my-claude-workflow
+# Claude and Codex Unity workflow
 
-Personal Claude Code skills, sub-agents, and workflow automation.
+A shared collection of agent skills, specialist definitions, documentation, and command-line helpers. The repository is maintained for a Windows-based Unity workflow, with emphasis on ECS, jobs, Burst, rendering, profiling, and voxel-game development. Portable skills remain usable on other platforms where their dependencies are available.
 
-## Installation
+The files in this repository are canonical. Change them here, commit the change, and rerun the installer when you want to refresh the active Claude and Codex copies.
+
+## Install
+
+On Windows, run the installer from Git Bash:
 
 ```bash
+cd /f/Programowanie/my-claude-workflow
 ./install.sh
 ```
 
-This symlinks `skills/` and `agents/` into `~/.claude/`. Edit the canonicals
-here in the repo — re-run `install.sh` to refresh the symlinks. Launcher scripts
-in `bin/` are made executable; add `bin/` to your `PATH` to use them.
+The installer requires Bash, Git utilities, and `python3`. Set `CODEX_HOME` before running it only when Codex uses a non-default configuration directory.
+
+### What the installer manages
+
+- Every repository skill is copied into both `~/.claude/skills/` and `${CODEX_HOME:-~/.codex}/skills/`.
+- Skills previously installed by this repository are replaced on later runs, so repository updates take effect.
+- An unrelated user skill with the same name is moved to a timestamped backup before the repository version is installed.
+- Unrelated skills with other names remain untouched.
+- Backups live under each tool's `backups/my-claude-workflow/` directory, outside skill discovery. The newest five install backup sets are retained by default; set `WORKFLOW_BACKUP_RETENTION` to a non-negative integer to change that limit.
+- Claude specialist agents and the selected root instruction documents are installed as managed copies under `~/.claude/`.
+- Claude hooks are merged into `~/.claude/settings.json` without replacing unrelated settings. Codex does not use those Claude hook entries.
+- Files under `bin/` are made executable but are not added to `PATH` automatically.
+
+The installer keeps manifests in the Claude and Codex configuration roots to distinguish repository-managed copies from user-owned content. Legacy backups accidentally placed inside skill discovery are moved to the external backup area.
 
 ## Skills
 
-### Git & worktree workflow
+The `skills/` directory currently contains:
 
-| Skill | Description |
-|-------|-------------|
-| `commit` | Commit all changes, including untracked files |
-| `worktree` | Create or switch to a git worktree for isolated feature/fix work |
-| `rebase` | Rebase the current worktree branch onto latest main |
-| `merge` | Merge the current worktree branch into main, clean up the worktree |
+### Unity and game development
 
-### Orchestration
+`initialize-ai-navigation`, `localization`, `new-unity-project`, `optimize-audio`, `optimize-text-mesh-pro`, `profile`, `shader-graph-create-custom-node`, `sprite-editor`, `ui`, `ui-imgui`, `ui-ugui`, `ui-uitk`, `unity-cli`, `unity-diagnose`, `unity-grill`, `unity-grill-with-docs`, `unity-mcp-skill`, `unity-package-management`, `unity-prototype`, `unity-refactor`, `urp-postprocessing`, and `validate-urp-render-graph-renderer-feature`.
 
-| Skill | Description |
-|-------|-------------|
-| `delegate` | Multi-agent orchestration — scope work, audit for reuse, dispatch every step to sub-agents |
-| `refactor` | Three-phase refactoring orchestrator: explore smells → design → apply |
-| `research` | Extract research content from YouTube talks, PDFs, or PPTX into structured markdown |
-| `handoff` | Write a continuation-link handoff prompt for a future session |
-| `diagnose-first` | Debugging methodology that forces observation before action |
+### Git and delivery
 
-### Code quality
+`cdiff`, `github-code-review`, `github-pr-workflow`, `merge`, `rebase`, `reset-repos`, `review-agent`, `review-plan`, and `worktree`.
 
-| Skill | Description |
-|-------|-------------|
-| `deadcode` | Find and delete dead code — zero callers means zero reasons to exist |
-| `dry` | Scan crates for SOLID/DRY/KISS violations, rank the worst, fix them |
-| `sniff` | Find and fix code smells — anonymous tuples, magic numbers, deep nesting, weak types |
-| `tdd` | RED/GREEN TDD — write a failing test first, then fix |
-| `review-agent` | Launch a sub-agent to review the current branch diff against master |
-| `review-plan` | Audit a plan file for completeness before exiting plan mode |
-| `sanitize` | Audit tracked files for leaked references to external proprietary code |
+Manual Git worktrees default to the ignored `.worktrees/` directory. The workflow detects the intended local base instead of assuming every repository uses `main`, and it never pushes unless explicitly requested.
 
-### Docs & context
+### Code quality and reusable knowledge
 
-| Skill | Description |
-|-------|-------------|
-| `docs` | Edit documentation only — no source code |
-| `refine-docs` | Interactive document refinement, file by file, with Q&A |
-| `claude-status` | Show active Claude sessions across all projects |
-| `enforce` | Pre-load CLAUDE.md constraints into session context |
-| `prune` | Prune context and memories — strip redundancy, preserve sharp rules |
+`deadcode`, `docs`, `dry`, `humanizer`, `prune`, `recipe-spec`, `refactor`, `refine`, `refine-docs`, `sanitize`, `sniff`, `tdd`, `write-a-skill`, and `research`.
 
-### Project utilities
+### Utilities
 
-| Skill | Description |
-|-------|-------------|
-| `reset-repos` | Safely inspect and synchronize repositories under an explicit root |
-| `profile` | Build, run, and analyze Unity profiler data with call-stack attribution |
-| `domain-availability` | Generate domain name ideas and check availability across TLDs |
-| `rustrover` | Open RustRover in the current worktree |
-| `rider` | Open Rider in the current worktree |
-| `webstorm` | Open WebStorm in the current worktree |
+`claude-status`, `domain-availability`, `enforce`, `find-skills`, `graphify`, `rider`, `rustrover`, and `webstorm`.
 
-## Agents
+Some utilities are necessarily product- or application-specific. Their presence does not make the shared Unity and engineering skills Claude-only.
 
-Sub-agent definitions dispatched by the orchestrator skills. Installed alongside
-skills so `delegate`, `refactor`, and `research` can fan work out to fresh
-context windows.
+## Specialist agents
 
-| Agent | Used by | Role |
-|-------|---------|------|
-| `delegate-auditor` | `delegate` | Audits the codebase for existing functionality before any design |
-| `delegate-architect` | `delegate` | Designs the implementation and persists it to the group file |
-| `delegate-consolidated` | `delegate` | Runs compounded phases in one continuous 1M-context run |
-| `delegate-reviewer` | `delegate` | Fresh-eyes verification against success criteria |
-| `refactor-explorer` | `refactor` | Phase 1 — surfaces concrete code smells and architectural problems |
-| `refactor-architect` | `refactor` | Phase 2 — designs the target-state structure |
-| `refactor-implementer` | `refactor` | Phase 3 — applies the migration as real code edits |
-| `research-extractor` | `research` | Pass 1 — runs the extraction pipeline and marks problem areas |
-| `research-vision` | `research` | Vision pass — describes slide/figure images inline |
-| `research-refiner` | `research` | Pass 3 — resolves FIXME marks and cleans up the document |
+The repository contains six focused agent definitions:
 
-## Hooks & statusline
+- `refactor-explorer`, `refactor-architect`, and `refactor-implementer` support the three-phase refactoring workflow.
+- `research-extractor`, `research-vision`, and `research-refiner` support extraction, visual reconstruction, and final cleanup of research material.
 
-`install.sh` merges these into `~/.claude/settings.json` by command string, leaving the
-rest of the file untouched. `settings.json` is deliberately not a symlink — Claude Code
-writes to it — so without this step a hook lives only on the machine that created it.
+Claude receives these definitions under `~/.claude/agents/`. Codex can use the shared skill instructions with its native collaboration roles where available.
 
-| Command | Wired as | Role |
-|---------|----------|------|
-| `cc-nospin` | `PreToolUse(Bash)` | Refuses no-op spin loops — see [docs/no-op-spin.md](docs/no-op-spin.md) |
-| `cc-context-warn` | *retired* | Announced each 10% band of context consumed — superseded by cha-ching |
-| `cc-cost-tick` | *retired* | Announced what each turn cost, with a bell — superseded by cha-ching |
-| `cc-statusline` | *retired* | Context gauge and session cost — superseded by cha-ching |
-| `cc-memory-link` | run by `install.sh` | Moves per-project memories into `memory/` and links them back |
-| `cc-rule-audit` | run by hand | Counts, per rule, how often it is obeyed across the transcripts |
-| `cc-doctrine` | `SessionStart` | Injects the files in `DOCTRINE.list` — and re-injects them after a compaction |
-| `cc-no-hedge` | `Stop` | Refuses to end a turn that hedges ("want me to") or counts ("three of them") |
-| `cc-whole-file-reads` | `PreToolUse(Read\|Bash)` | Denies partial reads of `AGENTS.md` / `CONTEXT.md` |
-| `cc-comment-wall` | `PostToolUse(Write\|Edit)` | Refuses a wall of narration comments — that block is a doc page |
-| `cc-transcript-backup` | Optional rclone/Task Scheduler/systemd job | Copies an explicitly configured Claude or Codex transcript directory — see [docs/transcript-backup.md](docs/transcript-backup.md) |
+## Unity command-line helpers
 
-A rule in `CLAUDE.md` is a hypothesis, not a mechanism. `cc-rule-audit` scores each one against the
-transcript record so an ignored rule can be moved down the ladder — prose, then skill file, then hook
-— instead of reworded into a differently-worded ignored rule.
-[docs/rule-compliance.md](docs/rule-compliance.md) carries the 637-session baseline the four hooks
-above were wired against, and the two failure shapes behind it: a slash command in `CLAUDE.md` is
-text and not an invocation (`/i-have-adhd` fired in 1.4% of sessions), and a rule inside a rejected
-draft binds nothing however loudly it says "(binding)". Every `CLAUDE_*.md`, `VOICE.md`, `PROSE.md`,
-`NONDUAL.md`, `VERIFY.md`, `HARNESS.md`, `EDITING.md`, `MODEL.md` and `DISPATCH.md` here is a
-rejected draft of `CLAUDE.md` and stays unloaded on purpose — `DOCTRINE.list` says so, so a later
-pass does not "helpfully" wire the graveyard. `FFF.md` is the exception and is imported.
+Add `F:\Programowanie\my-claude-workflow\bin` to the Git Bash `PATH` to use the helper commands. Keep the official Unity CLI location on `PATH` as well.
 
-The built-in context indicator stays hidden until the window is nearly full, and that
-threshold is not configurable. [docs/context-usage.md](docs/context-usage.md) covers why
-seeing it earlier is worth the trouble — a measured session ended at 831k of context and
-billed 310.7M input-side tokens, because the window is re-sent on every request.
+| Command | Purpose |
+| --- | --- |
+| `unity-editor <project>` | Reads `ProjectVersion.txt`, resolves the matching installed editor, and safely launches that project. |
+| `unity-cli-recompile <project>` | Requests recompilation through a connected editor and shows status plus recent compiler errors. |
+| `unity-ps [filter]` | Lists running Unity project-editor processes without worker-process noise. |
+| `killunity <filter> [--force]` | Previews matching editors; termination requires the explicit `--force` flag. |
 
-The three retired commands grew up into **[cha-ching](https://github.com/api-haus/cha-ching)**,
-which chains to an existing statusline rather than taking the slot, and reads its figures from
-the payload rather than parsing transcripts. `install.sh` no longer wires them — install the
-plugin instead. They stay in `bin/` because the doc explains its findings through them, and
-because they are the smallest working version of the idea.
+On this Windows setup, editor discovery uses the official Unity CLI first and falls back to `F:\Unity Editors`. Override it with `UNITY_CLI_BIN` or `UNITY_EDITOR_ROOT`. The bare `unity` helper is retained as a compatibility alias, but it may collide with the official `unity.exe`; use `unity-editor` when the intended command must be unambiguous.
 
-## Directory Structure
+## Claude-specific helpers
 
+The installer currently wires these hooks only into Claude Code:
+
+| Command | Event | Purpose |
+| --- | --- | --- |
+| `cc-nospin` | `PreToolUse(Bash)` | Rejects repeated or no-op shell spin loops. |
+| `cc-doctrine` | `SessionStart` | Loads the paths explicitly listed in `DOCTRINE.list`. |
+| `cc-no-hedge` | `Stop` | Applies deterministic response-style checks. |
+| `cc-whole-file-reads` | `PreToolUse(Read\|Bash)` | Protects instruction files from partial reads. |
+| `cc-comment-wall` | `PostToolUse(Write\|Edit)` | Detects oversized narration comments. |
+
+Additional `cc-*` scripts remain available for manual inspection, memory linking, status experiments, rule auditing, and optional transcript backup. See `docs/` before enabling them. `cc-transcript-backup` requires explicit source and rclone-remote configuration; it has no default cloud destination.
+
+The `claude`, `claudeh`, `claude-draft`, and `claude-editor` launchers are intentionally Claude-specific. Shared skills do not depend on them.
+
+## Research storage
+
+The research workflow uses:
+
+```text
+F:\Programowanie\my-claude-workflow\research-library
 ```
+
+The directory is ignored by Git because generated research corpora can be large and may contain archived source material. Override the location with `RESEARCH_ROOT` when needed. The research skill documents its Python and external-tool requirements.
+
+## Repository layout
+
+```text
 my-claude-workflow/
-├── README.md
-├── install.sh                # symlinks skills/ + agents/ into ~/.claude/
-├── skills/                   # one directory per skill, each with a SKILL.md
-│   ├── claude-status/         #   SKILL.md + claude-status.sh
-│   ├── commit/
-│   ├── deadcode/
-│   ├── delegate/
-│   ├── diagnose-first/
-│   ├── docs/
-│   ├── domain-availability/
-│   ├── dry/
-│   ├── enforce/               #   SKILL.md + enforce.sh
-│   ├── handoff/
-│   ├── merge/
-│   ├── profile/               #   Unity profiling workflow
-│   ├── prune/
-│   ├── rebase/
-│   ├── refactor/
-│   ├── refine-docs/
-│   ├── research/              #   SKILL.md + tools/ (Python extraction pipeline)
-│   ├── reset-repos/
-│   ├── review-agent/
-│   ├── review-plan/
-│   ├── rider/
-│   ├── rustrover/
-│   ├── sanitize/
-│   ├── sniff/
-│   ├── tdd/
-│   ├── webstorm/
-│   └── worktree/
-├── share/                    # data the hooks use
-│   ├── ca-ching.wav          #   cash register, CC0 — see ATTRIBUTION.md
-│   └── ATTRIBUTION.md
-├── agents/                   # sub-agent definitions for the orchestrator skills
-│   ├── delegate-*.md
-│   ├── refactor-*.md
-│   └── research-*.md
-└── bin/                      # launchers and hook commands (add to PATH)
-    ├── cc-context-warn       #   UserPromptSubmit hook — context band warnings
-    ├── cc-cost-tick          #   Stop/UserPromptSubmit hook — +$0.42 and a ca-ching
-    ├── cc-memory-link
-    ├── cc-nospin             #   PreToolUse(Bash) hook — refuses spin loops
-    ├── cc-statusline         #   statusLine — model, context gauge, cost
-    ├── killunity
-    ├── unity -> unity-editor
-    ├── unity-cli-recompile
-    ├── unity-editor
-    └── unity-ps
+├── agents/              # refactor and research specialist definitions
+├── bin/                 # Unity, Claude, audit, and maintenance helpers
+├── docs/                # workflow and Unity technical documentation
+├── share/systemd/       # optional Linux transcript-backup timer template
+├── skills/              # canonical shared skill directories
+├── CLAUDE.md            # Claude instruction entry point
+├── DOCTRINE.list        # optional extra documents injected by cc-doctrine
+├── install.sh           # managed Claude and Codex installer
+└── research-library/    # generated local corpus; ignored by Git
 ```
+
+Root documents such as `HARNESS.md`, `VERIFY.md`, `MODEL.md`, `PROSE.md`, and `NONDUAL.md` are retained as reusable guidance. They are not automatically injected by `DOCTRINE.list`; add a path there only when it should consume context every session.
+
+## Safety notes
+
+- Review `git status` before running repository-maintenance workflows.
+- `install.sh` may replace only content recorded as repository-managed; collisions with unrecognized user content are backed up first.
+- Worktree removal, process termination, history rewriting, remote synchronization, and pushing remain explicit operations.
+- Treat raw agent transcripts and research archives as sensitive local data.
