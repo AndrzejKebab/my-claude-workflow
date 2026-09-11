@@ -118,7 +118,10 @@ my-claude-workflow/
 └── research-library/    # generated local corpus; ignored by Git
 ```
 
-Root documents such as `HARNESS.md`, `VERIFY.md`, `MODEL.md`, `PROSE.md`, and `NONDUAL.md` are retained as reusable guidance. They are not automatically injected by `DOCTRINE.list`; add a path there only when it should consume context every session.
+Binding root documents are assembled into the global `AGENTS.md` installed for
+Claude and Codex. The separate files remain the maintainable source modules;
+Codex does not follow Claude-style Markdown imports. `HARNESS.md` is included
+with an explicit Claude Code-only condition.
 
 ## Safety notes
 

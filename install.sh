@@ -133,6 +133,26 @@ CLAUDE_ITEMS_NEXT_MANIFEST="$CLAUDE_ITEMS_MANIFEST.tmp"
 : > "$CLAUDE_ITEMS_NEXT_MANIFEST"
 install_claude_item agents
 
+# Claude can import Markdown files, but Codex reads AGENTS.md directly without
+# following Claude-style @imports. Assemble every binding shared guide into the
+# AGENTS.md installed for both providers so their active instructions match.
+COMBINED_AGENTS="$(mktemp)"
+trap 'rm -f -- "$COMBINED_AGENTS"' EXIT
+cat "$SCRIPT_DIR/AGENTS.md" > "$COMBINED_AGENTS"
+for instruction_file in \
+    FFF.md \
+    MODEL.md \
+    NONDUAL.md \
+    PROSE.md \
+    VERIFY.md \
+    EDITING.md \
+    VOICE.md \
+    DISPATCH.md \
+    HARNESS.md; do
+    printf '\n\n' >> "$COMBINED_AGENTS"
+    cat "$SCRIPT_DIR/$instruction_file" >> "$COMBINED_AGENTS"
+done
+
 # Install repository skills as managed copies. A manifest distinguishes copies
 # owned by this installer from unrelated user skills with the same name.
 # Backups live outside skills/ so neither Claude nor Codex discovers them.
@@ -213,14 +233,14 @@ install_claude_item VERIFY.md
 install_claude_item NONDUAL.md
 install_claude_item PROSE.md
 install_claude_item MODEL.md
-install_claude_item AGENTS.md
+install_claude_item AGENTS.md "$COMBINED_AGENTS"
 install_claude_item docs
 mv "$CLAUDE_ITEMS_NEXT_MANIFEST" "$CLAUDE_ITEMS_MANIFEST"
 
 CODEX_ITEMS_MANIFEST="$CODEX_DIR/my-claude-workflow-managed-items.txt"
 CODEX_ITEMS_NEXT_MANIFEST="$CODEX_ITEMS_MANIFEST.tmp"
 : > "$CODEX_ITEMS_NEXT_MANIFEST"
-install_codex_item AGENTS.md
+install_codex_item AGENTS.md "$COMBINED_AGENTS"
 install_codex_item docs
 mv "$CODEX_ITEMS_NEXT_MANIFEST" "$CODEX_ITEMS_MANIFEST"
 

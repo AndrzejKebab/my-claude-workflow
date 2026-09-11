@@ -1,6 +1,9 @@
 # Harness / environment quirks (binding)
 
-Observed behaviours of the Claude Code execution environment — shell, bundled tools, Workflow dispatch. Global to every project and session, and the environment itself is not editable (per-session shell snapshots, hook-driven tooling), so the response is behavioural: do not "fix" these by editing the shell or settings. RTK is healthy and intentional ([[RTK.md]]); the one sanctioned RTK config change is the `ls` exclusion below.
+This section applies only when running inside Claude Code. Codex and other
+harnesses must ignore it.
+
+Observed behaviours of the Claude Code execution environment — shell, bundled tools, Workflow dispatch. Global to every Claude Code project and session, and the environment itself is not editable (per-session shell snapshots, hook-driven tooling), so the response is behavioural: do not "fix" these by editing the shell or settings. RTK is healthy and intentional ([[RTK.md]]); the one sanctioned RTK config change is the `ls` exclusion below.
 
 ## Shell + bundled grep
 
