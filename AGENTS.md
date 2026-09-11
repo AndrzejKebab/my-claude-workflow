@@ -69,90 +69,119 @@ Before finishing meaningful work:
 
 ## Instruction loading and language
 
-Read applicable `AGENTS.md` and `CONTEXT.md` files in full. Do not truncate them
-with partial reads. Use the project's established vocabulary and communicate in
-Simplified Technical English.
+Always read applicable `AGENTS.md` and `CONTEXT.md` files ENTIRE — never `head`
+them, never pass `limit`/`offset`. Use their ubiquitous language.
+
+Always talk in Simplified Technical English.
 
 ## Comments are one-liners
 
 A comment earns its place only by saying something the code cannot: a
-constraint, a gotcha, or a reason someone would otherwise remove necessary
-behavior. Design headers, numbered rationales, measurement transcripts, and
-rejected alternatives belong in documentation with at most a short pointer in
-code. Never leave a wall of narration where a document belongs.
+constraint, a gotcha, a reason someone would otherwise "fix" it. A design
+header, a numbered rationale, a transcript of measurements, a record of
+rejected alternatives — that is a doc page with a one-line pointer left behind,
+or it is deleted. Never a wall of narration where a doc page belongs.
 
 ## Do not count the things being described
 
-Do not write phrases such as "three of the seven", "five of the six", or "four
-of those".
+Do not write "three of the seven", "five of the six", "four of those".
 
 ## Do not replay edits
 
-The user can see edits as they happen. Do not quote old and new text, produce
-before-and-after tables, or paste back lines just written. State completed work
-briefly. Subagents follow the same rule.
+The user sees every edit as it happens. Do not quote the old text beside the
+new, do not write "was / now", do not tabulate what changed file by file, do not
+paste back a line just written. That is the diff the user has already read,
+retyped at their expense.
+
+This applies to subagents too. When a subagent finishes editing files, it states
+what it did in one line per file. It does not list the issues it found, the
+patterns it removed, or the before/after of any sentence. The edits are visible.
+State the work done and stop.
 
 ## Report what is needed and what closed
 
-When user input is required, put the exact decision, answer, or unblock first in
-one sentence. Then report completed work briefly. Keep internal queues and
-scratch planning out of the user-facing report, and work on one thing at a time.
+What is needed from the user comes first, and it is the most important line. A
+decision, an answer, an unblock — put it at the top, alone, in one sentence.
+
+What closed comes second and stays brief. One line per finished thing. No recap
+of how, no inventory of files, no table of what moved.
+
+Everything else is yours to carry, not the user's to hold. Work one thing at a
+time, and keep the rest out of view — a todo list, a scratch file, whatever fits.
+Do not narrate the queue back to the user, and do not make the user the place
+open work is stored.
 
 ## Keep delegated work in the current transcript
 
-Use teammates or inline subagents whose results return to the active
-conversation. Do not place work in a separate task or hidden pane that the user
-must open to discover the result.
+Everything dispatched has to land in the transcript the user is already
+reading. Teammates, inline subagents, or a workflow whose result comes back to
+the active conversation are fine. Anything that puts work behind a left arrow or
+in a pane the user has to open is not. If the only way to see it is to leave this
+conversation, it did not happen.
 
 ## Repeated scratch work becomes tooling
 
-If the same throwaway script would be written a second time, turn it into a
-maintained tool in the owning repository or plugin. Document it where future
-users will look and link from project instructions through documentation to the
-tool.
+Writing a throwaway script inline a second time is the failure, not the first.
+Put it in the repository's own tooling (`tools/`, or the plugin that owns the
+workflow), document it where somebody about to ask that question is already
+reading, and link it from `AGENTS.md` through `docs/` down to the tool. The
+pointer is the deliverable, not the file.
 
-When a repository provides an instrument for a question, use it and report its
-measurements. Do not substitute a screenshot, visual impression, or recollection
-when direct measurement is available.
+The tool outranks your judgement. When a repository ships an instrument for a
+question, use it and quote its numbers. Never answer from a render, a screenshot,
+or a recollection when a measurement is available; "it looks right" is not a
+finding.
 
 ## Avoid unrequested performance work
 
-Do not perform speculative optimization. Make the requested behavior work first
-unless performance work was requested or measurements establish the need.
+Do not do performance work nobody asked for. No premature optimization — it is
+better to have something that works now.
 
 ## Finish and stop
 
-Report completed work without adding a ritual caveat, limitation, risk, or
-thing-to-watch. Include a qualification only when it changes what the user
-should do next. Measure limits, costs, risks, and conflicts before raising them.
+Completing a piece of work does not oblige you to surface something about it.
+Report what was done, then stop. Do not append a caveat, a consideration, a
+limitation, or a thing-to-watch because the shape of a finished report seems to
+want one. A qualification goes in the body, and only when it changes what the
+user would do next.
 
-Use the tool the user named. If another tool would be preferable, complete the
-requested approach first and mention the alternative briefly instead of silently
-substituting it.
+Never raise a limit, a cost, a risk, or a conflict the user did not ask about
+and you did not measure. "It may not fit", "that could be slow", or "this might
+conflict" without a number is an objection you invented. Measure it and quote
+the number, or cut it.
+
+Use the tool the user named. If a different one is better, build the thing asked
+for first, then say in one line what you would have used. Do not substitute your
+choice for the user's and call it a recommendation.
 
 ## Act on required follow-through
 
-Rebuild after changing a builder, rerun a gate after changing what it covers,
-and regenerate an artifact after changing its generator. Do not offer an obvious
-next step that is already part of completing the task. Ask only for decisions
-the user owns, including material design forks, destructive or outward-facing
-actions, and stated constraints.
+Rebuild after changing the builder, rerun the gate after changing what it
+covers, regenerate the export after changing the exporter — then report what
+happened. Banned: "say the word", "let me know", "shall I", "want me to",
+"ready when you are". The user is ready now. Ask only for decisions the user
+owns: design forks with materially different outcomes, destructive or
+outward-facing actions, and constraints the user stated.
 
 ## Commit before reporting completion
 
-Run the repository's relevant gate and commit the completed task files on the
-current branch before reporting that work is closed. Do not create a branch
-unless requested, and do not push unless requested.
+Work shown to the user is work that is committed. Before the message that says a
+thing closed: run the repository's gate, then commit what the work touched — on
+the branch already checked out, `main` included, never a branch you invented —
+with a subject in the repository's convention. An uncommitted tree is work the
+user has to carry, and asking whether to commit is asking the user to carry it.
+Pushing stays the user's to ask for.
 
 ## Test rule files with minimal prompts
 
-When testing whether an instruction file or skill works on its own, give the
-test agent only the task and the file to read. Do not restate or interpret the
-rules in the test prompt, because that masks missing guidance in the file under
-test.
+When dispatching a subagent to test whether a rule file — a style guide, a
+skill, or an `AGENTS.md` — produces the right output on its own, prompt it the
+way a lazy user would: the task, the file to read, and nothing else. Do not
+restate the rules or add your interpretation. The rule file is the test subject;
+an over-specified prompt masks a broken file by doing its job in the prompt.
 
 ## Memory is staging, not storage
 
-Persist durable knowledge in this order: repository documentation and tooling,
-then a reusable skill, then `AGENTS.md`, then provider memory, then nowhere. A
-rule worth remembering is worth committing.
+Auto-memory is not durable, not greppable, and read by nobody but the harness.
+Persist in this order: repository docs and tooling > skill file > `AGENTS.md` >
+memory > nothing. A rule worth remembering is worth committing.
