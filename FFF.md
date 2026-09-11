@@ -1,6 +1,6 @@
-# FFF — fast file search (MCP)
+# FFF — optional fast file search (MCP)
 
-Rust file-search toolkit exposed as a user-scoped MCP server (`fff-mcp`, registered in `~/.claude.json`). Frecency-ranked fuzzy matching, git-aware filtering, sub-10ms on large repos.
+FFF is an optional Rust file-search MCP server with frecency-ranked fuzzy matching and git-aware filtering. It may be registered with Claude or Codex when available; this workflow does not assume it is installed.
 
 ## Tools
 
@@ -10,6 +10,6 @@ Rust file-search toolkit exposed as a user-scoped MCP server (`fff-mcp`, registe
 
 ## When to reach for it
 
-Prefer the `fff` MCP tools over built-in `Glob`/`Grep` — faster on large trees, frecency-ranks recently-touched files first. Built-ins remain fine for one-off greps where fff isn't loaded yet. Unlike `rtk` (hook-installed, automatic), `fff` is opt-in — it only helps when its tools are actually called.
+Query an existing Graphify graph before searching raw files. When no relevant graph exists, prefer FFF over built-in file search if its tools are available. Built-ins remain the fallback when FFF is not installed or a direct `rg` query is simpler.
 
-Update the binary: `curl -fsSL https://dmtrkovalenko.dev/install-fff-mcp.sh | bash`.
+Install or update FFF only after reviewing its current upstream installation instructions. Do not run a downloaded install script solely because this file mentions the tool.

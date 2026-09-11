@@ -6,9 +6,11 @@ are not the source of truth.
 
 ## Storage policy
 
-- Put architecture, workflows, commands, and decisions in the owning
-  repository's documentation.
-- Put reusable cross-project guidance in this workflow repository.
+- Put project architecture, workflows, commands, file relationships, and
+  decisions in `<project>/docs/agent-memory/` or the owning project's existing
+  documentation.
+- Put reusable Unity and development knowledge in
+  `<workflow-root>/memory/shared/`, organized by technical domain.
 - Keep personal preferences in user-level agent instructions.
 - Do not copy unrelated project memories into this repository.
 - Do not automatically restore old memory archives into active agent context.
@@ -28,8 +30,20 @@ Before preserving a memory, check:
 4. Is the evidence or verification method included?
 5. Will a future maintainer know when the note has become stale?
 
-Rewrite the result as a focused document or update an existing one. Prefer a
+Rewrite the result as a focused document or update an existing one. A reusable
+procedure with a clear trigger belongs in `skills/` rather than memory. Prefer a
 small number of maintained references over a large archive of agent summaries.
+
+## Retrieval order
+
+Query an existing Graphify graph first when the relevant project or shared
+memory directory already contains one. Otherwise use FFF when available, then
+built-in repository search. Building a new graph is an explicit operation, not
+a prerequisite for an ordinary lookup.
+
+The shared `memory` skill defines classification, note structure, and the
+copy-only import helper. That helper never deletes provider cache files or
+replaces them with links.
 
 ## Backup boundary
 

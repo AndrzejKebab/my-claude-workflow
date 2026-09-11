@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """cc-rule-audit — count, per CLAUDE.md rule, how often it is obeyed.
 
-Reads ~/.claude/projects/**/*.jsonl. Always exits 0: it reports, it does not
-gate. See docs/rule-compliance.md.
+Reads Claude Code JSONL transcripts. Always exits 0: it reports, it does not
+gate. See docs/rule-compliance.md. Set CLAUDE_TRANSCRIPTS or pass --transcripts
+for a non-default location.
 
     cc-rule-audit --days 30 --examples 20 --project p7
 """
@@ -14,7 +15,9 @@ import sys
 import time
 from collections import Counter
 
-TRANSCRIPTS = os.path.expanduser("~/.claude/projects")
+DEFAULT_TRANSCRIPTS = os.environ.get(
+    "CLAUDE_TRANSCRIPTS", os.path.expanduser("~/.claude/projects")
+)
 
 # Text rules: a match in an assistant text block is a violation.
 TEXT_RULES = [
@@ -47,13 +50,14 @@ def tail(text, fraction=0.4, floor=400):
 # Tool rules: (label, compliant_name, violating_name) counted from tool_use blocks.
 SEARCH_BUILTIN = {"Grep", "Glob"}
 SEARCH_FFF = re.compile(r"^mcp__fff")
+SEARCH_GRAPHIFY = re.compile(r"^mcp__.*graphify", re.I)
+GRAPHIFY_COMMAND = re.compile(r"\bgraphify\s+(query|path|explain)\b", re.I)
 WHOLE_FILE_READS = {"AGENTS.md", "CONTEXT.md"}
 HEAD_IN_BASH = re.compile(r"\b(head|tail)\b[^|]*(AGENTS|CONTEXT)\.md")
-ADHD_SKILL = re.compile(r"adhd", re.I)
 
 
-def transcripts(cutoff, project):
-    for dirpath, _, names in os.walk(TRANSCRIPTS):
+def transcripts(root, cutoff, project):
+    for dirpath, _, names in os.walk(root):
         if project and project not in os.path.basename(dirpath):
             continue
         for name in names:
@@ -71,7 +75,7 @@ def scan(paths, examples_wanted):
     c = Counter()
     examples = {label: [] for label, _ in TEXT_RULES}
     examples["appendix"] = []
-    sessions, adhd_sessions = set(), set()
+    sessions = set()
 
     for path in paths:
         session = os.path.basename(path)[:-6]
@@ -94,7 +98,7 @@ def scan(paths, examples_wanted):
                     if not isinstance(blk, dict):
                         continue
                     if blk.get("type") == "tool_use":
-                        tool_use(blk, c, session, adhd_sessions)
+                        tool_use(blk, c)
                     elif blk.get("type") == "text":
                         c["text_blocks"] += 1
                         text = blk.get("text", "")
@@ -110,13 +114,19 @@ def scan(paths, examples_wanted):
                                 c[label] += 1
                                 if len(examples[label]) < examples_wanted:
                                     examples[label].append(m.group(0).strip())
-    return c, examples, sessions, adhd_sessions
+    return c, examples, sessions
 
 
-def tool_use(blk, c, session, adhd_sessions):
+def tool_use(blk, c):
     name = blk.get("name", "")
     inp = blk.get("input") or {}
-    if name in SEARCH_BUILTIN:
+    if SEARCH_GRAPHIFY.match(name):
+        c["search_graphify"] += 1
+    elif name == "Skill" and "graphify" in str(inp.get("skill", "")).lower():
+        c["search_graphify"] += 1
+    elif name == "Bash" and GRAPHIFY_COMMAND.search(str(inp.get("command", ""))):
+        c["search_graphify"] += 1
+    elif name in SEARCH_BUILTIN:
         c["search_builtin"] += 1
     elif SEARCH_FFF.match(name):
         c["search_fff"] += 1
@@ -128,8 +138,6 @@ def tool_use(blk, c, session, adhd_sessions):
             c[key] += 1
     if name == "Bash" and HEAD_IN_BASH.search(str(inp.get("command", ""))):
         c["read_partial"] += 1
-    if name == "Skill" and ADHD_SKILL.search(str(inp.get("skill", ""))):
-        adhd_sessions.add(session)
 
 
 def ratio(good, bad):
@@ -145,21 +153,24 @@ def main():
                     help="violating phrases to quote per text rule (default 8)")
     ap.add_argument("--project", default="",
                     help="only scan transcript dirs whose name contains this")
+    ap.add_argument("--transcripts", default=DEFAULT_TRANSCRIPTS,
+                    help="Claude projects/transcript root")
     args = ap.parse_args()
 
-    paths = list(transcripts(time.time() - args.days * 86400, args.project))
+    transcript_root = os.path.abspath(os.path.expanduser(args.transcripts))
+    paths = list(transcripts(transcript_root, time.time() - args.days * 86400, args.project))
     if not paths:
-        print(f"no transcripts under {TRANSCRIPTS} in the last {args.days:g} days",
+        print(f"no transcripts under {transcript_root} in the last {args.days:g} days",
               file=sys.stderr)
         return
-    c, examples, sessions, adhd = scan(paths, args.examples)
+    c, examples, sessions = scan(paths, args.examples)
 
     print(f"corpus: {len(paths)} transcripts / {len(sessions)} sessions / "
           f"{c['text_blocks']} assistant text blocks / last {args.days:g} days\n")
 
-    print("RULE  prefer the fff MCP tools over built-in Glob/Grep")
-    print(f"      fff {c['search_fff']}   Glob/Grep {c['search_builtin']}   "
-          f"violation {ratio(c['search_fff'], c['search_builtin']):.1f}%\n")
+    print("RULE  search routing: existing Graphify graph > FFF > built-in")
+    print(f"      graphify {c['search_graphify']}   fff {c['search_fff']}   "
+          f"Glob/Grep {c['search_builtin']}\n")
 
     print("RULE  read AGENTS.md / CONTEXT.md entire, never head them")
     print(f"      full {c['read_full']}   partial {c['read_partial']}   "
@@ -179,11 +190,6 @@ def main():
     if examples["appendix"]:
         print(f"      opened with: {', '.join(examples['appendix'])}")
     print()
-
-    print("RULE  /i-have-adhd, invoked from CLAUDE.md")
-    print(f"      invoked in {len(adhd)} of {len(sessions)} sessions   "
-          f"miss {ratio(len(adhd), len(sessions) - len(adhd)):.1f}%")
-
 
 if __name__ == "__main__":
     main()

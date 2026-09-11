@@ -44,7 +44,7 @@ Manual Git worktrees default to the ignored `.worktrees/` directory. The workflo
 
 ### Code quality and reusable knowledge
 
-`deadcode`, `docs`, `dry`, `humanizer`, `prune`, `recipe-spec`, `refactor`, `refine`, `refine-docs`, `sanitize`, `sniff`, `tdd`, `write-a-skill`, and `research`.
+`deadcode`, `docs`, `dry`, `humanizer`, `memory`, `prune`, `recipe-spec`, `refactor`, `refine`, `refine-docs`, `sanitize`, `sniff`, `tdd`, `write-a-skill`, and `research`.
 
 ### Utilities
 
@@ -86,7 +86,7 @@ The installer currently wires these hooks only into Claude Code:
 | `cc-whole-file-reads` | `PreToolUse(Read\|Bash)` | Protects instruction files from partial reads. |
 | `cc-comment-wall` | `PostToolUse(Write\|Edit)` | Detects oversized narration comments. |
 
-Additional `cc-*` scripts remain available for manual inspection, memory linking, status experiments, rule auditing, and optional transcript backup. See `docs/` before enabling them. `cc-transcript-backup` requires explicit source and rclone-remote configuration; it has no default cloud destination.
+Additional `cc-*` scripts remain available for manual inspection, status experiments, rule auditing, and optional transcript backup. See `docs/` before enabling them. `cc-transcript-backup` requires explicit source and rclone-remote configuration; it has no default cloud destination.
 
 The `claude`, `claudeh`, `claude-draft`, and `claude-editor` launchers are intentionally Claude-specific. Shared skills do not depend on them.
 
@@ -107,6 +107,7 @@ my-claude-workflow/
 ├── agents/              # refactor and research specialist definitions
 ├── bin/                 # Unity, Claude, audit, and maintenance helpers
 ├── docs/                # workflow and Unity technical documentation
+├── memory/shared/       # reusable, reviewed Unity/development knowledge
 ├── share/systemd/       # optional Linux transcript-backup timer template
 ├── skills/              # canonical shared skill directories
 ├── CLAUDE.md            # Claude instruction entry point

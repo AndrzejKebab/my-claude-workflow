@@ -3,6 +3,8 @@
 Always read AGENTS.md and CONTEXT.md ENTIRE — never `head` them, never pass `limit`/`offset`. Use their ubiquitous language.
 Always talk in Simplified Technical English.
 
+For codebase and durable-memory questions, query an existing Graphify graph first. If no graph exists, use FFF when its tools are available, then built-in search (`rg`, file search, and normal reads). Do not build a graph merely to answer an ordinary lookup unless `/graphify` was requested.
+
 ## Comments are one-liners
 A comment earns its place only by saying something the code cannot: a constraint, a gotcha, a reason
 someone would otherwise "fix" it. A design header, a numbered rationale, a transcript of

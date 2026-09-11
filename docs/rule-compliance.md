@@ -46,8 +46,10 @@ A safe hook or validation script should:
 ## Auditing
 
 `bin/cc-rule-audit` can inspect Claude Code transcripts when that local archive
-is available. Its results describe observed behavior in that environment, not a
-universal compliance rate for every model or provider.
+is available. It measures the retained writing, whole-file-read, and search
+routing rules. Its results describe observed behavior in that environment, not
+a universal compliance rate for every model or provider. The transcript root is
+configurable for Windows or non-default Claude installations.
 
 When auditing a rule:
 

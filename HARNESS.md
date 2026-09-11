@@ -10,7 +10,7 @@ The Bash tool runs **zsh** (`SHELL=/usr/bin/zsh`) via a per-session shell-snapsh
 - Control flow is zsh, not fish or bash: `$(seq 1 5)` not `(seq 1 5)`. A wrong-dialect one-liner parse-errors, and in a parallel Bash batch that cancels the **whole batch**.
 
 How to apply:
-- Default to `rg -g '*.cs' pat path`, the `fff` MCP tools ([[FFF.md]]), or `Read`/`Glob`/`Edit`. Plain `grep -rn pat file` (no `--include`) also works.
+- For codebase questions, query an existing Graphify graph first. Otherwise use the `fff` MCP tools when available ([[FFF.md]]), then `rg -g '*.cs' pat path` or normal file tools. Plain `grep -rn pat file` (no `--include`) also works.
 - Never `grep --include`. For genuine GNU grep semantics use `command grep …` or `bash -c 'grep …'`, which bypass the wrapper.
 - Quote every glob; write zsh-dialect loops, or wrap loops/heredocs in `bash -c '…'`.
 
