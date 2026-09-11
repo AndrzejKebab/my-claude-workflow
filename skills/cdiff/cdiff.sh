@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# cdiff — open a git diff for a scope (superproject root or a submodule) in a
-#         new ghostty/kitty window.
+# cdiff — open a git diff for a scope (repository root or a submodule) in a
+#         separate terminal window.
 #
 # Usage: cdiff [scope] [range]
 #   scope  root | . | ''        → the superproject (default)
@@ -23,6 +23,11 @@
 set -euo pipefail
 
 # ---- render mode: this branch runs inside the spawned terminal ------------
+if [[ "${1:-}" == "--render" ]]; then
+	export CDIFF_RENDER=1 CDIFF_DIR="$2" CDIFF_RANGE="$3"
+	shift 3
+fi
+
 if [[ "${CDIFF_RENDER:-}" == "1" ]]; then
 	cd "$CDIFF_DIR"
 	printf '\033]0;cdiff %s %s\007' "${CDIFF_DIR##*/}" "${CDIFF_RANGE:-working-tree}"
@@ -115,6 +120,19 @@ fi
 
 self="$(realpath "$0")"
 export CDIFF_RENDER=1 CDIFF_DIR="$dir" CDIFF_RANGE="$range"
+
+case "$(uname -s)" in
+MINGW* | MSYS* | CYGWIN*)
+	if command -v wt.exe >/dev/null 2>&1; then
+		bash_exe="$(cygpath -w "$(command -v bash)")"
+		title="cdiff ${dir##*/}"
+		wt.exe -w new nt --title "$title" "$bash_exe" -lc 'exec "$0" "$@"' \
+			"$self" --render "$dir" "$range" >/dev/null 2>&1
+		echo "cdiff: opened ${dir##*/} [${range:-working tree}] in Windows Terminal"
+		exit 0
+	fi
+	;;
+esac
 
 if command -v ghostty >/dev/null 2>&1; then
 	nohup ghostty -e "$self" >/dev/null 2>&1 &
