@@ -81,29 +81,81 @@ mkdir -p "$CODEX_DIR/skills"
 
 link_dir agents "$CLAUDE_DIR"
 
-# Both Claude and Codex discover individual skill directories. Linking the
-# repository's skills one at a time leaves skills installed from other sources
-# in place instead of moving the whole directory into a timestamped backup.
+# Install repository skills as managed copies. A manifest distinguishes copies
+# owned by this installer from unrelated user skills with the same name.
+# Backups live outside skills/ so neither Claude nor Codex discovers them.
+INSTALL_STAMP="$(date +%Y%m%d-%H%M%S)"
+
 install_skills() {
     local tool_name="$1"
-    local destination="$2"
+    local tool_root="$2"
+    local destination="$tool_root/skills"
+    local manifest="$tool_root/my-claude-workflow-managed-skills.txt"
+    local backup_dir="$tool_root/backups/my-claude-workflow/$INSTALL_STAMP/skills"
+    local next_manifest="$manifest.tmp"
+    local legacy_install=0
+    local old_backup old_name skill name installed
 
     echo ""
     echo "Installing skills for $tool_name..."
+
+    mkdir -p "$destination"
+
+    # Older versions wrote name.bak.<timestamp> beside active skills. Move
+    # those preserved originals out of the discovery directory. Their presence
+    # also proves the matching active directory was installed by this script.
+    for old_backup in "$destination"/*.bak.*; do
+        [[ -e "$old_backup" ]] || continue
+        mkdir -p "$backup_dir"
+        old_name="$(basename "$old_backup")"
+        echo "Moving legacy backup out of skills: $old_name"
+        mv "$old_backup" "$backup_dir/$old_name"
+        legacy_install=1
+    done
+
+    : > "$next_manifest"
     for skill in "$SCRIPT_DIR"/skills/*; do
         [[ -d "$skill" ]] || continue
-        link_dir "$(basename "$skill")" "$destination" "$skill"
+        name="$(basename "$skill")"
+        installed="$destination/$name"
+
+        if [[ -e "$installed" || -L "$installed" ]]; then
+            if [[ "$legacy_install" -eq 1 ]] || grep -Fxq "$name" "$manifest" 2>/dev/null; then
+                case "$installed" in
+                    "$destination"/*) rm -rf -- "$installed" ;;
+                    *) echo "Refusing to replace unexpected path: $installed" >&2; exit 1 ;;
+                esac
+                echo "Updating managed skill: $name"
+            elif [[ -L "$installed" && "$(readlink -f "$installed")" == "$(readlink -f "$skill")" ]]; then
+                rm "$installed"
+                echo "Updating legacy managed symlink: $name"
+            else
+                mkdir -p "$backup_dir"
+                echo "Backing up user skill: $name"
+                mv "$installed" "$backup_dir/$name"
+            fi
+        else
+            echo "Installing skill: $name"
+        fi
+
+        cp -a "$skill" "$installed"
+        printf '%s\n' "$name" >> "$next_manifest"
     done
+
+    mv "$next_manifest" "$manifest"
+
+    if [[ -d "$backup_dir" ]]; then
+        echo "  Backups: $backup_dir"
+    fi
 }
 
-install_skills Claude "$CLAUDE_DIR/skills"
-install_skills Codex "$CODEX_DIR/skills"
+install_skills Claude "$CLAUDE_DIR"
+install_skills Codex "$CODEX_DIR"
 
 # Global config files — symlinked into ~/.claude so they travel with this repo.
 # RTK.md is intentionally excluded: it is private (mode 600) and stays machine-local,
 # so its @import in CLAUDE.md resolves only where it exists.
 link_file CLAUDE.md
-link_file negative-space-expanded.md
 link_file FFF.md
 link_file HARNESS.md
 link_file VERIFY.md
