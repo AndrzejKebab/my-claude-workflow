@@ -21,26 +21,28 @@ Usage:
 single number, because the metrics are on different scales.
 
 Output:
-    /mnt/archive4/PAPERS/Prepared/assets/<slug>/scene-NNN-SSSS.jpg   (one per detected scene)
-    /tmp/scenes_<slug>.tsv                                          (TSV of detected scenes)
+    <RESEARCH_ROOT>/Prepared/assets/<slug>/scene-NNN-SSSS.jpg   (one per detected scene)
+    <temporary-directory>/scenes_<slug>.tsv                                          (TSV of detected scenes)
 
 Non-destructive: appends to an existing asset dir; never deletes other files.
 Stale scene-* files from a prior run with different parameters can be cleared
-manually with `find /mnt/archive4/PAPERS/Prepared/assets/<slug> -name 'scene-*.jpg' -delete`
+manually with `find <RESEARCH_ROOT>/Prepared/assets/<slug> -name 'scene-*.jpg' -delete`
 before invoking this — the script intentionally does NOT do this for you.
 """
 import argparse
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import cv2
 
 import scene_metrics
+from research_paths import ASSETS_DIR
 
 # The extracted markdown corpus lives at a single hardcoded global location,
 # independent of cwd / which project invoked /research.
-ASSETS_ROOT = Path("/mnt/archive4/PAPERS/Prepared/assets")
+ASSETS_ROOT = ASSETS_DIR
 
 
 def ensure_cv2_decodable(video: Path) -> Path:
@@ -150,7 +152,7 @@ def main():
                            metric=args.metric)
     print(f"Found {len(scenes)} scenes", file=sys.stderr)
 
-    tsv_path = Path(f"/tmp/scenes_{args.slug}.tsv")
+    tsv_path = Path(tempfile.gettempdir()) / f"scenes_{args.slug}.tsv"
     with tsv_path.open("w") as tsv:
         for i, (start, end) in enumerate(scenes):
             pick = min(start + args.offset, (start + end) / 2)

@@ -75,8 +75,9 @@ from dataclasses import dataclass
 
 import cv2
 import numpy as np
+from research_paths import PREPARED_DIR
 
-PREPARED = "/mnt/archive4/PAPERS/Prepared"
+PREPARED = str(PREPARED_DIR)
 
 FEAT_W, FEAT_H = 384, 216
 CROP_TOP, CROP_BOTTOM = 0.11, 0.94

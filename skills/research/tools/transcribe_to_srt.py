@@ -2,7 +2,7 @@
 """Generate an SRT transcript from a video using faster-whisper.
 
 Usage:
-    .venv/bin/python tools/transcribe_to_srt.py <video> <out.srt> [model_size] [--force]
+    uv run --project <research-skill-dir> python tools/transcribe_to_srt.py <video> <out.srt> [model_size] [--force]
 
 `model_size` defaults to `large-v3` — the SOTA Whisper model. This is the
 canonical transcript source for the /research video pipeline: recorded-talk
@@ -20,9 +20,7 @@ site, and the preload is import-safe (no process re-exec), so it works whether
 this module is run as a script or imported. When CUDA is unavailable the model
 falls back to CPU int8.
 
-This file used to live as an inline `/tmp/transcribe_to_srt.py` blob recreated by
-the /research skill on every run. Promoted to tools/ so future runs reuse this
-single source of truth.
+This tracked tool is the single source of truth for transcript generation.
 
 Non-destructive: refuses to overwrite an existing SRT unless `--force` is passed.
 The temporary WAV is always cleaned up.

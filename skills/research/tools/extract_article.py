@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Fetch a web article (blog post, devlog, release-notes page) and convert it
-to OKF-schema markdown for the /mnt/archive4/PAPERS/Articles corpus.
+to OKF-schema markdown for the <RESEARCH_ROOT>/Articles corpus.
 
 This covers the /research input class the PDF/PPTX/video scripts don't:
 a plain HTML article. Invoked per-URL:
@@ -26,11 +26,11 @@ import sys
 import urllib.request
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
+from research_paths import ARTICLES_DIR
 
 from bs4 import BeautifulSoup, Comment
 from markdownify import markdownify as md_convert
 
-ARTICLES_DIR = Path("/mnt/archive4/PAPERS/Articles")
 ASSETS_DIR = ARTICLES_DIR / "assets"
 
 UA = "Mozilla/5.0 (X11; Linux x86_64) research-skill/1.0"

@@ -27,10 +27,11 @@ from PIL import Image
 
 import scene_metrics
 from openocr_engine import ocr_numpy as _ocr_numpy_engine
+from research_paths import PREPARED_DIR
 
 # The extracted markdown corpus lives at a single hardcoded global location,
 # independent of cwd / which project invoked /research.
-OUTPUT_DIR = Path("/mnt/archive4/PAPERS/Prepared")
+OUTPUT_DIR = PREPARED_DIR
 PROJECT_ROOT = OUTPUT_DIR  # display base for relative_to() in log output
 ASSETS_DIR = OUTPUT_DIR / "assets"
 

@@ -29,10 +29,11 @@ import tempfile
 import zipfile
 from lxml import etree
 from pathlib import Path
+from research_paths import PREPARED_DIR
 
 # The extracted markdown corpus lives at a single hardcoded global location,
 # independent of cwd / which project invoked /research.
-OUTPUT_DIR = Path("/mnt/archive4/PAPERS/Prepared")
+OUTPUT_DIR = PREPARED_DIR
 PROJECT_ROOT = OUTPUT_DIR  # display base for relative_to() in log output
 ASSETS_DIR = OUTPUT_DIR / "assets"
 

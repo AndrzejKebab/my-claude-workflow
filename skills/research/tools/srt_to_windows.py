@@ -14,6 +14,7 @@ Output format per window:
     <one-paragraph deduplicated transcript text>
 """
 import argparse
+import tempfile
 import re
 import sys
 from pathlib import Path
@@ -47,7 +48,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("srt", type=Path)
     ap.add_argument("slide_starts", type=Path)
-    ap.add_argument("--out", type=Path, default=Path("/tmp/windowed_transcript.txt"))
+    ap.add_argument("--out", type=Path,
+                    default=Path(tempfile.gettempdir()) / "windowed_transcript.txt")
     args = ap.parse_args()
 
     if not args.srt.exists():

@@ -14,10 +14,10 @@ You have **no memory** of the parent conversation. Your brief plus what you can 
 Read these in order:
 
 1. The brief — it names exactly one canonical slug, and may list specific concerns the orchestrator surfaced (e.g. "broken-Unicode equations on slides 59-60, 79-80, 117"; "headings 6-9, 81, 130, 134-136 need real titles"; "write a 3-section top summary covering atmosphere model + sky LUT + clouds"). **If Pass 2 (vision) was skipped, the brief lists the page numbers you must vision-pass inline** (see "Inline vision pages" below).
-2. **`/mnt/archive4/PAPERS/Prepared/assets/<slug>/findings-pass2.5-validate.md`** — the Pass-2.5 validator's report. Every entry under `## Errors` is a fix-or-justify item for you. If the brief says Pass 2.5 was skipped, the file will not exist — fall back to self-checking every LaTeX block as you read.
-3. `/mnt/archive4/PAPERS/Prepared/<slug>.md` end-to-end. Read in chunks if the file is large. **As you read, build a list of every `<!-- FIXME(extract): … -->` and `<!-- FIXME(vision): … -->` comment** — each one is a fix-or-justify item. Run `grep -n 'FIXME(extract)\|FIXME(vision)'` first so you have the full list before you start editing.
-4. The OKF schema at `~/.claude/skills/research/OKF-SCHEMA.md` and the tag taxonomy at `~/.claude/skills/research/OKF-TAXONOMY.md` — needed for frontmatter completion (see below).
-5. The skill spec at `~/.claude/skills/research/SKILL.md` (sections "Structural reconstruction policy", "Citable Canonical Naming", "Inline FIXME marks").
+2. **`$RESEARCH_ROOT/Prepared/assets/<slug>/findings-pass2.5-validate.md`** — the Pass-2.5 validator's report. Every entry under `## Errors` is a fix-or-justify item for you. If the brief says Pass 2.5 was skipped, the file will not exist — fall back to self-checking every LaTeX block as you read.
+3. `$RESEARCH_ROOT/Prepared/<slug>.md` end-to-end. Read in chunks if the file is large. **As you read, build a list of every `<!-- FIXME(extract): … -->` and `<!-- FIXME(vision): … -->` comment** — each one is a fix-or-justify item. Run `grep -n 'FIXME(extract)\|FIXME(vision)'` first so you have the full list before you start editing.
+4. The OKF schema at `<research-skill-dir>/OKF-SCHEMA.md` and the tag taxonomy at `<research-skill-dir>/OKF-TAXONOMY.md` — needed for frontmatter completion (see below).
+5. The skill spec at `<research-skill-dir>/SKILL.md` (sections "Structural reconstruction policy", "Citable Canonical Naming", "Inline FIXME marks").
 
 ## What you fix
 
@@ -42,7 +42,7 @@ When Pass 2 *was* dispatched, the vision reconstructions already exist — you d
 The extraction scripts emit `type`, `title`, `medium`, `source`, format-specific keys, `extracted`, and `slug` — but NOT `description` or `tags`. You fill both, and correct `type` when the heuristic was wrong.
 
 - **`description`**: one sentence stating what the document covers. Derive it from the `## Summary` section or the first body paragraph. Do not pad or hedge — the shortest faithful statement.
-- **`tags`**: a YAML list of 2–6 cross-cutting topics drawn from `~/.claude/skills/research/OKF-TAXONOMY.md`. Pick the most specific applicable tags; do not invent values outside the taxonomy. These tags are the source of truth for the topic-index pages: after you return, the orchestrator runs `update_topics.py --only=<slug>`, which regenerates `topics/<tag>.md` from frontmatter and links this document under each tag. A near-duplicate tag (`shadow-map` vs the taxonomy's `shadow-maps`) silently splits a topic, so match the taxonomy spelling exactly.
+- **`tags`**: a YAML list of 2–6 cross-cutting topics drawn from `<research-skill-dir>/OKF-TAXONOMY.md`. Pick the most specific applicable tags; do not invent values outside the taxonomy. These tags are the source of truth for the topic-index pages: after you return, the orchestrator runs `update_topics.py --only=<slug>`, which regenerates `topics/<tag>.md` from frontmatter and links this document under each tag. A near-duplicate tag (`shadow-map` vs the taxonomy's `shadow-maps`) silently splits a topic, so match the taxonomy spelling exactly.
 - **`type` correction**: the scripts default to `Conference Talk` for slide decks and `Research Paper` for everything else. Correct this when the heuristic is wrong — e.g. a course-notes chapter should be `Course Notes`, a thesis `Thesis`, a GPU Gems chapter `Book Chapter`. The full controlled vocabulary is in `OKF-SCHEMA.md` under `## type — controlled vocabulary`.
 
 Edit only the YAML frontmatter block (between the first and second `---`). Replace the whole block in one Edit call so field order matches the schema.

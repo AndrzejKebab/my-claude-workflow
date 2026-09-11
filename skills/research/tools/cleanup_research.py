@@ -4,13 +4,14 @@
 import sys
 import re
 from pathlib import Path
+from research_paths import PREPARED_DIR
 
 # The extracted markdown corpus lives at a global location independent of cwd /
 # which project invoked /research. `Prepared` is the primary-source bundle and
 # the default; `Articles` holds secondary material (tutorials, blog posts,
 # community write-ups) and is reached with `--research-dir`, matching
 # validate_research.py's flag of the same name.
-DEFAULT_DIR = Path("/mnt/archive4/PAPERS/Prepared")
+DEFAULT_DIR = PREPARED_DIR
 
 # Repeated footer/watermark lines to strip from PPTX-sourced slides
 STRIP_LINES = [
@@ -164,7 +165,7 @@ def main():
     if only_slugs and (missing := sorted(only_slugs - seen)):
         raise SystemExit(
             f"cleanup_research.py: no document found in {research_dir} for: {', '.join(missing)}\n"
-            f"  (a doc in the other bundle needs --research-dir=/mnt/archive4/PAPERS/Articles)"
+            f"  (a doc in the other bundle needs --research-dir=<RESEARCH_ROOT>/Articles)"
         )
     print(f"\nTotal: {total_changes} fixes applied")
 

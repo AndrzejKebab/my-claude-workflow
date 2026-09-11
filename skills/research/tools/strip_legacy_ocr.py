@@ -21,8 +21,9 @@ Dry-run by default; pass --apply to write in place.
 import re
 import sys
 from pathlib import Path
+from research_paths import PREPARED_DIR
 
-PREPARED = Path("/mnt/archive4/PAPERS/Prepared")
+PREPARED = PREPARED_DIR
 
 META = re.compile(r'^\*(\[\d{1,2}:\d{2}\][^*]*|\(\d+s\))\*\s*$')
 STRUCT_PREFIX = ('**', '![', '>', '<!--', '## ', '### ', '```', '|', '#')

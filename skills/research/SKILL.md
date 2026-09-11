@@ -3,14 +3,20 @@ name: research
 description: Extract research content from YouTube presentations, PDFs, or PPTX files into structured markdown. Dispatches each pass to a dedicated sub-agent (research-extractor / research-vision / research-refiner) so per-deck vision passes scale to hundreds of slides without bloating the parent context.
 ---
 
-Extract research material into `/mnt/archive4/PAPERS/Prepared/` as annotated markdown with images, transcripts, and OCR. The orchestrator (you) is a thin coordinator: every load-bearing pass runs in a dedicated sub-agent's context window so the parent session stays small.
+Extract research material into `$RESEARCH_ROOT/Prepared/` as annotated markdown with images, transcripts, and OCR. The orchestrator (you) is a thin coordinator: every load-bearing pass runs in a dedicated sub-agent's context window so the parent session stays small.
+
+## Storage
+
+`RESEARCH_ROOT` is the persistent corpus root. The tools default to `F:\Programowanie\my-claude-workflow\research-library`; set the environment variable to relocate the corpus without editing the skill. The default directory is ignored by this repository so extracted documents, media, and generated assets do not enter Git.
+
+The layout is `$RESEARCH_ROOT/Prepared` for primary-source Markdown, `$RESEARCH_ROOT/Articles` for captured web articles, and `$RESEARCH_ROOT/Prepared/assets` for generated media. Source originals are archived directly under `$RESEARCH_ROOT`.
 
 ## Toolchain layout
 
-The Python pipeline ships with the skill, including its own venv. Everything is self-contained at `~/.claude/skills/research/`:
+The Python pipeline ships with the skill, including its own venv. Everything is self-contained at `<research-skill-dir>/`:
 
 ```
-~/.claude/skills/research/
+<research-skill-dir>/
 ├── SKILL.md              ← this file
 ├── pyproject.toml        ← uv-managed Python dep spec
 ├── package.json          ← npm-managed Node dep spec (Pass 2.5 validators)
@@ -39,14 +45,14 @@ The Python pipeline ships with the skill, including its own venv. Everything is 
 ### Setup (first run only)
 
 ```bash
-cd ~/.claude/skills/research
+cd "<research-skill-dir>"
 uv sync                       # Python: creates .venv, installs deps (~30 s cold)
 npm install --no-audit --no-fund   # Node: installs Pass 2.5 validators (~10 s cold)
 ```
 
 The Node install pulls KaTeX (LaTeX validator + renderer), mermaid + jsdom (Mermaid parser), markdown-it + @vscode/markdown-it-katex (HTML preview). Required by `tools/validate_research.py` (Pass 2.5). Total disk footprint ~30 MB. Skip only if you intend to never run Pass 2.5 — the rest of the pipeline does not depend on it.
 
-Plus system dependencies (tracked in `tools/README.md`):
+Plus system dependencies (tracked in `tools/README.md`). On Windows, install LibreOffice, yt-dlp, and ffmpeg with the package manager you use and verify each executable is on `PATH`. Linux and macOS examples:
 
 ```bash
 # Arch
@@ -60,19 +66,13 @@ brew install --cask libreoffice
 brew install yt-dlp ffmpeg
 ```
 
-LibreOffice is needed for PPTX → PNG rendering. yt-dlp + ffmpeg are needed for the video pipeline. OCR is provided by [OpenOCR](https://github.com/Topdu/OpenOCR) (`openocr-python`), pinned in `pyproject.toml` — no system OCR engine is needed. OpenOCR auto-downloads ONNX detection + recognition models (~36 MB total) to `~/.cache/openocr/` on first use.
+LibreOffice is needed for PPTX → PNG rendering. yt-dlp + ffmpeg are needed for the video pipeline. OCR is provided by [OpenOCR](https://github.com/Topdu/OpenOCR) (`openocr-python`), pinned in `pyproject.toml` — no system OCR engine is needed. OpenOCR downloads its models into the current user's cache on first use.
 
-### API key for the marker LLM tier — source `~/.envrc` before every extraction (binding)
+### API key for the marker LLM tier
 
-The marker prepass on a text-paper PDF (Pass 1's equation / table / heading cleanup, plus `redo_inline_math`) is an LLM-backed tier that needs `CLAUDE_API_KEY` in the environment. The canonical home for that key on this setup is **`~/.envrc`**. The Claude Code session shell does NOT export it automatically, so **every `extract_research.py` invocation on a paper PDF must run under a shell that has sourced it** — prepend `source ~/.envrc` to the command:
+The marker prepass on a text-paper PDF can use an LLM-backed cleanup tier and reads `CLAUDE_API_KEY` from the process environment. Configure it through the operating system or a user-controlled secrets mechanism; never embed it in this repository or copy it from unrelated projects. Before extraction, verify that the variable is available to the process running the tool.
 
-```bash
-bash -c 'set -a; source ~/.envrc; set +a; ~/.claude/skills/research/.venv/bin/python ~/.claude/skills/research/tools/extract_research.py "<source-path>" --slug=<slug>'
-```
-
-The extractor agent's brief MUST carry this — the agent does not know where the key lives otherwise, and the failure is silent-by-degradation, not a hard stop.
-
-**The 401 symptom and why it is a hard failure, not a warning.** When the key is absent, expired, or wrong, marker's GPU passes (surya layout + OCR) still succeed, but every LLM-cleanup processor (`LLMTableProcessor`, `LLMMathBlockProcessor`, `LLMSectionHeaderProcessor`, `redo_inline_math`) fails with HTTP 401 and is skipped. The run does NOT fall through to PyMuPDF — it produces *marker-without-LLM* output: text layer present, but no equation reconstruction, no table merge, no heading repair, no inline-math redo. For a math-bearing paper that is a quality regression that reads like success. Treat a 401 report from the extractor as a blocking error: fix the key (source `~/.envrc`) and re-run with `--force`, do not proceed to Pass 2 on degraded output.
+**The 401 symptom and why it is a hard failure, not a warning.** When the key is absent, expired, or wrong, marker's GPU passes (surya layout + OCR) still succeed, but every LLM-cleanup processor (`LLMTableProcessor`, `LLMMathBlockProcessor`, `LLMSectionHeaderProcessor`, `redo_inline_math`) fails with HTTP 401 and is skipped. The run does NOT fall through to PyMuPDF — it produces *marker-without-LLM* output: text layer present, but no equation reconstruction, no table merge, no heading repair, no inline-math redo. For a math-bearing paper that is a quality regression that reads like success. Treat a 401 report from the extractor as a blocking error: fix the environment and re-run with `--force`, do not proceed to Pass 2 on degraded output.
 
 **The 400 "credit balance too low" mode — key valid, billing exhausted.** A correctly-sourced key can still fail if the API account is out of credit: surya OCR/layout runs fine, but the three LLM cleanup processors each return HTTP 400 and make zero LLM calls. There is no `marker FAILED` line — the signature is **400s in the run log**. Born-digital PDFs keep their body text but lose heading levels, tables, and inline-math repair. Note the auth split: the Claude Code session and its vision/refine sub-agents use separate auth and keep working — only marker's direct `CLAUDE_API_KEY` calls hit the exhausted account, so the refiner pass can salvage the structural repair (headings, equations, axis values) if a funded key is unavailable. To redo cleanly once funded: `rm assets/<slug>/marker-meta.json` then `extract_research.py --only=<slug> --force`.
 
@@ -82,28 +82,26 @@ The extractor agent's brief MUST carry this — the agent does not know where th
 - **Output quality** — a math-bearing paper that came back with well-formed multi-line LaTeX (`\begin{split}` systems, nested fractions, reconstructed equation numbering) had a working LLM tier; marker-without-LLM cannot produce that.
 - **A direct key probe** — one `curl` at `api.anthropic.com/v1/messages` separates "key/credit dead" from "counter blind" in seconds.
 
-Extractor briefs MUST state this explicitly, otherwise the agent reads the zero, matches it against the 400-mode description above, and hard-blocks a perfectly good extraction. (Observed 2026-07-21: a clean Claude-backend run on a 7-page paper reported 0/0 while having demonstrably done full equation reconstruction.) The durable fix is to teach `marker_extract.py`'s stats reporter to report `unavailable` rather than `0` for the Claude backend, or to patch the counter into the vendored `claude.py`; until then, treat the field as absent.
-
-**Do not scavenge keys from random project `.env` files.** A stale `ANTHROPIC_API_KEY` in some unrelated project (`chat/.env`, etc.) is the trap — it is often expired and is exactly what produces the silent 401. `~/.envrc`'s `CLAUDE_API_KEY` is the single source of truth; ignore everything else.
+Extractor briefs MUST state this explicitly, otherwise the agent can hard-block a successful extraction. Until the backend reports the counter reliably, treat the field as unavailable rather than zero.
 
 ### Invocation
 
 The agents invoke scripts using the skill venv directly. The two extraction scripts take the **source path** as their first argument; the canonical slug is passed with `--slug`:
 
 ```bash
-~/.claude/skills/research/.venv/bin/python ~/.claude/skills/research/tools/extract_research.py <source-path> --slug=<slug>
+uv run --project "<research-skill-dir>" python "<research-skill-dir>/tools/extract_research.py" <source-path> --slug=<slug>
 ```
 
-The per-slug post-processing scripts (`cleanup_research.py`, `validate_research.py`, `update_topics.py`) operate on the already-written `/mnt/archive4/PAPERS/Prepared/<slug>.md` and take `--only=<slug>` instead (`update_topics.py` reads the document's final `tags` and regenerates the `topics/` index pages that link it):
+The per-slug post-processing scripts (`cleanup_research.py`, `validate_research.py`, `update_topics.py`) operate on the already-written `$RESEARCH_ROOT/Prepared/<slug>.md` and take `--only=<slug>` instead (`update_topics.py` reads the document's final `tags` and regenerates the `topics/` index pages that link it):
 
 ```bash
-~/.claude/skills/research/.venv/bin/python ~/.claude/skills/research/tools/validate_research.py --only=<slug>
+uv run --project "<research-skill-dir>" python "<research-skill-dir>/tools/validate_research.py" --only=<slug>
 ```
 
 Either can also run via `uv run` (which auto-syncs if `pyproject.toml` changed); the explicit-path form is faster because it skips the uv sync check:
 
 ```bash
-uv run --project ~/.claude/skills/research python ~/.claude/skills/research/tools/extract_research.py <source-path> --slug=<slug>
+uv run --project "<research-skill-dir>" python <research-skill-dir>/tools/extract_research.py <source-path> --slug=<slug>
 ```
 
 ### Per-document helpers
@@ -112,11 +110,9 @@ One-off helpers (e.g. `split_<slug>_notes.py` for a particular deck's PowerPoint
 
 ### Legacy project copies
 
-Projects that adopted /research before this restructuring (notably `woweyreey`) may have their own `<project>/tools/*.py` copies running against `<project>/tools/.venv/`. Those continue to work but are **legacy**: no further updates land there. Migration path for those projects: `cd ~/.claude/skills/research && uv sync`, then update any project-specific `tools/<script>.py` invocations to point at the skill copy.
-
 ## Output frontmatter schema
 
-Every extracted document emits an OKF-adapted YAML frontmatter block. The canonical field definitions and controlled vocabularies (`type`, `medium`, `tags`) are in `~/.claude/skills/research/OKF-SCHEMA.md`. The extraction scripts (`extract_research.py`, `research_video.py`) emit `type`, `title`, `medium`, `source`, format-specific keys (`pages`, `slide_deck`, `duration`), `extracted`, and `slug`. The refiner (Pass 3) fills `description` and `tags`, and corrects `type` when the script heuristic guessed wrong.
+Every extracted document emits an OKF-adapted YAML frontmatter block. The canonical field definitions and controlled vocabularies (`type`, `medium`, `tags`) are in `<research-skill-dir>/OKF-SCHEMA.md`. The extraction scripts (`extract_research.py`, `research_video.py`) emit `type`, `title`, `medium`, `source`, format-specific keys (`pages`, `slide_deck`, `duration`), `extracted`, and `slug`. The refiner (Pass 3) fills `description` and `tags`, and corrects `type` when the script heuristic guessed wrong.
 
 ## Architecture overview
 
@@ -124,7 +120,7 @@ You are the orchestrator for the /research skill. You do **not** read 268-slide 
 
 | Pass | Agent | Purpose |
 |---|---|---|
-| 1 — extract & mark | `research-extractor` | Run `extract_research.py <source-path> --slug=<slug>` (and `extract_research_phase2.py` for PPTX), archive source to `/mnt/archive4/PAPERS/`. **Then read the produced markdown and mark every problematic area inline with a `<!-- FIXME(extract): … -->` comment** — garbled equations, suspect OCR, and (critically) each page that needs a vision-pass description. Report the slug, asset counts, and the count of pages flagged for vision. |
+| 1 — extract & mark | `research-extractor` | Run `extract_research.py <source-path> --slug=<slug>` (and `extract_research_phase2.py` for PPTX), archive source to `$RESEARCH_ROOT/`. **Then read the produced markdown and mark every problematic area inline with a `<!-- FIXME(extract): … -->` comment** — garbled equations, suspect OCR, and (critically) each page that needs a vision-pass description. Report the slug, asset counts, and the count of pages flagged for vision. |
 | 2 — vision _(conditional)_ | `research-vision` | Read slide / figure images and **reconstruct each slide's structure in markdown** (verbatim nested bullets, tables, ```mermaid diagrams, two-column subfigures, code, LaTeX — see "Structural reconstruction policy"), load-bearing, with a `<!-- vision: reconstructed … -->` provenance marker above and the frame embedded below. **Dispatched ONLY when more than 5 pages need a vision pass** (per the extractor's `FIXME(extract): … needs vision` marks). When 5 or fewer pages need vision, skip this pass entirely — Pass 3 folds the handful in. Batches well — dispatch one agent per ~30 slides to keep individual context lean (reconstruction is heavier than captioning, so lean toward ~25). |
 | 2.5 — validate | _(orchestrator runs inline)_ | Run `tools/validate_research.py --only=<slug>`: every LaTeX block (`$…$`, `$$…$$`) is parsed by KaTeX and every Mermaid fenced block by `mermaid.parse()`. Errors are written to `findings-pass2.5-validate.md` for the refiner to fix, and to stderr for the orchestrator. Optional `--html` produces a browser-openable preview. |
 | 3 — refine _(+ inline vision)_ | `research-refiner` | Heading fixes, broken-Unicode equation re-transcription, speaker-notes typo cleanup, optional top-of-doc summary. **Resolves the *content* every `FIXME(extract)` / `FIXME(vision)` mark flags** (fix the reconstruction against the render, or accept a source limitation). It does NOT hand-delete the comments — the Pass 3.7 mechanical sweep removes every marker at once (an agent deleting ~90 markers one Edit at a time is pure token spend for a deterministic regex transform). Anything it cannot resolve it escalates in its **return message** (not an inline `FIXME(audit)`, which the sweep would erase). When Pass 2 was skipped (≤5 vision pages), the refiner also **reconstructs those pages itself** per the Structural reconstruction policy (verbatim bullets/tables/mermaid/subfigures, not a summary). Brief MUST cite the Pass-2.5 sidecar so the refiner has a concrete error list to address. |
@@ -160,7 +156,7 @@ Passes do not write separate findings-sidecar files. Instead, each pass that spo
 
 > **Count marks with `grep -F`, never a bare `grep`.** `grep` is hook-rewritten to ripgrep in this setup, and ripgrep reads the pattern as an ERE — so `FIXME(vision)` parses as a capture group around the literal `vision` and matches `FIXMEvision`, i.e. **nothing**. It exits quietly with `0`, which is indistinguishable from "this pass left no marks" and will make an orchestrator skip Pass 3's mark resolution entirely or declare a refiner done when it has not started. Measured 2026-07-21 on the same file: `/usr/bin/grep -c` (BRE, parens literal) → **5**, `rg -c` → **0**. Use `grep -cF 'FIXME(vision)'` for counting, and `grep -nF` for listing. When the pattern genuinely needs regex, escape the parens: `grep -cE 'FIXME\(extract\):.*needs vision'`. Same trap applies to `\|` alternation, which is BRE-only — in ERE it matches a literal pipe. **Every dispatch brief that tells an agent to grep for marks must carry this warning**, because the failure is silent on the agent's side too.
 
-**Orchestrator dispatch briefs must** tell each agent (a) to leave its `FIXME(<pass>)` marks inline at the problem site, and (b) — for the refiner — to grep for `FIXME(extract)` and `FIXME(vision)`, and resolve the content each flags. The refiner leaves the comments in place and escalates the unresolved ones in its return message; the orchestrator's Pass 3.7 sweep strips all markers. A refiner that finishes with `FIXME(*)` content still *unaddressed* (as opposed to the comment merely still present) has not completed its pass. The marks are plain text inside the file every pass already edits, so there is no separate-file write that can fail — but if a sub-agent reports it cannot Edit `<slug>.md` at all (permission denied, harness block), the orchestrator's correct response is to **re-dispatch**, never to make the edits itself from the agent's return text. (If sub-agent edits are failing systemically, the root cause is usually a missing `Write`/`Edit` permission-allow rule for the `/mnt/archive4/PAPERS/Prepared/**` path — add it to the user's global `~/.claude/settings.json` and fix that, don't work around it.)
+**Orchestrator dispatch briefs must** tell each agent (a) to leave its `FIXME(<pass>)` marks inline at the problem site, and (b) — for the refiner — to grep for `FIXME(extract)` and `FIXME(vision)`, and resolve the content each flags. The refiner leaves the comments in place and escalates the unresolved ones in its return message; the orchestrator's Pass 3.7 sweep strips all markers. A refiner that finishes with `FIXME(*)` content still *unaddressed* (as opposed to the comment merely still present) has not completed its pass. If agents cannot edit `$RESEARCH_ROOT/Prepared`, correct the active agent host's filesystem permissions and re-dispatch instead of reconstructing edits from return text.
 
 ### Concurrency rules (read this before dispatching anything in parallel)
 
@@ -317,8 +313,8 @@ PowerPoint bullet lists exported to PDF carry their Wingdings bullet through as 
 Recognise it early: if Edit fails repeatedly on a slide-deck document whose text looks exactly right, dump codepoints before trying anything else —
 
 ```bash
-~/.claude/skills/research/.venv/bin/python -c "
-t=open('/mnt/archive4/PAPERS/Prepared/<slug>.md',encoding='utf-8').read()
+uv run --project "<research-skill-dir>" python -c "
+t=open('$RESEARCH_ROOT/Prepared/<slug>.md',encoding='utf-8').read()
 print('U+F0A7:', t.count(''), 'U+F0E0:', t.count(''))"
 ```
 
@@ -365,35 +361,35 @@ Every extracted document MUST be filed under a **citable canonical slug**. Decid
 
 **Required actions:**
 
-1. Pick the canonical slug per the rules above (cross-check the existing `*.md` files in `/mnt/archive4/PAPERS/Prepared/` for adjacent precedent if unsure — match the surrounding pattern) and pass it as `--slug=<canonical>` to Pass 1. This is the normal path — `<canonical>.md` and `assets/<canonical>/` are written directly.
+1. Pick the canonical slug per the rules above (cross-check the existing `*.md` files in `$RESEARCH_ROOT/Prepared/` for adjacent precedent if unsure — match the surrounding pattern) and pass it as `--slug=<canonical>` to Pass 1. This is the normal path — `<canonical>.md` and `assets/<canonical>/` are written directly.
 2. **Only if a scaffolding slug slipped through** (a script ran without `--slug`), rename before the run finishes:
-   - `mv /mnt/archive4/PAPERS/Prepared/<scaffolding>.md /mnt/archive4/PAPERS/Prepared/<canonical>.md`
-   - `mv /mnt/archive4/PAPERS/Prepared/assets/<scaffolding>/ /mnt/archive4/PAPERS/Prepared/assets/<canonical>/`
+   - `mv $RESEARCH_ROOT/Prepared/<scaffolding>.md $RESEARCH_ROOT/Prepared/<canonical>.md`
+   - `mv $RESEARCH_ROOT/Prepared/assets/<scaffolding>/ $RESEARCH_ROOT/Prepared/assets/<canonical>/`
    - Update inside the markdown: `slug:` frontmatter field, every `assets/<scaffolding>/` image path.
 
 If the source genuinely has no clear single author (e.g. an Epic UE documentation page, a vendor whitepaper), use the publishing organisation in lowercase as the "author": `epic-2022-ue51-virtual-shadow-maps-docs`, `khronos-2023-...`. Match adjacent corpus precedent.
 
-## REQUIRED: Source Archive in `/mnt/archive4/PAPERS/`
+## REQUIRED: Source Archive in `$RESEARCH_ROOT/`
 
-Every research source — PDF, PPTX, YouTube video, HLS / m3u8 stream, local mp4 — **MUST** be preserved at its canonical name in `/mnt/archive4/PAPERS/`. This is the long-term archive of every primary document the project depends on. The markdown extracts in `/mnt/archive4/PAPERS/Prepared/*.md` are derived artefacts; **PAPERS/ is the source of truth**.
+Every research source — PDF, PPTX, YouTube video, HLS / m3u8 stream, local mp4 — **MUST** be preserved at its canonical name in `$RESEARCH_ROOT/`. This is the long-term archive of every primary document the project depends on. The markdown extracts in `$RESEARCH_ROOT/Prepared/*.md` are derived artefacts; **PAPERS/ is the source of truth**.
 
 **Layout:**
 
 | Source type | Where it lives in PAPERS/ |
 |---|---|
-| PDF | `/mnt/archive4/PAPERS/<canonical-slug>.pdf` |
-| PPTX | `/mnt/archive4/PAPERS/<canonical-slug>.pptx` |
-| YouTube video | `/mnt/archive4/PAPERS/<year>-<slug-tail>/<canonical-slug>.mp4` + `<canonical-slug>.en.srt` |
+| PDF | `$RESEARCH_ROOT/<canonical-slug>.pdf` |
+| PPTX | `$RESEARCH_ROOT/<canonical-slug>.pptx` |
+| YouTube video | `$RESEARCH_ROOT/<year>-<slug-tail>/<canonical-slug>.mp4` + `<canonical-slug>.en.srt` |
 | HLS / m3u8 stream | same folder layout as YouTube |
 | Local mp4/mkv/webm + SRT | same folder layout as YouTube |
-| Web article (blog/devlog/news page) | *(exception)* `/mnt/archive4/PAPERS/Articles/<canonical-slug>.html`, next to the derived `.md` — `extract_article.py` writes both directly; see "Plain web article" under "Determining Input Type". Bundle-local pairing, not the top-level PAPERS/ layout above. |
+| Web article (blog/devlog/news page) | *(exception)* `$RESEARCH_ROOT/Articles/<canonical-slug>.html`, next to the derived `.md` — `extract_article.py` writes both directly; see "Plain web article" under "Determining Input Type". Bundle-local pairing, not the top-level PAPERS/ layout above. |
 
-The canonical slug is the same one used for `/mnt/archive4/PAPERS/Prepared/<slug>.md` (see "REQUIRED: Citable Canonical Naming" above). The video-folder prefix `<year>-<slug-tail>` is just the canonical slug rotated so the year sorts first — e.g. canonical `feller-2024-volumetric-fog-enshrouded` → folder `2024-feller-volumetric-fog-enshrouded/`.
+The canonical slug is the same one used for `$RESEARCH_ROOT/Prepared/<slug>.md` (see "REQUIRED: Citable Canonical Naming" above). The video-folder prefix `<year>-<slug-tail>` is just the canonical slug rotated so the year sorts first — e.g. canonical `feller-2024-volumetric-fog-enshrouded` → folder `2024-feller-volumetric-fog-enshrouded/`.
 
 **Examples:**
 
 ```
-/mnt/archive4/PAPERS/
+$RESEARCH_ROOT/
 ├── annen-2008-all-frequency-shadows.pdf
 ├── hillaire-2020-sky-atmosphere.pdf
 ├── bauer-2019-rdr2-atmospherics.pptx
@@ -410,14 +406,14 @@ The canonical slug is the same one used for `/mnt/archive4/PAPERS/Prepared/<slug
 
 For PDFs / PPTXs:
 ```bash
-cp "<source-path>" "/mnt/archive4/PAPERS/<slug>.<ext>"
+cp "<source-path>" "$RESEARCH_ROOT/<slug>.<ext>"
 ```
 
-For YouTube / HLS / local videos (yt-dlp + research_video.py write into `/tmp/research-<random>/<scaffolding>.{mp4,en.srt}`):
+For YouTube / HLS / local videos (yt-dlp + research_video.py write into `<temporary-directory>/research-<random>/<scaffolding>.{mp4,en.srt}`):
 ```bash
-mkdir -p "/mnt/archive4/PAPERS/<year>-<slug-tail>/"
-cp "/tmp/research-XXXX/<scaffolding>.mp4"    "/mnt/archive4/PAPERS/<year>-<slug-tail>/<slug>.mp4"
-cp "/tmp/research-XXXX/<scaffolding>.en.srt" "/mnt/archive4/PAPERS/<year>-<slug-tail>/<slug>.en.srt"
+mkdir -p "$RESEARCH_ROOT/<year>-<slug-tail>/"
+cp "<temporary-directory>/research-XXXX/<scaffolding>.mp4"    "$RESEARCH_ROOT/<year>-<slug-tail>/<slug>.mp4"
+cp "<temporary-directory>/research-XXXX/<scaffolding>.en.srt" "$RESEARCH_ROOT/<year>-<slug-tail>/<slug>.en.srt"
 ```
 
 **Why this matters:**
@@ -519,7 +515,7 @@ You may see `MuPDF error: format error: No common ancestor in structure tree` wa
 
 ### Pass 1: Extract & mark (dispatched to research-extractor, or run inline for trivial sources)
 
-For PDFs / PPTXs and recorded-talk videos, dispatch a `research-extractor` agent with a brief naming the source path / URL and the canonical slug. The agent runs `extract_research.py <source-path> --slug=<slug>` (plus `extract_research_phase2.py` for PPTX and `cleanup_research.py`), archives the source to `/mnt/archive4/PAPERS/`, then **reads the produced markdown end-to-end and marks every problematic area inline** with a `<!-- FIXME(extract): … -->` comment — garbled / suspect equations, OCR artefacts, and (critically) each page that carries a figure / plot / diagram and therefore needs a vision-pass description (`<!-- FIXME(extract): pNNN needs vision — <one line> -->`). It reports back the slug, asset counts, and **the count of pages flagged for vision** — the orchestrator uses that count to decide whether Pass 2 is dispatched at all (see Pass 2 below).
+For PDFs / PPTXs and recorded-talk videos, dispatch a `research-extractor` agent with a brief naming the source path / URL and the canonical slug. The agent runs `extract_research.py <source-path> --slug=<slug>` (plus `extract_research_phase2.py` for PPTX and `cleanup_research.py`), archives the source to `$RESEARCH_ROOT/`, then **reads the produced markdown end-to-end and marks every problematic area inline** with a `<!-- FIXME(extract): … -->` comment — garbled / suspect equations, OCR artefacts, and (critically) each page that carries a figure / plot / diagram and therefore needs a vision-pass description (`<!-- FIXME(extract): pNNN needs vision — <one line> -->`). It reports back the slug, asset counts, and **the count of pages flagged for vision** — the orchestrator uses that count to decide whether Pass 2 is dispatched at all (see Pass 2 below).
 
 For trivial cases (single-page paper, an already-extracted source you just need to rerun under `--force`), the orchestrator may run inline:
 
@@ -527,7 +523,7 @@ Determine input type and run the appropriate script:
 
 **YouTube URL:**
 ```bash
-~/.claude/skills/research/.venv/bin/python ~/.claude/skills/research/tools/research_video.py "URL"
+uv run --project "<research-skill-dir>" python "<research-skill-dir>/tools/research_video.py" "URL"
 ```
 
 **HLS stream (m3u8 URL, e.g. GDC Vault):**
@@ -540,27 +536,27 @@ curl -s "MASTER_M3U8_URL" -H 'Origin: ...' -H 'Referer: ...'
 
 Step 2 — download with ffmpeg (use the quality-specific sub-m3u8, not the master):
 ```bash
-mkdir -p /tmp/research-SLUG
+mkdir -p <temporary-directory>/research-SLUG
 ffmpeg -y \
   -headers $'User-Agent: Mozilla/5.0...\r\nOrigin: https://...\r\nReferer: https://...\r\n' \
   -i 'QUALITY_SUB_M3U8_URL' \
-  -c copy /tmp/research-SLUG/SLUG.mp4
+  -c copy <temporary-directory>/research-SLUG/SLUG.mp4
 ```
 
 Step 3 — transcribe with the SOTA STT pass (faster-whisper `large-v3`, CUDA). This is optional for the HLS/local path: `research_video.py` (Step 4) auto-transcribes when no SRT sits next to the mp4, so you only run this explicitly when you want to pre-stage the SRT or override the model:
 ```bash
-~/.claude/skills/research/.venv/bin/python ~/.claude/skills/research/tools/transcribe_to_srt.py \
-  /tmp/research-SLUG/SLUG.mp4 \
-  /tmp/research-SLUG/SLUG.en.srt
+uv run --project "<research-skill-dir>" python "<research-skill-dir>/tools/transcribe_to_srt.py" \
+  <temporary-directory>/research-SLUG/SLUG.mp4 \
+  <temporary-directory>/research-SLUG/SLUG.en.srt
   # optional 3rd positional arg overrides the model (default large-v3), e.g. `medium` for speed
 ```
 
-`tools/transcribe_to_srt.py` self-bootstraps the CUDA libraries it needs — no `LD_LIBRARY_PATH` is required at the call site. ctranslate2 (faster-whisper's backend) `dlopen`s `libcublas.so.12`, while torch pulls a CUDA-13 nvidia stack into the venv; the CUDA-12 cublas wheel (`nvidia-cublas-cu12`, pinned in `pyproject.toml`, linux-only) is preloaded by absolute path before the model is built. CUDA-less machines fall back to CPU int8 automatically. It is the canonical tracked version of the old inline `/tmp/transcribe_to_srt.py` snippet — **do not recreate it inline**. If you need to extend it (different language, larger model, word-level timestamps), edit the tracked file in `tools/` and commit the change so the next /research run benefits.
+`tools/transcribe_to_srt.py` uses the available acceleration backend and falls back to CPU int8 when CUDA is unavailable. Linux CUDA library preloading is handled internally when applicable. If you need a different language, model, or word-level timestamps, update the tracked tool rather than creating a one-off copy.
 
 Step 4 — run video pipeline on local file:
 ```bash
-~/.claude/skills/research/.venv/bin/python ~/.claude/skills/research/tools/research_video.py \
-  /tmp/research-SLUG/SLUG.mp4 \
+uv run --project "<research-skill-dir>" python "<research-skill-dir>/tools/research_video.py" \
+  <temporary-directory>/research-SLUG/SLUG.mp4 \
   "--title=Full Talk Title (Event Year)" \
   "--slug=my-slug"
 ```
@@ -569,15 +565,15 @@ Step 4 — run video pipeline on local file:
 
 **PDF/PPTX file:** pass the source path as the first argument and the canonical slug with `--slug`:
 ```bash
-~/.claude/skills/research/.venv/bin/python ~/.claude/skills/research/tools/extract_research.py "<source-path>" --slug=SLUG
+uv run --project "<research-skill-dir>" python "<research-skill-dir>/tools/extract_research.py" "<source-path>" --slug=SLUG
 # PPTX only — extract + transcribe embedded videos (no-op for PDFs):
-~/.claude/skills/research/.venv/bin/python ~/.claude/skills/research/tools/extract_research_phase2.py "<source-path>" --slug=SLUG
+uv run --project "<research-skill-dir>" python "<research-skill-dir>/tools/extract_research_phase2.py" "<source-path>" --slug=SLUG
 ```
 The slug defaults to the filename stem when `--slug` is omitted; the workflow always passes the canonical slug explicitly. Force the render mode with `--slide-deck` / `--no-slide-deck` only when the `is_slide_deck_pdf` heuristic gets it wrong; `--force` overwrites an existing `<slug>.md` in place instead of writing a `.regen` sidecar.
 
 **Cleanup (all types):**
 ```bash
-~/.claude/skills/research/.venv/bin/python ~/.claude/skills/research/tools/cleanup_research.py --only=SLUG
+uv run --project "<research-skill-dir>" python "<research-skill-dir>/tools/cleanup_research.py" --only=SLUG
 ```
 
 This produces a rough markdown with native-text-extracted body, screenshots, and transcript text. **OCR's role in this skill is narrow**: when a page has no native text layer (scanned PDFs, image-only slide exports, PPTX slides whose content is rasterised), phase 1 OCRs the page's image asset and uses the result as the page body — same role native PyMuPDF text extraction plays for PDFs that have a text layer. There is no separate "OCR pass". OCR is just one of two body-text sources phase 1 selects between, gated on whether `len(native_text) < 20`. This is the **only** path on which OCR enters the canonical document body.
@@ -604,8 +600,8 @@ Three distinct causes produce that symptom, and they have different fixes:
 **If you find yourself lowering `--threshold` repeatedly and still seeing multi-minute sections, stop — that is the signature of a blind metric, not a mistuned one.** Do not guess which it is; measure it with `tools/probe_scene_metrics.py`. Eyeball a few timestamps first, then hand it pairs you are sure about:
 
 ```bash
-~/.claude/skills/research/.venv/bin/python ~/.claude/skills/research/tools/probe_scene_metrics.py \
-    /mnt/archive4/PAPERS/<year-slug>/<slug>.mp4 \
+uv run --project "<research-skill-dir>" python "<research-skill-dir>/tools/probe_scene_metrics.py" \
+    $RESEARCH_ROOT/<year-slug>/<slug>.mp4 \
     --same 2150,2155 --same 1900,1910 \
     --diff 2150,2200 --diff 1850,1950
 ```
@@ -626,25 +622,25 @@ When the threshold itself is the problem, use the tracked helpers (do **not** re
 
 ```bash
 # Re-detect at a finer interval; --metric/--threshold default to luma/0.010
-~/.claude/skills/research/.venv/bin/python ~/.claude/skills/research/tools/redetect_scenes.py \
-    /tmp/research-SLUG/SLUG.mp4 SLUG \
+uv run --project "<research-skill-dir>" python "<research-skill-dir>/tools/redetect_scenes.py" \
+    <temporary-directory>/research-SLUG/SLUG.mp4 SLUG \
     --interval 0.5
 
 # For any scene that's still > 40s, sample additional frames every 20s
-~/.claude/skills/research/.venv/bin/python ~/.claude/skills/research/tools/subsample_long_scenes.py \
-    /tmp/research-SLUG/SLUG.mp4 SLUG \
+uv run --project "<research-skill-dir>" python "<research-skill-dir>/tools/subsample_long_scenes.py" \
+    <temporary-directory>/research-SLUG/SLUG.mp4 SLUG \
     --interval 20 --min-len 40
 
 # After identifying real slide-start timestamps via vision, group the SRT
 # into per-slide windows (one paragraph per slide):
-~/.claude/skills/research/.venv/bin/python ~/.claude/skills/research/tools/srt_to_windows.py \
-    /tmp/research-SLUG/SLUG.en.srt /tmp/slide_starts.txt \
-    --out /tmp/windowed_transcript.txt
+uv run --project "<research-skill-dir>" python "<research-skill-dir>/tools/srt_to_windows.py" \
+    <temporary-directory>/research-SLUG/SLUG.en.srt <temporary-directory>/slide_starts.txt \
+    --out <temporary-directory>/windowed_transcript.txt
 ```
 
 These helpers are non-destructive — they only write new `scene-NNN-*.jpg` / `sub-NNN-MM-*.jpg` files into the asset dir and a TSV in `/tmp`. To clear stale scene files from a prior run with different parameters, delete them explicitly first; the helpers intentionally do not.
 
-If you find yourself wanting yet-another redetection knob (different colourspace, edge-detection instead of histogram, etc.), edit `tools/redetect_scenes.py` and commit the change — never spawn a one-off `/tmp/*.py` for it.
+If another redetection option is needed (different colourspace, edge detection instead of histogram, etc.), improve `tools/redetect_scenes.py` rather than creating a one-off script.
 
 ### Pass 2: Vision — conditional (dispatched to research-vision)
 
@@ -653,7 +649,7 @@ If you find yourself wanting yet-another redetection knob (different colourspace
 ```bash
 # -E with escaped parens: this pattern needs regex for `.*`, so -F is not an option.
 # A bare `grep -c 'FIXME(extract):...'` silently returns 0 under the ripgrep rewrite.
-grep -cE 'FIXME\(extract\):.*needs vision' /mnt/archive4/PAPERS/Prepared/<slug>.md
+grep -cE 'FIXME\(extract\):.*needs vision' $RESEARCH_ROOT/Prepared/<slug>.md
 ```
 
 - **> 5 pages flagged** → dispatch the `research-vision` sub-agent (Sonnet 4.6). This is the expensive, context-heavy case — never run it inline; a 268-slide deck would burn the orchestrator's context window in vision-pass alone, and the agent boundary is what makes the pass scale.
@@ -675,7 +671,7 @@ For each batch, the brief MUST contain:
 3. Already-tagged slides to skip (slides that already have a `**X (LLM vision pass):**` block from a prior batch — re-tagging would duplicate).
 4. Project context: a one-paragraph description of what the project cares about, so the agent can lean on the relevant aspects when describing each diagram (cone aperture parameterisation, cache-architecture details, encoding bit-layouts, perf numbers, …).
 
-The agent is responsible for the format — `**Diagram (LLM vision pass):**` / `**Plot (LLM vision pass):**` / `**Image (LLM vision pass):**` / `**Table (LLM vision pass):**` / `**Code (LLM vision pass):**`. See agent definition `~/.claude/agents/research-vision.md` and the "Diagram description policy" section earlier in this skill.
+The agent is responsible for the format — `**Diagram (LLM vision pass):**` / `**Plot (LLM vision pass):**` / `**Image (LLM vision pass):**` / `**Table (LLM vision pass):**` / `**Code (LLM vision pass):**`. See agent definition `the installed research-vision agent definition` and the "Diagram description policy" section earlier in this skill.
 
 #### Inputs the orchestrator prepares
 
@@ -699,17 +695,17 @@ The vision agent enforces the same list as a second pass.
 After all Pass-2 vision batches complete and **before** dispatching Pass 3, the orchestrator runs the syntax validator. This catches LaTeX and Mermaid syntax errors that vision-pass output, marker prepass, or refiner edits may have left behind, and gives the refiner a concrete error list to fix instead of relying on a second model pass to catch every parse error visually.
 
 ```bash
-~/.claude/skills/research/.venv/bin/python ~/.claude/skills/research/tools/validate_research.py --only=<slug>
+uv run --project "<research-skill-dir>" python "<research-skill-dir>/tools/validate_research.py" --only=<slug>
 # add --html for a browser-openable preview at assets/<slug>/<slug>.preview.html
 ```
 
 **What it does:**
 
-1. Walks `/mnt/archive4/PAPERS/Prepared/<slug>.md` line-by-line, extracting every LaTeX block (inline `$…$`, display `$$…$$`) and every fenced ```` ```mermaid ```` block. Skips fenced code blocks for non-mermaid languages so dollar signs in shell snippets don't trip the inline-math regex.
+1. Walks `$RESEARCH_ROOT/Prepared/<slug>.md` line-by-line, extracting every LaTeX block (inline `$…$`, display `$$…$$`) and every fenced ```` ```mermaid ```` block. Skips fenced code blocks for non-mermaid languages so dollar signs in shell snippets don't trip the inline-math regex.
 2. Sends all blocks as a JSON batch to `tools/validate_md.mjs` (Node helper).
 3. Each LaTeX block runs through `katex.renderToString({throwOnError: true})` — KaTeX is strict about brace balance, undefined macros, missing `\right` partners, misplaced `&`, etc.
 4. Each Mermaid block runs through `mermaid.parse()` (jsdom-backed). When mermaid fails to load in Node, blocks downgrade to *warnings* rather than errors.
-5. Writes a per-doc report to `/mnt/archive4/PAPERS/Prepared/assets/<slug>/findings-pass2.5-validate.md` with file:line references, snippet previews, and KaTeX/Mermaid error messages.
+5. Writes a per-doc report to `$RESEARCH_ROOT/Prepared/assets/<slug>/findings-pass2.5-validate.md` with file:line references, snippet previews, and KaTeX/Mermaid error messages.
 6. Exits **1** if any block failed to parse. The orchestrator MUST treat exit 1 as a hard block on Pass 3 dispatch.
 
 **What gets caught:**
@@ -739,8 +735,8 @@ After Pass 2.5 (validate) completes with errors enumerated to disk, dispatch a s
 
 - **Resolve every inline `FIXME` mark's content.** The brief MUST tell the refiner to grep the document with a **literal** matcher — `grep -nF 'FIXME(extract)'` and `grep -nF 'FIXME(vision)'`, as two calls — and fix the content each flagged item points at (leaving the comment in place; the Pass 3.7 sweep removes it). Do NOT brief `grep -n 'FIXME(extract)\|FIXME(vision)'`: under the ripgrep rewrite the parens become capture groups and `\|` becomes a literal pipe, so it silently matches nothing and the refiner concludes there is no work (see the boxed warning under "Inline `FIXME` marks"). The brief must carry that warning verbatim, since a zero count looks identical to a clean document from inside the agent. Anything it cannot resolve from text-layer + render evidence alone it lists in its **return message** (not an inline `FIXME(audit)`, which the Pass 3.7 sweep would erase). A refiner that finishes with `FIXME(*)` content still *unaddressed* has not completed its pass.
 - **Inline vision pages (when Pass 2 was skipped).** If the ≤5-page rule meant Pass 2 was not dispatched, the brief lists the page numbers the extractor flagged `needs vision` and instructs the refiner to write the `**X (LLM vision pass):**` blocks for them itself, following the "Diagram description policy" section of this skill. (When Pass 2 *was* dispatched, those blocks already exist — the refiner only flags suspect ones, never rewrites them.)
-- **The Pass 2.5 sidecar path** (`/mnt/archive4/PAPERS/Prepared/assets/<slug>/findings-pass2.5-validate.md`) — REQUIRED. The refiner is expected to address every error the validator reported. Brief explicitly: "Read the sidecar first; every entry under `## Errors` must be fixed in your edit pass."
-- **Frontmatter completion** — the extraction scripts emit `type` (a heuristic default), `title`, `medium`, `source`, format-specific keys, `extracted`, and `slug`, but NOT `description` or `tags`. The refiner fills these two fields and corrects `type` when the heuristic was wrong (e.g. a course-notes PDF or thesis that defaulted to `Research Paper` should be corrected to `Course Notes` or `Thesis`). The canonical `type` vocabulary and tag list are at `~/.claude/skills/research/OKF-SCHEMA.md` and `~/.claude/skills/research/OKF-TAXONOMY.md`.
+- **The Pass 2.5 sidecar path** (`$RESEARCH_ROOT/Prepared/assets/<slug>/findings-pass2.5-validate.md`) — REQUIRED. The refiner is expected to address every error the validator reported. Brief explicitly: "Read the sidecar first; every entry under `## Errors` must be fixed in your edit pass."
+- **Frontmatter completion** — the extraction scripts emit `type` (a heuristic default), `title`, `medium`, `source`, format-specific keys, `extracted`, and `slug`, but NOT `description` or `tags`. The refiner fills these two fields and corrects `type` when the heuristic was wrong (e.g. a course-notes PDF or thesis that defaulted to `Research Paper` should be corrected to `Course Notes` or `Thesis`). The canonical `type` vocabulary and tag list are at `<research-skill-dir>/OKF-SCHEMA.md` and `<research-skill-dir>/OKF-TAXONOMY.md`.
 - Broken-Unicode equations (slide numbers, beyond what Pass 2.5 already caught).
 - Heading fixes (slide numbers + recommended titles, or "infer from slide content").
 - Speaker-notes typo fixes (paths to areas with known auto-caption errors).
@@ -784,8 +780,8 @@ All scripts live in `tools/` and use the venv at `tools/.venv/`. None of them si
 | `tools/extract_research.py` | PDF/PPTX → text + image extraction for **one** source. Invoked as `extract_research.py <source-path> [--slug SLUG] [--title TITLE] [--slide-deck\|--no-slide-deck] [--force] [--no-marker] [--no-llm]`. Slug/title default to the filename stem. No hardcoded source list — the path is the argument. | Refuses to overwrite an existing per-slug `.md` — writes a `<slug>.regen-<YYYYMMDD-HHMMSS>-<6hex>.md` sidecar instead. Pass `--force` to overwrite in place. Sidecar suffixes are randomised so concurrent agents don't clobber each other. |
 | `tools/extract_research_phase2.py` | Extract videos embedded in **one** PPTX deck and transcribe them with faster-whisper. Invoked as `extract_research_phase2.py <source-path> [--slug SLUG]`; a non-PPTX path is a no-op. (Body-text OCR fallback for image-only PDFs / slides moved into phase 1; per-image OCR was removed entirely — the vision pass owns image description.) | Per-slug `.md` only. |
 | `tools/cleanup_research.py` | Strip watermarks, duplicate headings, garbage OCR. Supports `--only=SLUG`. | Per-slug `.md` only. |
-| `tools/validate_research.py` | Pass 2.5: extract every LaTeX/Mermaid block from `/mnt/archive4/PAPERS/Prepared/<slug>.md`, validate via the Node helper, write `findings-pass2.5-validate.md` sidecar. Supports `--only=SLUG[,SLUG2]`, `--html`. Exits 1 on any parse error. | Read-only on the markdown source; writes only to `assets/<slug>/findings-pass2.5-validate.md` (and `<slug>.preview.html` under `--html`). |
-| `tools/strip_html_comments.py` | Pass 3.7: mechanically remove every `<!-- … -->` marker from `/mnt/archive4/PAPERS/Prepared/<slug>.md` (FIXME + provenance scaffolding) so the delivered doc has zero HTML comments. `--only=<slug>` or a path; `--dry-run`; `--no-backup`. | Writes a `.prestrip-<ts>.bak` next to the file first (unless `--no-backup`), prints a unified diff, and self-checks that only comment spans changed (exit 3 + no write if not). Operates on the `<slug>.md` document ONLY — never the `topics/` member-marker pages. |
+| `tools/validate_research.py` | Pass 2.5: extract every LaTeX/Mermaid block from `$RESEARCH_ROOT/Prepared/<slug>.md`, validate via the Node helper, write `findings-pass2.5-validate.md` sidecar. Supports `--only=SLUG[,SLUG2]`, `--html`. Exits 1 on any parse error. | Read-only on the markdown source; writes only to `assets/<slug>/findings-pass2.5-validate.md` (and `<slug>.preview.html` under `--html`). |
+| `tools/strip_html_comments.py` | Pass 3.7: mechanically remove every `<!-- … -->` marker from `$RESEARCH_ROOT/Prepared/<slug>.md` (FIXME + provenance scaffolding) so the delivered doc has zero HTML comments. `--only=<slug>` or a path; `--dry-run`; `--no-backup`. | Writes a `.prestrip-<ts>.bak` next to the file first (unless `--no-backup`), prints a unified diff, and self-checks that only comment spans changed (exit 3 + no write if not). Operates on the `<slug>.md` document ONLY — never the `topics/` member-marker pages. |
 | `tools/update_topics.py` | Pass 3.6: regenerate the OKF `<bundle>/topics/<tag>.md` index pages from document frontmatter `tags`. `--only=<slug>` rebuilds the slug's bundle, `--bundle=<Prepared\|Articles>` one bundle, `--all` (default) both; `--check` dry-runs, `--prune` deletes pages whose tag fell below two members. A tag needs ≥2 documents to get a page. | Idempotent. Owns only the member table (between `<!-- members:start -->` / `<!-- members:end -->`) and `topics/index.md`; preserves each page's hand-written intro. Per-bundle `flock` + atomic `os.replace` writes make concurrent invocations safe. |
 | `tools/validate_md.mjs` | Node helper invoked by `validate_research.py`. Reads JSON blocks on stdin, validates LaTeX via `katex.renderToString({throwOnError:true})` and Mermaid via `mermaid.parse()` (jsdom-backed). Returns JSON with per-block `ok` + `error`. Not normally called directly. | Pure stdin → stdout, no file writes. |
 | `tools/render_md_html.mjs` | Node helper invoked by `validate_research.py --html`. Compiles a single markdown to a self-contained HTML preview (KaTeX server-side via `@vscode/markdown-it-katex`, mermaid client-side via jsdelivr CDN). Not normally called directly. | Writes to the explicit output path passed on argv. |
@@ -806,11 +802,11 @@ All scripts live in `tools/` and use the venv at `tools/.venv/`. None of them si
 For a URL that is just an HTML article — not a video host, not a PDF/PPTX link — use `tools/extract_article.py`, which fetches the page, locates the article's content region (tries a short list of common selectors: `article`, `[itemprop=articleBody]`, `.post-content`, `.entry-content`, falling back to `main`; extend `CONTENT_SELECTORS` for a new site if none match), and converts it to markdown (fenced code blocks with language, tables, headings, lists) via `markdownify`, downloading referenced images/videos into `assets/<slug>/`:
 
 ```bash
-~/.claude/skills/research/.venv/bin/python ~/.claude/skills/research/tools/extract_article.py \
+uv run --project "<research-skill-dir>" python "<research-skill-dir>/tools/extract_article.py" \
   "<url>" --slug=<slug> [--title TITLE] [--author AUTHOR] [--force]
 ```
 
-Output goes to `/mnt/archive4/PAPERS/Articles/<slug>.md` (frontmatter `type: Technical Article`, `medium: html`, `source_url`), with the raw fetched HTML archived alongside at `Articles/<slug>.html` — this matches the corpus's existing `<slug>.html` + `<slug>.md` pairing convention (see e.g. `Articles/bittker-making-sandspiel.{html,md}`), not the Prepared bundle's PDF/PPTX layout.
+Output goes to `$RESEARCH_ROOT/Articles/<slug>.md` (frontmatter `type: Technical Article`, `medium: html`, `source_url`), with the raw fetched HTML archived alongside at `Articles/<slug>.html` — this matches the corpus's existing `<slug>.html` + `<slug>.md` pairing convention (see e.g. `Articles/bittker-making-sandspiel.{html,md}`), not the Prepared bundle's PDF/PPTX layout.
 
 A single article (or a small batch of a few) is squarely the "small extraction" case in "When to skip dispatch" below — run it inline, then fill `description` and `tags` (from `OKF-TAXONOMY.md`) by hand rather than dispatching a refiner. Match the established Articles-bundle convention: fill frontmatter, but do **not** inject a `## Summary` / `### Relevance & applications` block — that apparatus is a Prepared-bundle (research paper) convention; Articles-bundle blog posts (`dyar-million-pixels-falling-sand.md`, `bittker-making-sandspiel.md`, …) go straight from frontmatter + `# Title` into the verbatim body. Still *deliver* the relevance/applications synthesis the standing regimen calls for — just put it in your chat reply to the user, not in the cached file. Run `tools/update_topics.py --bundle=Articles` afterward to link the new tags into the topic index.
 
@@ -830,23 +826,23 @@ The load-bearing problem is **alignment** — which slide is on screen when the 
 4. **Emit windows + fold.** `align_video_to_deck.py … --from-tsv <tsv> --srt <srt> --emit-windows <windows.md>` cuts the SRT into one positional block per deck slide (empty for slides never shown), then `fold_narration.py <slug>.md <windows.md> --label "Narration (<Speaker>, from the talk)"` inserts each as a blockquote under its slide image. Fold is a script (generated-artifact edit) — run it when **no vision/refine agent is active**, since those Edit the same file.
 5. **Then the normal passes** — vision (Pass 2) reconstructs the slide structure, refine (Pass 3) does STT typo cleanup on the folded narration and dual-source frontmatter (`medium: slides-pdf+video`, add a `recording:` key), Pass 3.7 sweep, Pass 3.6 topics.
 
-Archive **both** sources: the deck to `/mnt/archive4/PAPERS/<slug>.pdf` and the recording to `/mnt/archive4/PAPERS/<year>-<slug-tail>/<slug>.mp4` + `.en.srt`.
+Archive **both** sources: the deck to `$RESEARCH_ROOT/<slug>.pdf` and the recording to `$RESEARCH_ROOT/<year>-<slug-tail>/<slug>.mp4` + `.en.srt`.
 
 ## Output Structure
 
 ```
-/mnt/archive4/PAPERS/Prepared/
+$RESEARCH_ROOT/Prepared/
   {slug}.md                         # one markdown per source
   assets/{slug}/                    # images, frames, videos
 ```
 
-In addition, the **source master** lives in `/mnt/archive4/PAPERS/` (see "REQUIRED: Source Archive in `/mnt/archive4/PAPERS/`" above). PDFs/PPTXs go top-level as `<slug>.pdf`/`<slug>.pptx`; videos go in a `<year>-<slug-tail>/` subfolder with both the mp4 and the .en.srt. Copying source into PAPERS/ is part of every `/research` run, not optional.
+In addition, the **source master** lives in `$RESEARCH_ROOT/` (see "REQUIRED: Source Archive in `$RESEARCH_ROOT/`" above). PDFs/PPTXs go top-level as `<slug>.pdf`/`<slug>.pptx`; videos go in a `<year>-<slug-tail>/` subfolder with both the mp4 and the .en.srt. Copying source into PAPERS/ is part of every `/research` run, not optional.
 
 ## Dependencies
 
-Python venv at `~/.claude/skills/research/.venv/` (managed by `uv sync` from `pyproject.toml`): `pymupdf`, `python-pptx`, `opencv-python-headless`, `openocr-python`, `faster-whisper`, `marker-pdf`.
+Python venv at `<research-skill-dir>/.venv/` (managed by `uv sync` from `pyproject.toml`): `pymupdf`, `python-pptx`, `opencv-python-headless`, `openocr-python`, `faster-whisper`, `marker-pdf`.
 
-Node modules at `~/.claude/skills/research/node_modules/` (managed by `npm install` from `package.json`): `katex`, `mermaid`, `jsdom`, `markdown-it`, `@vscode/markdown-it-katex`. Required by Pass 2.5 validators (`validate_research.py`, `validate_md.mjs`, `render_md_html.mjs`).
+Node modules at `<research-skill-dir>/node_modules/` (managed by `npm install` from `package.json`): `katex`, `mermaid`, `jsdom`, `markdown-it`, `@vscode/markdown-it-katex`. Required by Pass 2.5 validators (`validate_research.py`, `validate_md.mjs`, `render_md_html.mjs`).
 
 System: `node` (>=20), `yt-dlp`, `ffmpeg`, `libreoffice` (PPTX rendering)
 
@@ -886,11 +882,11 @@ Three traps that cost real time:
 
 - `pkill -f extract-batch` matches the Bash tool's *own* command line and kills the calling shell
   (exit 144), and any Monitor watching the log. Bracket it: `pkill -f 'extract[-]batch'`.
-- A PDF in `/mnt/archive4/PAPERS/` is **not** evidence the extraction succeeded — check `marker: yes`
+- A PDF in `$RESEARCH_ROOT/` is **not** evidence the extraction succeeded — check `marker: yes`
   and a non-zero md line count per paper.
 - **The inverse bites harder: a present `<slug>.md` is not evidence the PDF was archived.** A resume
   guard of the form `[ -s "$PREP/$slug.md" ] && skip` short-circuits *every* later step for that
   paper, including the archive copy. Verify the archive as a separate closing sweep
   (`for s in $slugs; do [ -f "$ARC/$s.pdf" ] || echo MISS $s; done`), never as a side effect of the
-  extraction loop, and repoint `source:` at `/mnt/archive4/PAPERS/<slug>.pdf` rather than a staging
+  extraction loop, and repoint `source:` at `$RESEARCH_ROOT/<slug>.pdf` rather than a staging
   path.

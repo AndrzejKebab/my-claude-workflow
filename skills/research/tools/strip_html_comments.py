@@ -47,8 +47,9 @@ import os
 import re
 import sys
 import time
+from research_paths import PREPARED_DIR
 
-PREPARED = "/mnt/archive4/PAPERS/Prepared"
+PREPARED = str(PREPARED_DIR)
 
 COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 
@@ -115,7 +116,7 @@ def verify_only_comments_removed(original: str, stripped: str) -> bool:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("path", nargs="?", help="path to <slug>.md")
-    ap.add_argument("--only", help="slug under /mnt/archive4/PAPERS/Prepared/")
+    ap.add_argument("--only", help="slug under <RESEARCH_ROOT>/Prepared/")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--no-backup", action="store_true")
     args = ap.parse_args()

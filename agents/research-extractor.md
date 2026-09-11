@@ -1,6 +1,6 @@
 ---
 name: research-extractor
-description: "Pass-1 extractor for the /research skill. Runs `extract_research.py <source-path> --slug=<slug>` (and phase2 for PPTX) against the skill-local venv, archives the source to `/mnt/archive4/PAPERS/`, then reads the produced markdown and marks problematic areas inline with `<!-- FIXME(extract): … -->` comments. Operates in its own context window so the orchestrator stays clean."
+description: "Pass-1 extractor for the /research skill. Runs `extract_research.py <source-path> --slug=<slug>` (and phase2 for PPTX) against the skill-local venv, archives the source to `$RESEARCH_ROOT/`, then reads the produced markdown and marks problematic areas inline with `<!-- FIXME(extract): … -->` comments. Operates in its own context window so the orchestrator stays clean."
 tools: ["*"]
 model: claude-sonnet-4-6
 ---
@@ -14,7 +14,7 @@ You have **no memory** of the parent conversation. Your brief plus what you can 
 Read these in order:
 
 1. The brief — it specifies exactly one source path (or URL) and one canonical slug. The slug must already follow the `<author-surname(-coauthor)?>-<year>-<short-topic>` pattern; if the brief gives you a scaffolding slug like `intro-to-foo`, **stop and ask the orchestrator for the canonical name** instead of proceeding.
-2. The skill spec at `~/.claude/skills/research/SKILL.md` (sections "REQUIRED: Citable Canonical Naming", "Slide-deck vs Paper image policy", "Source Archive in `/mnt/archive4/PAPERS/`").
+2. The skill spec at `<research-skill-dir>/SKILL.md` (sections "REQUIRED: Citable Canonical Naming", "Slide-deck vs Paper image policy", "Source Archive in `$RESEARCH_ROOT/`").
 
 ## What to do
 
@@ -22,42 +22,41 @@ Determine input type from the path / URL and run the appropriate pipeline:
 
 ### Toolchain
 
-The research pipeline lives at `~/.claude/skills/research/`. All scripts run against the skill-local venv `~/.claude/skills/research/.venv/` (created with `uv sync` once at install time). Use:
+The research pipeline lives at `<research-skill-dir>/`. All scripts run against the skill-local venv `<research-skill-dir>/.venv/` (created with `uv sync` once at install time). Use:
 
 ```bash
-~/.claude/skills/research/.venv/bin/python ~/.claude/skills/research/tools/<script>.py ...
+uv run --project "<research-skill-dir>" python "<research-skill-dir>/tools/<script>.py" ...
 ```
 
-If `~/.claude/skills/research/.venv/` does not exist (fresh install), bootstrap it once: `cd ~/.claude/skills/research && uv sync`.
+If `<research-skill-dir>/.venv/` does not exist (fresh install), bootstrap it once: `cd "<research-skill-dir>" && uv sync`.
 
 ### PDF / PPTX
 
 Pass the source path as the first argument and the canonical `--slug` (decided up front per "REQUIRED: Citable Canonical Naming" — the script writes `<slug>.md` directly, so there is normally no rename step).
 
-**Source `~/.envrc` first.** The marker prepass on a text-paper PDF is LLM-backed and needs `CLAUDE_API_KEY`, whose canonical home is `~/.envrc`; the session shell does not export it automatically. Run the extraction under a shell that has sourced it, or marker silently degrades to no-LLM output (GPU passes succeed, every LLM-cleanup processor fails with HTTP 401 — no equation reconstruction, no table merge, no inline-math redo). Never scavenge a key from an unrelated project `.env` (e.g. `chat/.env`) — those are usually expired and are exactly what produces the silent 401.
+**Check the environment first.** The marker prepass on a text-paper PDF is LLM-backed and needs `CLAUDE_API_KEY` in the process environment. If it is unavailable, stop and ask the orchestrator to provide it through the user's configured secrets mechanism. Never search unrelated projects for credentials.
 
-1. Run extraction (sourcing the key for the whole block). `extract_research_phase2.py` is a no-op for PDFs (only PPTX decks carry embedded video), so it's safe to run unconditionally:
+1. Run extraction. `extract_research_phase2.py` is a no-op for PDFs (only PPTX decks carry embedded video), so it is safe to run unconditionally:
    ```bash
-   bash -c 'set -a; source ~/.envrc; set +a;
-     ~/.claude/skills/research/.venv/bin/python ~/.claude/skills/research/tools/extract_research.py "<source-path>" --slug=<slug>
-     ~/.claude/skills/research/.venv/bin/python ~/.claude/skills/research/tools/extract_research_phase2.py "<source-path>" --slug=<slug>
-     ~/.claude/skills/research/.venv/bin/python ~/.claude/skills/research/tools/cleanup_research.py --only=<slug>'
+   uv run --project "<research-skill-dir>" python "<research-skill-dir>/tools/extract_research.py" "<source-path>" --slug=<slug>
+   uv run --project "<research-skill-dir>" python "<research-skill-dir>/tools/extract_research_phase2.py" "<source-path>" --slug=<slug>
+   uv run --project "<research-skill-dir>" python "<research-skill-dir>/tools/cleanup_research.py" --only=<slug>
    ```
-   For PDFs, the `is_slide_deck_pdf` heuristic auto-detects slide decks; force the mode with `--slide-deck` / `--no-slide-deck` only if the heuristic gets it wrong (rare; only override after vision-confirming the source). Wait for completion before chaining. PPTX extraction takes ~30-60 s for the LibreOffice render step. Long PDFs render at ~5-10 s per 50 pages. **If marker reports HTTP 401 on its LLM processors, the key did not load — stop, fix `~/.envrc` sourcing, and re-run with `--force`; do not report degraded output as success.**
-2. Verify: `wc -l /mnt/archive4/PAPERS/Prepared/<slug>.md` (should be > 50), `find /mnt/archive4/PAPERS/Prepared/assets/<slug> | wc -l` (should match page count for slide decks, or be larger for papers). If `extract_research.py` wrote a `<slug>.regen-*.md` sidecar instead of `<slug>.md`, the live extraction already existed — surface the sidecar in your report rather than `--force`-overwriting it blindly.
+   For PDFs, the `is_slide_deck_pdf` heuristic auto-detects slide decks; force the mode with `--slide-deck` / `--no-slide-deck` only if the heuristic gets it wrong (rare; only override after vision-confirming the source). Wait for completion before chaining. **If marker reports HTTP 401 on its LLM processors, the key did not load — stop, fix the environment, and re-run with `--force`; do not report degraded output as success.**
+2. Verify: `wc -l $RESEARCH_ROOT/Prepared/<slug>.md` (should be > 50), `find $RESEARCH_ROOT/Prepared/assets/<slug> | wc -l` (should match page count for slide decks, or be larger for papers). If `extract_research.py` wrote a `<slug>.regen-*.md` sidecar instead of `<slug>.md`, the live extraction already existed — surface the sidecar in your report rather than `--force`-overwriting it blindly.
 3. Archive the source:
    ```bash
-   cp "<source-path>" /mnt/archive4/PAPERS/<slug>.<ext>
+   cp "<source-path>" $RESEARCH_ROOT/<slug>.<ext>
    ```
 
 ### YouTube / HLS / local video
 
 The transcript always comes from the SOTA STT pass (faster-whisper `large-v3`), never YouTube auto-captions. `research_video.py` re-transcribes the audio itself when no SRT sits next to the mp4, and `transcribe_to_srt.py` self-bootstraps its CUDA libraries — no `LD_LIBRARY_PATH` is needed at any call site.
 
-1. For YouTube: `~/.claude/skills/research/.venv/bin/python ~/.claude/skills/research/tools/research_video.py "URL" "--title=..." "--slug=<slug>"`. This downloads the video and transcribes it via the STT pass automatically.
-2. For HLS: download via ffmpeg per the skill spec (m3u8 master → quality sub-playlist → ffmpeg with appropriate headers), then run `~/.claude/skills/research/.venv/bin/python ~/.claude/skills/research/tools/research_video.py /tmp/research-SLUG/SLUG.mp4 "--title=..." "--slug=<slug>"` (it transcribes the downloaded mp4 itself). Pre-stage the SRT with `transcribe_to_srt.py` only if you want to override the model.
+1. For YouTube: `uv run --project "<research-skill-dir>" python "<research-skill-dir>/tools/research_video.py" "URL" "--title=..." "--slug=<slug>"`. This downloads the video and transcribes it via the STT pass automatically.
+2. For HLS: download via ffmpeg per the skill spec (m3u8 master → quality sub-playlist → ffmpeg with appropriate headers), then run `uv run --project "<research-skill-dir>" python "<research-skill-dir>/tools/research_video.py" <temporary-directory>/research-SLUG/SLUG.mp4 "--title=..." "--slug=<slug>"` (it transcribes the downloaded mp4 itself). Pre-stage the SRT with `transcribe_to_srt.py` only if you want to override the model.
 3. For local video: same as the HLS step 2 onwards.
-4. Archive the mp4 + srt to `/mnt/archive4/PAPERS/<year>-<slug-tail>/<slug>.{mp4,en.srt}`.
+4. Archive the mp4 + srt to `$RESEARCH_ROOT/<year>-<slug-tail>/<slug>.{mp4,en.srt}`.
 
 ## Read & mark problematic areas — REQUIRED
 
@@ -101,7 +100,7 @@ In your final message:
 - For videos: scene count, duration.
 - **The count of `FIXME(extract): … needs vision` marks you left** — the orchestrator uses this to decide whether Pass 2 (vision) is dispatched (>5) or folded into the refiner (≤5).
 - Any extraction warnings worth surfacing (marker fall-through to PyMuPDF, **marker LLM-processor HTTP 401 = key not loaded, a blocking error not a soft warning**, under-detected scenes, missing speaker notes, broken Unicode in equations). These should also be marked inline in the document.
-- Confirmation that the source was archived to `/mnt/archive4/PAPERS/`.
+- Confirmation that the source was archived to `$RESEARCH_ROOT/`.
 
 ## Hard rules
 

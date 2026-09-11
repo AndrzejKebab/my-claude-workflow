@@ -23,15 +23,15 @@ CLI usage (run directly):
         --srt /path/to/<slug>.en.srt \
         --slides 63 \
         --duration 3647 \
-        --out /tmp/slide_transcript_map.json
+        --out <temporary-directory>/slide_transcript_map.json
 
     # pHash alignment (h264 video + per-slide renders)
     python align_video_to_slides.py phash \
         --srt /path/to/<slug>.en.srt \
-        --slides-dir /mnt/archive4/PAPERS/Prepared/assets/<slug>/ \
-        --scenes-tsv /tmp/scenes_<slug>-video.tsv \
-        --frames-dir /mnt/archive4/PAPERS/Prepared/assets/<slug>-video/ \
-        --out /tmp/slide_transcript_map.json
+        --slides-dir <RESEARCH_ROOT>/Prepared/assets/<slug>/ \
+        --scenes-tsv <temporary-directory>/scenes_<slug>-video.tsv \
+        --frames-dir <RESEARCH_ROOT>/Prepared/assets/<slug>-video/ \
+        --out <temporary-directory>/slide_transcript_map.json
 
 Output JSON (both modes):
     {
@@ -276,7 +276,7 @@ def phash_alignment(
     """Match video scene captures to PDF slide renders by perceptual hash.
 
     slides_dir: directory containing sNNN-slide.png renders from the PDF.
-    scenes_tsv: /tmp/scenes_<slug>.tsv written by redetect_scenes.py.
+    scenes_tsv: <temporary-directory>/scenes_<slug>.tsv written by redetect_scenes.py.
     frames_dir: assets/<slug>-video/ containing scene-NNN-NNNN.jpg captures.
     hamming_threshold: max Hamming distance for a match (0-64 scale).
 
@@ -288,7 +288,7 @@ def phash_alignment(
     except ImportError:
         raise RuntimeError(
             "imagehash / Pillow not installed. Run: "
-            "~/.claude/skills/research/.venv/bin/pip install imagehash Pillow"
+            "uv add --project <research-skill-dir> imagehash Pillow"
         )
 
     slide_hashes = _load_slide_hashes(slides_dir)

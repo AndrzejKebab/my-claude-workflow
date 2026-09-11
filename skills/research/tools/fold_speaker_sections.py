@@ -53,11 +53,12 @@ import argparse
 import re
 import sys
 from pathlib import Path
+from research_paths import PREPARED_DIR
 
 import cv2
 import numpy as np
 
-PREPARED = Path("/mnt/archive4/PAPERS/Prepared")
+PREPARED = PREPARED_DIR
 ASSETS_ROOT = PREPARED / "assets"
 
 SECTION_RE = re.compile(r'^## (?:Slide \d+(?: -- .*)?|\[[\d:]+\].*)$', re.M)

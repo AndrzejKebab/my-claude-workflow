@@ -20,12 +20,12 @@ from __future__ import annotations
 
 import argparse
 import contextlib
-import fcntl
 import os
 import re
 import sys
+from research_paths import RESEARCH_ROOT
 
-CORPUS = "/mnt/archive4/PAPERS"
+CORPUS = str(RESEARCH_ROOT)
 BUNDLES = ["Prepared", "Articles"]
 MIN_MEMBERS = 2  # a tag needs at least this many documents to get its own page
 
@@ -199,10 +199,24 @@ def bundle_lock(bundle_dir: str):
     lock_path = os.path.join(bundle_dir, ".topics-update.lock")
     fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o644)
     try:
-        fcntl.flock(fd, fcntl.LOCK_EX)
+        if os.name == "nt":
+            import msvcrt
+            if os.path.getsize(lock_path) == 0:
+                os.write(fd, b"0")
+            os.lseek(fd, 0, os.SEEK_SET)
+            msvcrt.locking(fd, msvcrt.LK_LOCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(fd, fcntl.LOCK_EX)
         yield
     finally:
-        fcntl.flock(fd, fcntl.LOCK_UN)
+        if os.name == "nt":
+            import msvcrt
+            os.lseek(fd, 0, os.SEEK_SET)
+            msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(fd, fcntl.LOCK_UN)
         os.close(fd)
 
 

@@ -34,15 +34,15 @@
 set -u
 
 MANIFEST="${1:?usage: batch_extract.sh MANIFEST}"
-SKILL="$HOME/.claude/skills/research"
-PY="$SKILL/.venv/bin/python"
-PREP=/mnt/archive4/PAPERS/Prepared
-ARC=/mnt/archive4/PAPERS
+SKILL="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+RESEARCH_ROOT="${RESEARCH_ROOT:-F:/Programowanie/my-claude-workflow/research-library}"
+PREP="$RESEARCH_ROOT/Prepared"
+ARC="$RESEARCH_ROOT"
 VRAM_BAR="${VRAM_BAR:-6000}"   # MiB free required to start a paper; gate itself needs 3072
 ATTEMPTS="${ATTEMPTS:-3}"
 
 [ -r "$MANIFEST" ] || { echo "manifest not readable: $MANIFEST" >&2; exit 2; }
-[ -x "$PY" ] || { echo "skill venv missing: $PY (run 'cd $SKILL && uv sync')" >&2; exit 2; }
+command -v uv >/dev/null || { echo "uv is required" >&2; exit 2; }
 
 # The marker LLM tier reads CLAUDE_API_KEY; the session shell does not export it.
 # Without this the run degrades silently to marker-without-LLM (HTTP 401 per processor).
@@ -68,9 +68,9 @@ extract() {  # $1=pdf path  $2=slug
   for a in $(seq 1 "$ATTEMPTS"); do
     echo "════ $2 ════ attempt $a $(date +%T)"
     wait_vram || { echo "RESULT $2: BLOCKED on VRAM"; return 1; }
-    "$PY" "$SKILL/tools/extract_research.py" "$1" --slug="$2" 2>&1 | grep -vE '^\s*$|it/s\]|%\|' | tail -20
+    uv run --project "$SKILL" python "$SKILL/tools/extract_research.py" "$1" --slug="$2" 2>&1 | grep -vE '^\s*$|it/s\]|%\|' | tail -20
     if [ -s "$PREP/$2.md" ]; then
-      "$PY" "$SKILL/tools/cleanup_research.py" --only="$2" 2>&1 | tail -3
+      uv run --project "$SKILL" python "$SKILL/tools/cleanup_research.py" --only="$2" 2>&1 | tail -3
       echo "RESULT $2: OK | lines: $(wc -l < "$PREP/$2.md") | pngs: $(find "$PREP/assets/$2" -name '*.png' 2>/dev/null | wc -l) | marker: $([ -f "$PREP/assets/$2/marker.md" ] && echo yes || echo NO-FALLBACK)"
       return 0
     fi

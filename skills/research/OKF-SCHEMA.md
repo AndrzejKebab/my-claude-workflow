@@ -1,6 +1,6 @@
 # OKF-adapted frontmatter schema for the PAPERS corpus
 
-This document defines the YAML frontmatter schema for the research corpus at `/mnt/archive4/PAPERS/Prepared/` and `/mnt/archive4/PAPERS/Articles/`. The schema follows the Open Knowledge Format (OKF v0.1): each file is a markdown document with a YAML frontmatter block, the only hard requirement is a non-empty `type`, and consumers tolerate unknown keys. The corpus was already close to this shape; this schema closes the gap and fixes one semantic mismatch — the old `type` field held the source medium (`pdf`, `youtube`) rather than the OKF concept-kind.
+This document defines the YAML frontmatter schema for the research corpus at `$RESEARCH_ROOT/Prepared/` and `$RESEARCH_ROOT/Articles/`. The schema follows the Open Knowledge Format (OKF v0.1): each file is a markdown document with a YAML frontmatter block, the only hard requirement is a non-empty `type`, and consumers tolerate unknown keys. The corpus was already close to this shape; this schema closes the gap and fixes one semantic mismatch — the old `type` field held the source medium (`pdf`, `youtube`) rather than the OKF concept-kind.
 
 This is the canonical schema for two consumers: the back-fill pass that normalizes the existing files, and the `/research` skill that emits frontmatter for newly extracted documents. Both must agree, so both read this file.
 

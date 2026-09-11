@@ -21,6 +21,7 @@ import sys
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
+from research_paths import PREPARED_DIR
 
 # Heavy extraction deps (PyMuPDF / Pillow / python-pptx / OpenOCR / marker).
 # These live in the extraction venv. The PPTX render worker
@@ -69,9 +70,9 @@ def _ocr_image_bytes(png_bytes: bytes) -> str:
 
 # The extracted markdown corpus lives at a single hardcoded global location,
 # independent of cwd / which project invoked /research. The skill scripts ship
-# at ~/.claude/skills/research/tools/ but always write the corpus to
-# /mnt/archive4/PAPERS/Prepared/.
-OUTPUT_DIR = Path("/mnt/archive4/PAPERS/Prepared")
+# at <research-skill-dir>/tools/ but always write the corpus to
+# <RESEARCH_ROOT>/Prepared/.
+OUTPUT_DIR = PREPARED_DIR
 PROJECT_ROOT = OUTPUT_DIR  # display base for relative_to() in log output
 ASSETS_DIR = OUTPUT_DIR / "assets"
 

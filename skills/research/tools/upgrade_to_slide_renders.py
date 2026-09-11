@@ -11,7 +11,7 @@ layout — without touching summaries, vision-pass
 LaTeX, fixed headings, speaker-notes blockquotes, or any other curated content.
 
 Usage:
-    tools/.venv/bin/python3 tools/upgrade_to_slide_renders.py SLUG \\
+    uv run --project <research-skill-dir> python tools/upgrade_to_slide_renders.py SLUG \\
         --source /path/to/source.pdf [--scale 2.0] [--no-delete-cutouts]
 
 What it does:
@@ -40,10 +40,11 @@ import tempfile
 from pathlib import Path
 
 import fitz
+from research_paths import PREPARED_DIR
 
 # The extracted markdown corpus lives at a single hardcoded global location,
 # independent of cwd / which project invoked /research.
-RESEARCH_DIR = Path("/mnt/archive4/PAPERS/Prepared")
+RESEARCH_DIR = PREPARED_DIR
 PROJECT_ROOT = RESEARCH_DIR  # display base for relative_to() in log output
 ASSETS_DIR = RESEARCH_DIR / "assets"
 
@@ -211,7 +212,7 @@ def delete_cutouts(slug: str) -> int:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("slug", help="canonical slug (matches /mnt/archive4/PAPERS/Prepared/<slug>.md)")
+    ap.add_argument("slug", help="canonical slug (matches <RESEARCH_ROOT>/Prepared/<slug>.md)")
     ap.add_argument(
         "--source",
         required=True,

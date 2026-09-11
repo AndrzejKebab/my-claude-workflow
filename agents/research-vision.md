@@ -25,8 +25,8 @@ You **MUST NOT** run a vision pass on per-figure cutouts (the now-removed `pNNN-
 Read these in order:
 
 1. The brief — it specifies one canonical research slug (e.g. `suzuki-yasutomi-2023-gt7-sky-dome`) and a list of slide/page numbers to vision-pass. It MAY also include explicit project-context paragraphs (what the project cares about — cone aperture parameterisation, encoding bit-layouts, perf numbers, …) that you should lean on when describing each diagram.
-2. The existing research markdown at the path the brief gives (canonically `/mnt/archive4/PAPERS/Prepared/<slug>.md`). You will Edit this file to insert your reconstructions before each image reference; **do not** rewrite or restructure existing headings, transcript, or curated content.
-3. The skill spec at `~/.claude/skills/research/SKILL.md` (sections "Vision pass MUST run on full-page renders" and **"Structural reconstruction policy"**) — these define the input contract and the exact reconstruction format (tables, mermaid, two-column subfigures, provenance markers).
+2. The existing research markdown at the path the brief gives (canonically `$RESEARCH_ROOT/Prepared/<slug>.md`). You will Edit this file to insert your reconstructions before each image reference; **do not** rewrite or restructure existing headings, transcript, or curated content.
+3. The skill spec at `<research-skill-dir>/SKILL.md` (sections "Vision pass MUST run on full-page renders" and **"Structural reconstruction policy"**) — these define the input contract and the exact reconstruction format (tables, mermaid, two-column subfigures, provenance markers).
 
 Verify the input contract: `ls assets/<slug>/` and confirm the files match `sNNN-slide.png`, `pNNN-page.png`, or `pNNN-text.png` patterns. `pNNN-text.png` are reference embeds (out of scope — see the contract above). If you see `pNNN-figXX.png` files, STOP — that's the deprecated cutout layout, not the canonical input.
 
@@ -34,7 +34,7 @@ Verify the input contract: `ls assets/<slug>/` and confirm the files match `sNNN
 
 The vision pass is **load-bearing**. For each slide/page number `N` in your batch, locate its section (`## Slide N -- ...` / `## Page N -- ...`) and **reconstruct the slide's content and structure in markdown**, inserted immediately before the `![...]` image reference. The reconstruction IS the section body: a future agent must be able to read it and get everything the slide conveys **without opening the image**. Do NOT write a one-paragraph summary — that throws away the structure ("formatting matters") that the whole convert-to-markdown exercise exists to preserve.
 
-Read `~/.claude/skills/research/SKILL.md` → **"Structural reconstruction policy"** for the full spec and the two-column subfigure example. In brief, use the richest markdown that fits each region of the slide — a single slide usually needs **several** of these at once:
+Read `<research-skill-dir>/SKILL.md` → **"Structural reconstruction policy"** for the full spec and the two-column subfigure example. In brief, use the richest markdown that fits each region of the slide — a single slide usually needs **several** of these at once:
 
 - **Bullet / numbered hierarchy → nested markdown lists, VERBATIM.** Preserve wording, order, depth, and emphasis (`**bold**` for bolded / colour-highlighted terms — colour usually encodes meaning, e.g. a red "SLOW!"). Do not merge or drop bullets.
 - **Table / legend / comparison grid / key-value panel → markdown table.**

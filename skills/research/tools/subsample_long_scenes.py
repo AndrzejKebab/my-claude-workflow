@@ -4,7 +4,7 @@ the histogram threshold missed (e.g. consecutive slides that share a template).
 
 Usage:
     tools/subsample_long_scenes.py <video.mp4> <slug> \\
-        [--scenes-tsv /tmp/scenes_<slug>.tsv] \\
+        [--scenes-tsv <temporary-directory>/scenes_<slug>.tsv] \\
         [--interval 20.0] [--min-len 40.0] [--width 1280]
 
 Reads a TSV of `(start, end, scene_path)` rows and, for every scene longer than
@@ -15,11 +15,13 @@ Non-destructive: only writes new files; never deletes.
 """
 import argparse
 import subprocess
+import tempfile
 from pathlib import Path
+from research_paths import ASSETS_DIR
 
 # The extracted markdown corpus lives at a single hardcoded global location,
 # independent of cwd / which project invoked /research.
-ASSETS_ROOT = Path("/mnt/archive4/PAPERS/Prepared/assets")
+ASSETS_ROOT = ASSETS_DIR
 
 
 def main():
@@ -35,7 +37,8 @@ def main():
     if not args.video.exists():
         raise SystemExit(f"FATAL: video not found: {args.video}")
 
-    tsv_path = args.scenes_tsv or Path(f"/tmp/scenes_{args.slug}.tsv")
+    temp_dir = Path(tempfile.gettempdir())
+    tsv_path = args.scenes_tsv or temp_dir / f"scenes_{args.slug}.tsv"
     if not tsv_path.exists():
         raise SystemExit(f"FATAL: scenes TSV not found: {tsv_path} "
                          f"(run redetect_scenes.py first)")
@@ -72,7 +75,7 @@ def main():
             sub_idx += 1
 
     print(f"Wrote {len(new_subs)} sub-samples")
-    subs_tsv = Path(f"/tmp/subs_{args.slug}.tsv")
+    subs_tsv = temp_dir / f"subs_{args.slug}.tsv"
     with subs_tsv.open("w") as f:
         for t, p in new_subs:
             f.write(f"{t:.2f}\t{p}\n")
