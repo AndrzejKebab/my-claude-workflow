@@ -3,6 +3,7 @@
 set -euo pipefail
 
 WORKFLOW_REPO_URL="${WORKFLOW_REPO_URL:-https://github.com/AndrzejKebab/my-claude-workflow.git}"
+WORKFLOW_BRANCH="${WORKFLOW_BRANCH:-kebab-unity}"
 WORKFLOW_DIR="${WORKFLOW_DIR:-$HOME/my-claude-workflow}"
 PROJECT_DIR="${1:-$PWD}"
 
@@ -44,11 +45,14 @@ claude mcp add -s user fff -- "$FFF_BINARY"
 
 echo "Installing the shared workflow..."
 if [[ -d "$WORKFLOW_DIR/.git" ]]; then
-    git -C "$WORKFLOW_DIR" pull --ff-only
+    CURRENT_BRANCH="$(git -C "$WORKFLOW_DIR" branch --show-current)"
+    [[ "$CURRENT_BRANCH" == "$WORKFLOW_BRANCH" ]] || fail \
+        "Workflow checkout is on '$CURRENT_BRANCH', expected '$WORKFLOW_BRANCH': $WORKFLOW_DIR"
+    git -C "$WORKFLOW_DIR" pull --ff-only origin "$WORKFLOW_BRANCH"
 elif [[ -e "$WORKFLOW_DIR" ]]; then
     fail "Workflow destination exists but is not a Git checkout: $WORKFLOW_DIR"
 else
-    git clone "$WORKFLOW_REPO_URL" "$WORKFLOW_DIR"
+    git clone --branch "$WORKFLOW_BRANCH" --single-branch "$WORKFLOW_REPO_URL" "$WORKFLOW_DIR"
 fi
 
 "$WORKFLOW_DIR/install.sh"

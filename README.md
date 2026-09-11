@@ -16,6 +16,8 @@ project that should receive the Graphify graph and Git hook:
 It installs Graphify and FFF, registers FFF as a user-scoped Claude MCP server,
 clones or fast-forward-updates this workflow under `$HOME/my-claude-workflow`,
 runs the workflow installer, and prepares Graphify inside the selected project.
+The workflow checkout defaults to the `kebab-unity` branch; override it with
+`WORKFLOW_BRANCH` only when intentionally testing another branch.
 
 On Windows, run the installer from Git Bash:
 
