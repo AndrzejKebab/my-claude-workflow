@@ -1,113 +1,43 @@
 ---
 name: reset-repos
-description: Preserve in-progress work and reset all p7 repos to latest master
+description: Inspect and safely synchronize multiple Git repositories beneath a user-specified root without discarding local work.
 ---
 
-# Reset Repos
+# Repository synchronization
 
-Preserve any in-progress work across all p7 repositories, then reset everything to latest master. Fully autonomous — no user prompts.
+Operate only beneath the exact root directory supplied by the user. If no root was supplied, ask for it; never infer a home directory, drive, or collection of repositories.
 
-**NEVER push to remote. NEVER include Co-Authored-By or AI attribution in commits. No emojis in commit messages.**
+Despite the historical skill name, do not run `git reset`, force a checkout, delete branches, discard changes, or push.
 
-## Phase 1: Discovery & Classification
+## Plan first
 
-Enumerate all git repos under `/home/midori/_dev/p7`. Repos live in:
-- Top-level: `/home/midori/_dev/p7/*/`
-- Adapters: `/home/midori/_dev/p7/_adapters/*/`
-- Libraries: `/home/midori/_dev/p7/_libs/*/`
-- Infrastructure: `/home/midori/_dev/p7/_infra/*/`
-- Backoffice: `/home/midori/_dev/p7/_backoffice/*/`
+Resolve the root to an absolute path and discover Git repositories beneath it with read-only checks. Respect the requested depth or repository list; otherwise avoid scanning unrelated large trees.
 
-Skip non-repo directories (those without `.git`).
+For each repository, collect:
 
-### Batch Status Check
+- resolved path;
+- current branch or detached HEAD;
+- remote and its advertised default branch;
+- staged, unstaged, and untracked changes from `git status --porcelain`;
+- ahead/behind state after a fetch, but only if the user requested network synchronization;
+- worktrees that could make a branch unavailable for checkout.
 
-Process 10-15 repos per bash call for efficiency. For each repo, collect:
-- Current branch (`git rev-parse --abbrev-ref HEAD`)
-- Working tree status (`git status --porcelain`)
+Present a compact plan before mutations. Classify repositories as clean and current, clean and behind, dirty, divergent, detached, missing the expected remote, or failed to inspect.
 
-### Classify Each Repo
+## Safe synchronization
 
-| Category | Branch | Tree | Action |
-|----------|--------|------|--------|
-| CLEAN_MASTER | master | clean | `git pull` |
-| CLEAN_BRANCH | feature | clean | `git checkout master && git pull` |
-| DIRTY_BRANCH | feature | dirty | commit, `git checkout master && git pull` |
-| DIRTY_MASTER | master | dirty | create branch, commit, `git checkout master && git pull` |
+The user's synchronization request authorizes fetching and fast-forwarding clean repositories within the supplied root. Use the remote's actual default branch; do not assume `main` or `master`.
 
-### Display Summary
+- Clean repository already on the default branch: fast-forward only.
+- Clean repository on another branch: leave it there unless the user explicitly asked to switch branches.
+- Dirty repository: skip and report it. Do not stage, commit, stash, switch, or clean automatically.
+- Diverged branch: stop for that repository and report the divergence.
+- Detached HEAD, missing remote, failed fetch, or occupied worktree: report and continue with other independent repositories.
 
-Print a markdown table showing every repo, its current branch, category, and planned action. Example:
+If the user explicitly asks to preserve dirty work, inspect each repository separately and agree on the preservation method appropriate to it. A stash, checkpoint commit, or new branch changes repository history/state and must not be chosen generically across unknown work.
 
-```
-| Repo | Branch | Status | Action |
-|------|--------|--------|--------|
-| game-api | feat/coin-fraction | CLEAN_BRANCH | checkout master, pull |
-| client-api | master | DIRTY_MASTER | branch + commit, checkout master, pull |
-| common-errors | master | CLEAN_MASTER | pull |
-```
+Never use `git pull` without controlling the integration mode. Prefer `git fetch` followed by an explicit `git merge --ff-only <remote>/<default-branch>` when the requested repository is clean and on that branch.
 
-## Phase 2: Commit Dirty Repos
+## Report
 
-Process each dirty repo **individually** (need to read diffs for meaningful commit messages).
-
-### DIRTY_MASTER repos
-
-1. Run `git diff --stat` and `git diff` (truncate if huge) to understand changes
-2. Derive a branch type and slug from the changes:
-   - Type: `feat`, `fix`, `refactor`, `chore`, `docs`, `test`, etc.
-   - Slug: lowercase, hyphens, max 55 chars after prefix — e.g. `feat/add-retry-logic`
-   - Must match pattern: `^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)\/[a-z0-9\-]{1,55}$`
-3. Create the branch: `git checkout -b <type>/<slug>`
-4. Stage and commit (see commit rules below)
-
-### DIRTY_BRANCH repos
-
-1. Run `git diff --stat` and `git diff` to understand changes
-2. Stage and commit (see commit rules below)
-
-### Commit Rules
-
-- `git add -A` to stage everything
-- Write a conventional commit message: `type(scope): description`
-- Scope is the repo name collapsed (no hyphens): `gameapi`, `slotcatalog`, `commonerrors`, `clientapi`
-- Keep to a single line
-- Use a HEREDOC to pass the message:
-  ```bash
-  git commit -m "$(cat <<'EOF'
-  type(scope): description
-  EOF
-  )"
-  ```
-- NEVER include Co-Authored-By lines
-- NEVER include AI attribution of any kind
-
-## Phase 3: Checkout Master & Pull
-
-Batch all repos (10-15 per bash call). For each repo:
-
-```bash
-cd /path/to/repo && git checkout master && git pull
-```
-
-Use `;` (not `&&`) between repos so one failure doesn't block others. Handle pull failures gracefully — log them and continue.
-
-For repos already on clean master, just `git pull`.
-
-## Phase 4: Final Summary
-
-Print a final report:
-
-```
-## Reset Complete
-
-- **Repos processed:** 78
-- **Already clean on master:** 65
-- **Branches preserved:** 8 (list them with repo name + branch)
-- **Commits created:** 5 (list them with repo name + message)
-- **Errors:** 0 (or list any failures)
-
-All repos are now on master.
-```
-
-Include the list of preserved branches so the user knows where their work-in-progress lives.
+List every repository and outcome, including skipped dirty repositories and failures. Name branches or commits created only when the user separately authorized those actions. Do not claim that all repositories are synchronized when any were skipped, divergent, or unverified.

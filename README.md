@@ -59,7 +59,7 @@ in `bin/` are made executable; add `bin/` to your `PATH` to use them.
 
 | Skill | Description |
 |-------|-------------|
-| `reset-repos` | Preserve in-progress work and reset all p7 repos to latest master |
+| `reset-repos` | Safely inspect and synchronize repositories under an explicit root |
 | `profile` | Build, run, and analyze Unity profiler data with call-stack attribution |
 | `domain-availability` | Generate domain name ideas and check availability across TLDs |
 | `rustrover` | Open RustRover in the current worktree |
