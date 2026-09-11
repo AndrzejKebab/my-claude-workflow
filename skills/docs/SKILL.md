@@ -1,3 +1,8 @@
+---
+name: docs
+description: Edit project documentation without modifying source code. Use for focused Markdown documentation work.
+---
+
 # /docs
 
 Edit documentation only. Do not modify source code.

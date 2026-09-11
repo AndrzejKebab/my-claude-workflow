@@ -1,3 +1,8 @@
+---
+name: enforce
+description: Load and audit repository instructions before work. Use when the user asks to enforce or inspect active agent constraints.
+---
+
 # Enforce Skill
 
 Pre-loads constraints from CLAUDE.md into session context.

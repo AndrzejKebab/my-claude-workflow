@@ -1,6 +1,6 @@
 ---
 name: webstorm
-description: Open webstorm in current worktree (nohup webstorm . > /dev/null &)
+description: Open JetBrains WebStorm at the current worktree or project root.
 ---
 
 Open WebStorm at the current project root.

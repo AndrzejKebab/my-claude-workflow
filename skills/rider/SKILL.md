@@ -1,4 +1,4 @@
 ---
 name: rider
-description: Open rider in current worktree (nohup rider . > /dev/null &)
+description: Open JetBrains Rider at the current worktree or project root.
 ---
