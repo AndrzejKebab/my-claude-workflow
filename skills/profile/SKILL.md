@@ -18,7 +18,7 @@ Before capturing, record:
 
 Prefer a Development Player for representative CPU and rendering measurements. Use Editor captures for iteration and editor-only problems, but do not treat Editor timings as Player timings.
 
-On Windows, resolve the matching editor under the configured Unity Hub installation (commonly `F:\Unity Hub\Editor\<version>\Editor\Unity.exe`). Do not assume a Linux/macOS path. The repository's `unity-editor` launcher or Unity CLI may be used when available; inspect their help before relying on version-specific commands or flags.
+On Windows, resolve the matching editor with `unity editors path <version>` when the official Unity CLI is available. Otherwise use the configured editor installation root; this workflow defaults to `F:\Unity Editors\<version>\Editor\Unity.exe`. Do not assume a Linux/macOS path or infer the editor location from the Unity Hub application directory. The repository's `unity-editor` launcher already performs this resolution.
 
 ## Capture narrowly
 

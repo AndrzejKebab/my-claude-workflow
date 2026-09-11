@@ -4,8 +4,8 @@
 #
 # Usage: cdiff [scope] [range]
 #   scope  root | . | ''        → the superproject (default)
-#          <submodule name|path> → that submodule (e.g. is.zori.pixelworld
-#                                   or Packages/is.zori.pixelworld)
+#          <submodule name|path> → that submodule (e.g. gameplay-package
+#                                   or Packages/com.example.gameplay)
 #   range  any git diff range   → default: the branch's own commits since its
 #                                 rebase base (the commit it was last replayed
 #                                 onto, from the branch reflog), else upstream,
@@ -13,9 +13,9 @@
 #
 # Examples:
 #   cdiff                              # superproject branch diff vs main
-#   cdiff is.zori.pixelworld           # that submodule's branch diff vs main
+#   cdiff gameplay-package             # that submodule's branch diff vs main
 #   cdiff root HEAD~3                  # last 3 commits at the root
-#   cdiff is.zori.pixelworld d2a2e69..HEAD
+#   cdiff gameplay-package d2a2e69..HEAD
 #
 # Run from anywhere inside the repo or a worktree; the scope resolves against
 # that checkout's root and its .gitmodules.

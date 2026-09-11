@@ -15,15 +15,15 @@ Run the launcher, forwarding the user's arguments verbatim:
 ~/.claude/skills/cdiff/cdiff.sh [scope] [range]
 ```
 
-- `scope` — `root`/`.`/empty for the superproject (default), or a submodule name or path (`is.zori.pixelworld`, `Packages/is.zori.pixelworld`). A bare name matches against `.gitmodules` by basename.
+- `scope` — `root`/`.`/empty for the superproject (default), or a submodule name or path (`gameplay-package`, `Packages/com.example.gameplay`). A bare name matches against `.gitmodules` by basename.
 - `range` — any git diff range. The default shows the branch's own commits, excluding whatever it was rebased on top of: it uses the commit the branch was last replayed onto (read from the branch reflog's `rebase (finish): … onto <sha>` entry), falling back to the upstream tracking branch, then `main...HEAD`, and finally the uncommitted working-tree diff when HEAD has not diverged. The reflog base matters because a local `main` ref can be stale or on a line that does not even contain the rebase base, so a plain `main...HEAD` sweeps in the commits the branch was rebased onto.
 
 Examples:
 
 - `/cdiff` — the superproject's branch diff vs `main`.
-- `/cdiff is.zori.pixelworld` — that submodule's branch diff vs `main`.
+- `/cdiff gameplay-package` — that submodule's branch diff vs `main`.
 - `/cdiff root HEAD~3` — the last three commits at the root.
-- `/cdiff is.zori.pixelworld d2a2e69..HEAD` — an explicit range in the submodule.
+- `/cdiff gameplay-package d2a2e69..HEAD` — an explicit range in the submodule.
 
 The window pages with `delta` when it is installed, otherwise `git diff --color | less -R`. Quitting the pager (`q`) closes the window.
 
