@@ -6,45 +6,56 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLAUDE_DIR="${HOME}/.claude"
 CODEX_DIR="${CODEX_HOME:-${HOME}/.codex}"
+INSTALL_STAMP="$(date +%Y%m%d-%H%M%S)"
+BACKUP_RETENTION="${WORKFLOW_BACKUP_RETENTION:-5}"
 
 echo "Installing my-claude-workflow..."
 echo ""
 
-link_dir() {
+install_claude_item() {
     local name="$1"
-    local destination="$2"
-    local target="${3:-$SCRIPT_DIR/$name}"
-    local link="$destination/$name"
+    local target="${2:-$SCRIPT_DIR/$name}"
+    local installed="$CLAUDE_DIR/$name"
+    local manifest="$CLAUDE_DIR/my-claude-workflow-managed-items.txt"
+    local backup_dir="$CLAUDE_DIR/backups/my-claude-workflow/$INSTALL_STAMP/claude-items"
+    local legacy_backup legacy_name managed=0
 
-    if [[ -d "$link" && ! -L "$link" ]]; then
-        local backup_name="${name}.bak.$(date +%Y%m%d-%H%M%S)"
-        echo "Backing up existing $name to $destination/$backup_name"
-        mv "$link" "$destination/$backup_name"
-    elif [[ -L "$link" ]]; then
-        echo "Removing existing symlink at $link"
-        rm "$link"
+    for legacy_backup in "$CLAUDE_DIR/${name}.bak."*; do
+        [[ -e "$legacy_backup" ]] || continue
+        mkdir -p "$backup_dir"
+        legacy_name="$(basename "$legacy_backup")"
+        echo "Moving legacy backup: $legacy_name"
+        mv "$legacy_backup" "$backup_dir/$legacy_name"
+    done
+
+    if grep -Fxq "$name" "$manifest" 2>/dev/null; then
+        managed=1
+    elif [[ -L "$installed" && "$(readlink -f "$installed")" == "$(readlink -f "$target")" ]]; then
+        managed=1
+    elif [[ -f "$installed" && -f "$target" ]] && cmp -s "$installed" "$target"; then
+        managed=1
+    elif [[ -d "$installed" && -d "$target" ]] && diff -qr "$installed" "$target" >/dev/null 2>&1; then
+        managed=1
     fi
 
-    echo "Creating symlink: $link -> $target"
-    ln -s "$target" "$link"
-}
-
-link_file() {
-    local name="$1"
-    local target="$SCRIPT_DIR/$name"
-    local link="$CLAUDE_DIR/$name"
-
-    if [[ -e "$link" && ! -L "$link" ]]; then
-        local backup_name="${name}.bak.$(date +%Y%m%d-%H%M%S)"
-        echo "Backing up existing $name to $CLAUDE_DIR/$backup_name"
-        mv "$link" "$CLAUDE_DIR/$backup_name"
-    elif [[ -L "$link" ]]; then
-        echo "Removing existing symlink at $link"
-        rm "$link"
+    if [[ -e "$installed" || -L "$installed" ]]; then
+        if [[ "$managed" -eq 1 ]]; then
+            case "$installed" in
+                "$CLAUDE_DIR"/*) rm -rf -- "$installed" ;;
+                *) echo "Refusing to replace unexpected path: $installed" >&2; exit 1 ;;
+            esac
+            echo "Updating managed Claude item: $name"
+        else
+            mkdir -p "$backup_dir"
+            echo "Backing up user Claude item: $name"
+            mv "$installed" "$backup_dir/$name"
+        fi
+    else
+        echo "Installing Claude item: $name"
     fi
 
-    echo "Creating symlink: $link -> $target"
-    ln -s "$target" "$link"
+    cp -a "$target" "$installed"
+    printf '%s\n' "$name" >> "$CLAUDE_ITEMS_NEXT_MANIFEST"
 }
 
 restore_legacy_claude_skills() {
@@ -79,13 +90,14 @@ restore_legacy_claude_skills() {
 restore_legacy_claude_skills
 mkdir -p "$CODEX_DIR/skills"
 
-link_dir agents "$CLAUDE_DIR"
+CLAUDE_ITEMS_MANIFEST="$CLAUDE_DIR/my-claude-workflow-managed-items.txt"
+CLAUDE_ITEMS_NEXT_MANIFEST="$CLAUDE_ITEMS_MANIFEST.tmp"
+: > "$CLAUDE_ITEMS_NEXT_MANIFEST"
+install_claude_item agents
 
 # Install repository skills as managed copies. A manifest distinguishes copies
 # owned by this installer from unrelated user skills with the same name.
 # Backups live outside skills/ so neither Claude nor Codex discovers them.
-INSTALL_STAMP="$(date +%Y%m%d-%H%M%S)"
-
 install_skills() {
     local tool_name="$1"
     local tool_root="$2"
@@ -152,16 +164,42 @@ install_skills() {
 install_skills Claude "$CLAUDE_DIR"
 install_skills Codex "$CODEX_DIR"
 
-# Global config files — symlinked into ~/.claude so they travel with this repo.
+# Global config files — installed as managed copies so this works consistently
+# on Windows systems where Git Bash may copy instead of creating symlinks.
 # RTK.md is intentionally excluded: it is private (mode 600) and stays machine-local,
 # so its @import in CLAUDE.md resolves only where it exists.
-link_file CLAUDE.md
-link_file FFF.md
-link_file HARNESS.md
-link_file VERIFY.md
-link_file NONDUAL.md
-link_file PROSE.md
-link_file MODEL.md
+install_claude_item CLAUDE.md
+install_claude_item FFF.md
+install_claude_item HARNESS.md
+install_claude_item VERIFY.md
+install_claude_item NONDUAL.md
+install_claude_item PROSE.md
+install_claude_item MODEL.md
+mv "$CLAUDE_ITEMS_NEXT_MANIFEST" "$CLAUDE_ITEMS_MANIFEST"
+
+prune_workflow_backups() {
+    local tool_root="$1"
+    local backup_root="$tool_root/backups/my-claude-workflow"
+    local old_backup
+
+    [[ "$BACKUP_RETENTION" =~ ^[0-9]+$ ]] || {
+        echo "WORKFLOW_BACKUP_RETENTION must be a non-negative integer" >&2
+        exit 1
+    }
+    [[ -d "$backup_root" ]] || return
+
+    while IFS= read -r old_backup; do
+        [[ -n "$old_backup" ]] || continue
+        case "$old_backup" in
+            "$backup_root"/*) rm -rf -- "$old_backup" ;;
+            *) echo "Refusing to prune unexpected path: $old_backup" >&2; exit 1 ;;
+        esac
+        echo "Pruned old workflow backup: $old_backup"
+    done < <(find "$backup_root" -mindepth 1 -maxdepth 1 -type d -print | sort -r | tail -n "+$((BACKUP_RETENTION + 1))")
+}
+
+prune_workflow_backups "$CLAUDE_DIR"
+prune_workflow_backups "$CODEX_DIR"
 
 # Make shell scripts executable
 chmod +x "$SCRIPT_DIR/skills/claude-status/claude-status.sh"
