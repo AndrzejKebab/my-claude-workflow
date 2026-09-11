@@ -1,43 +1,73 @@
 ---
 name: rebase
-description: Rebase current worktree branch onto latest main
+description: Safely rebase a clean feature worktree onto its intended local base branch before verification and merge. Use only when the user explicitly requests a rebase or the agreed workflow requires one.
 ---
 
-> **Workflow context:** This is step 1 of completing a feature. The full sequence is:
-> `/rebase` → manual verification → `/merge`
->
-> Rebasing ensures clean, linear history on main by replaying feature commits on top of the latest main.
+# Rebase a worktree branch
 
-Rebase the current worktree's branch onto the latest main branch.
+Rebase the current feature branch onto its intended local base while preserving user work and making conflicts visible. Rebasing rewrites commit identities; do not start it implicitly during unrelated work.
 
-> **CRITICAL — "main" = the LOCAL `main` branch, never `origin/main`.** We push RARELY, so `origin/main` is routinely stale/behind local `main` (merged branches sit on local `main` unpushed, sometimes for days). Run `git rebase main` — NEVER `git fetch` and rebase onto `origin/main`, which replays onto an old base and silently drops merged work (e.g. a math-library migration that's on local `main` but not pushed). Worktrees share the `.git`; `git worktree list` shows the `[main]` worktree, directly reachable. If local `main` and `origin/main` disagree, local `main` wins — that gap is expected, not something to "fix" by fetching.
+## Determine the target
 
-## Pre-flight checks
+Identify from Git state and the worktree task context:
 
-1. Run `git status` to check for uncommitted changes
-2. If uncommitted changes exist:
-   - Ask user whether to commit, stash, or abort
-   - Do NOT proceed until working tree is clean
-3. Fetch latest from main worktree (no network fetch needed - it's local)
+- repository root and current worktree path;
+- current named feature branch;
+- intended local base branch or explicit base ref;
+- commits that would be replayed;
+- whether the feature branch has an upstream that was previously pushed.
+
+Honor a base explicitly chosen by the user. Otherwise use the base recorded when the worktree was created. If that is unavailable, apply the same local-default detection used by the `worktree` skill: local `main`, the local branch named by `origin/HEAD`, then local `master`. Ask when the result remains ambiguous.
+
+Do not assume `main`, and do not replace a local base with `origin/<branch>`. Fetch or pull only when the user explicitly requests synchronization with a remote.
+
+## Preflight
+
+Before rebasing:
+
+1. Run `git status --short` and require a clean feature worktree. If it is dirty, ask whether to commit, stash, or stop; do not choose automatically.
+2. Confirm the current checkout is a named feature branch and is not the base branch or detached HEAD.
+3. Confirm the base ref resolves locally.
+4. Show the commits to be replayed, for example with `git log --oneline <base>..HEAD`.
+5. Inspect submodule status when `.gitmodules` exists. Do not rebase a superproject while unique or uncommitted submodule work is unresolved.
+6. Record the pre-rebase feature commit so recovery is straightforward.
+
+If the feature branch was already pushed, warn that rebasing changes published commit IDs and ask for confirmation before proceeding. Permission to rebase does not imply permission to force-push afterward.
 
 ## Rebase
 
-1. Get current branch name: `git branch --show-current`
-2. Rebase onto main: `git rebase main`
-3. If conflicts occur:
-   - Show conflicted files: `git status`
-   - Do NOT auto-resolve - ask user how to proceed
-   - Options: fix manually, `git rebase --abort`, or `git rebase --skip`
+Run:
 
-## Post-rebase
+```bash
+git rebase <local-base-ref>
+```
 
-1. Run `git status` to confirm clean state
-2. Show new commit position: `git log --oneline -3`
-3. Remind user: "Ready for manual verification. Test the feature, then run `/merge` when satisfied."
+Do not add interactive, autosquash, rebase-merges, or onto behavior unless the user requested it or repository instructions require it.
 
-## Notes
+If conflicts occur:
 
-- Rebase from the LOCAL `main` branch (same repo, different worktree) — NEVER `origin/main`, which is stale because we push rarely.
-- No `git fetch` needed, and don't — worktrees share the same `.git`, and fetching only tempts rebasing onto a stale `origin/main`.
-- Never use `--no-edit` with rebase (it's not a valid option)
-- Never force-push without explicit user request
+- report `git status` and the conflicted paths;
+- preserve the in-progress rebase;
+- do not guess at semantic conflict resolution;
+- offer to resolve with the user's direction or abort with `git rebase --abort`.
+
+Never use `git rebase --skip` merely to clear a conflict: it drops a commit. Use it only when the user explicitly confirms that the affected commit is intentionally discarded.
+
+## Verify
+
+After a successful rebase:
+
+1. Confirm `git status --short` is clean.
+2. Show the new branch tip and recent commits.
+3. Verify the recorded pre-rebase changes are still represented, using an appropriate range comparison or `git range-diff` when useful.
+4. Run only the verification gates already requested or required by repository instructions.
+5. Report the exact base used and whether commit IDs changed.
+
+The next step is manual or automated feature verification, followed by the `merge` skill when the user asks to merge. Do not merge, remove the worktree, push, or force-push as part of this skill.
+
+## Safety boundary
+
+- Preserve unrelated user work and existing recovery refs.
+- Do not fetch, pull, merge, or push without separate authorization.
+- Do not use destructive reset or delete the feature branch.
+- If the intended base or conflict resolution is ambiguous, stop with the repository left in a recoverable state.
