@@ -18,6 +18,8 @@ clones or fast-forward-updates this workflow under `$HOME/my-claude-workflow`,
 runs the workflow installer, and prepares Graphify inside the selected project.
 The workflow checkout defaults to the `kebab-unity` branch; override it with
 `WORKFLOW_BRANCH` only when intentionally testing another branch.
+Graphify downloads use a 300-second uv timeout and retry transient failures
+three times. Set `UV_HTTP_TIMEOUT` to override the timeout for a slower mirror.
 
 On Windows, run the installer from Git Bash:
 

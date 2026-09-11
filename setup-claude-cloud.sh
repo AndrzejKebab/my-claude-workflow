@@ -19,13 +19,26 @@ command -v claude >/dev/null 2>&1 || fail "Claude Code is required."
 PROJECT_DIR="$(cd "$PROJECT_DIR" && pwd)"
 
 echo "Installing Graphify..."
-if command -v uv >/dev/null 2>&1; then
-    uv tool install --upgrade graphifyy
-elif command -v python3 >/dev/null 2>&1; then
-    python3 -m pip install --user --upgrade graphifyy
-else
-    fail "uv or Python 3 is required to install Graphify."
-fi
+export UV_HTTP_TIMEOUT="${UV_HTTP_TIMEOUT:-300}"
+
+install_graphify() {
+    if command -v uv >/dev/null 2>&1; then
+        uv tool install --upgrade graphifyy
+    elif command -v python3 >/dev/null 2>&1; then
+        python3 -m pip install --user --upgrade --timeout 300 --retries 5 graphifyy
+    else
+        fail "uv or Python 3 is required to install Graphify."
+    fi
+}
+
+for attempt in 1 2 3; do
+    if install_graphify; then
+        break
+    fi
+    [[ "$attempt" -lt 3 ]] || fail "Graphify installation failed after 3 attempts."
+    echo "Graphify download failed; retrying attempt $((attempt + 1)) of 3..."
+    sleep "$((attempt * 5))"
+done
 
 export PATH="$HOME/.local/bin:$PATH"
 hash -r
