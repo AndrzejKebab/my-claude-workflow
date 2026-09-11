@@ -52,6 +52,8 @@ Manual Git worktrees default to the ignored `.worktrees/` directory. The workflo
 
 Some utilities are necessarily product- or application-specific. Their presence does not make the shared Unity and engineering skills Claude-only.
 
+Graphify and FFF setup, maintenance, and search precedence are documented in [Codebase navigation](docs/codebase-navigation.md).
+
 ## Specialist agents
 
 The repository contains six focused agent definitions:
