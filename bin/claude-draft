@@ -1,23 +1,41 @@
 #!/usr/bin/env bash
+# List or print drafts persisted by claude-editor.
 set -euo pipefail
 
-drafts="$HOME/.claude/drafts"
-mapfile -t files < <(ls -t "$drafts"/*/draft-*.md "$drafts"/draft-*.md 2>/dev/null || true)
-[ "${#files[@]}" -gt 0 ] || { echo "claude-draft: no drafts in $drafts" >&2; exit 1; }
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export CLAUDE_DRAFT_DIR="${CLAUDE_DRAFT_DIR:-$SCRIPT_DIR/../local-data/claude-drafts}"
+case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*) CLAUDE_DRAFT_DIR="$(cygpath -w "$CLAUDE_DRAFT_DIR")"; export CLAUDE_DRAFT_DIR ;;
+esac
 
-if [ "${1:-}" = "-l" ]; then
-  for i in "${!files[@]}"; do
-    f="${files[$i]}"
-    proj="$(basename "$(dirname "$f")")"
-    when="$(stat -c %y "$f" | cut -d. -f1)"
-    prev="$(head -c 70 "$f" | tr '\n' ' ')"
-    printf '%2d  %-18s  %s  %s\n' "$i" "$proj" "$when" "$prev"
-  done
-  exit 0
-fi
+exec python3 - "$@" <<'PY'
+from datetime import datetime
+from pathlib import Path
+import os
+import sys
 
-idx="${1:-0}"
-[ "$idx" -lt "${#files[@]}" ] 2>/dev/null || { echo "claude-draft: no draft #$idx (have ${#files[@]})" >&2; exit 1; }
-cat "${files[$idx]}"
-[ "${#files[@]}" -gt 1 ] && echo "claude-draft: ${#files[@]} drafts — 'claude-draft -l' to list, 'claude-draft <n>' for older" >&2
-exit 0
+root = Path(os.environ["CLAUDE_DRAFT_DIR"]).expanduser()
+files = sorted(root.glob("**/draft-*.md"), key=lambda path: path.stat().st_mtime, reverse=True) if root.is_dir() else []
+if not files:
+    print(f"claude-draft: no drafts in {root}", file=sys.stderr)
+    raise SystemExit(1)
+
+if sys.argv[1:] == ["-l"]:
+    for index, path in enumerate(files):
+        project = path.parent.name
+        when = datetime.fromtimestamp(path.stat().st_mtime).isoformat(sep=" ", timespec="seconds")
+        preview = " ".join(path.read_text(encoding="utf-8", errors="replace")[:70].splitlines())
+        print(f"{index:2d}  {project:<18}  {when}  {preview}")
+    raise SystemExit(0)
+
+try:
+    index = int(sys.argv[1]) if len(sys.argv) > 1 else 0
+    path = files[index]
+except (ValueError, IndexError):
+    print(f"claude-draft: invalid draft index (available: 0..{len(files) - 1})", file=sys.stderr)
+    raise SystemExit(2)
+
+sys.stdout.write(path.read_text(encoding="utf-8", errors="replace"))
+if len(files) > 1:
+    print(f"\nclaude-draft: {len(files)} drafts; use 'claude-draft -l' to list them", file=sys.stderr)
+PY

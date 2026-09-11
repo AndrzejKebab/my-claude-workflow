@@ -1,75 +1,55 @@
 #!/usr/bin/env bash
-# claudeh — Claude Code routed through the Headroom context-compression proxy.
-#
-# Headroom sits ONLY at the wire layer: it runs a local proxy and points
-# Claude Code at it via ANTHROPIC_BASE_URL, so every request to
-# api.anthropic.com passes through the compressor on its way out. It never
-# touches the tool/hook layer, which means the real RTK PreToolUse hook keeps
-# working untouched and plain `claude` is completely unaffected. Use `claudeh`
-# when you want compression; use `claude` when you don't.
-#
-# Every sub-agent and workflow agent runs inside this one `claude` process and
-# inherits its ANTHROPIC_BASE_URL, so "all agents use it" comes for free.
-#
-# Auth / fidelity on a Claude subscription (verified against headroom 0.23.0
-# proxy/auth_mode.py + proxy/helpers.py):
-#   - The proxy forwards your inbound request headers upstream and strips only
-#     its own x-headroom-* headers, so your OAuth bearer (sk-ant-oat-*) is
-#     passed through unchanged — the proxy needs no API key of its own.
-#   - It detects the claude-cli User-Agent and runs SUBSCRIPTION "stealth" mode:
-#     lossless-only (no lossy compressors), never mutates the User-Agent, never
-#     injects markers. So token savings are modest (lossless structural only) —
-#     the headline 60-95% needs an API-key (PAYG) path this wrapper avoids.
-#
-# This wrapper deliberately calls `headroom proxy` directly rather than
-# `headroom wrap claude`: `wrap` also runs a CLI "context-tool" (which headroom
-# internally calls "rtk" — a name collision with the real RTK) and registers
-# Serena + a headroom MCP server into your config. By driving the proxy
-# ourselves we never invoke that code, so nothing mutates ~/.claude.
-#
-# Knobs (env vars):
-#   HEADROOM_PORT   proxy port (default 8787)
-#   HEADROOM_BIN    path to the headroom binary (default ~/.local/bin/headroom)
+# Launch Claude Code through an optional local Headroom proxy.
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PORT="${HEADROOM_PORT:-8787}"
-HEADROOM="${HEADROOM_BIN:-$HOME/.local/bin/headroom}"
 BASE="http://127.0.0.1:${PORT}"
-LOG="${TMPDIR:-/tmp}/headroom-proxy.log"
 
-ready() { curl -sf "${BASE}/readyz" >/dev/null 2>&1; }
+resolve_headroom() {
+    if [[ -n "${HEADROOM_BIN:-}" ]]; then printf '%s\n' "$HEADROOM_BIN"; return; fi
+    command -v headroom 2>/dev/null && return
+    [[ -x "$HOME/.local/bin/headroom.exe" ]] && printf '%s\n' "$HOME/.local/bin/headroom.exe" && return
+    [[ -x "$HOME/.local/bin/headroom" ]] && printf '%s\n' "$HOME/.local/bin/headroom"
+}
 
-if [ ! -x "$HEADROOM" ] && ! command -v "$HEADROOM" >/dev/null 2>&1; then
-  echo "claudeh: headroom not found at '$HEADROOM' (set HEADROOM_BIN)" >&2
-  exit 127
+HEADROOM="$(resolve_headroom || true)"
+if [[ -z "$HEADROOM" || ( ! -x "$HEADROOM" && -z "$(command -v "$HEADROOM" 2>/dev/null || true)" ) ]]; then
+    echo "claudeh: Headroom not found. Install it or set HEADROOM_BIN." >&2
+    exit 127
 fi
 
+temp_root="${TMPDIR:-${TEMP:-/tmp}}"
+case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*) temp_root="$(cygpath -u "$temp_root")" ;;
+esac
+mkdir -p "$temp_root"
+LOG="${HEADROOM_LOG:-$temp_root/headroom-proxy.log}"
+
+ready() { curl -fsS "${BASE}/readyz" >/dev/null 2>&1; }
 started_proxy=0
 if ! ready; then
-  "$HEADROOM" proxy --port "$PORT" >"$LOG" 2>&1 &
-  PROXY_PID=$!
-  started_proxy=1
-  # Generous readiness window: the first-ever start does one-time setup
-  # (tokenizer data / bundled tool binaries) that can take well over 45s.
-  for _ in $(seq 1 120); do
-    ready && break
-    if ! kill -0 "$PROXY_PID" 2>/dev/null; then
-      echo "claudeh: headroom proxy exited during startup — see $LOG" >&2
-      exit 1
+    "$HEADROOM" proxy --port "$PORT" >"$LOG" 2>&1 &
+    PROXY_PID=$!
+    started_proxy=1
+    for ((attempt = 1; attempt <= 120; attempt++)); do
+        ready && break
+        if ! kill -0 "$PROXY_PID" 2>/dev/null; then
+            echo "claudeh: Headroom exited during startup; see $LOG" >&2
+            exit 1
+        fi
+        sleep 1
+    done
+    if ! ready; then
+        echo "claudeh: Headroom was not ready after 120 seconds; see $LOG" >&2
+        kill "$PROXY_PID" 2>/dev/null || true
+        exit 1
     fi
-    sleep 1
-  done
-  if ! ready; then
-    echo "claudeh: headroom proxy did not become ready on ${BASE} — see $LOG" >&2
-    kill "$PROXY_PID" 2>/dev/null || true
-    exit 1
-  fi
 fi
 
-# Only tear down a proxy WE started; a pre-existing shared one is left running.
-cleanup() { if [ "$started_proxy" = 1 ]; then kill "${PROXY_PID:-}" 2>/dev/null || true; fi; }
+cleanup() {
+    if (( started_proxy )); then kill "${PROXY_PID:-}" 2>/dev/null || true; fi
+}
 trap cleanup EXIT INT TERM
 
-# Hand off to Claude Code with the wire pointed at the proxy. Not `exec`, so the
-# EXIT trap fires and the proxy we started is cleaned up when claude quits.
-ANTHROPIC_BASE_URL="$BASE" claude "$@"
+ANTHROPIC_BASE_URL="$BASE" "$SCRIPT_DIR/claude" "$@"

@@ -1,31 +1,46 @@
 #!/usr/bin/env bash
+# Persist Claude's temporary prompt file, then open it in a blocking editor.
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 origin="${CLAUDE_LAUNCH_CWD:-$PWD}"
-slug="$(basename "$origin")"
-case "$slug" in ""|"/"|".") slug="root" ;; esac
+slug="$(basename "$origin" | tr -cs '[:alnum:]._- ' '-' | sed 's/[[:space:]]/-/g')"
+[[ -n "$slug" && "$slug" != "/" && "$slug" != "." ]] || slug="root"
 
-dir="$HOME/.claude/drafts/$slug"
+draft_root="${CLAUDE_DRAFT_DIR:-$SCRIPT_DIR/../local-data/claude-drafts}"
+case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*) draft_root="$(cygpath -u "$draft_root")" ;;
+esac
+dir="$draft_root/$slug"
 mkdir -p "$dir"
 
-tmp="${*: -1}"
+tmp=""
+(( $# == 0 )) || tmp="${!#}"
 persist="$dir/draft-$(date +%Y%m%d-%H%M%S)-$$.md"
-
-if [ -n "${tmp:-}" ] && [ -f "$tmp" ]; then
-  cp -f "$tmp" "$persist"
+if [[ -n "$tmp" && -f "$tmp" ]]; then
+    cp -f -- "$tmp" "$persist"
 else
-  : >"$persist"
+    : >"$persist"
 fi
 
-CLAUDE_DRAFT_NVIM="${CLAUDE_DRAFT_NVIM:-nvim}"
-"$CLAUDE_DRAFT_NVIM" \
-  -c 'set fsync' \
-  -c 'set updatetime=750' \
-  -c 'autocmd TextChanged,TextChangedI,InsertLeave,CursorHold,CursorHoldI * silent! noautocmd write' \
-  "$persist"
-
-if [ -n "${tmp:-}" ]; then
-  cp -f "$persist" "$tmp" 2>/dev/null || true
+editor="${CLAUDE_DRAFT_EDITOR:-}"
+if [[ -z "$editor" ]]; then
+    for candidate in nvim code notepad.exe; do
+        if command -v "$candidate" >/dev/null 2>&1; then editor="$candidate"; break; fi
+    done
+fi
+if [[ -z "$editor" ]]; then
+    echo "No draft editor found. Set CLAUDE_DRAFT_EDITOR to an executable." >&2
+    exit 127
 fi
 
-[ -s "$persist" ] || rm -f "$persist"
+case "$(basename "$editor" | tr '[:upper:]' '[:lower:]')" in
+    code|code.cmd|code.exe) "$editor" --wait "$persist" ;;
+    nvim|nvim.exe) "$editor" -c 'set fsync' -c 'set updatetime=750' "$persist" ;;
+    *) "$editor" "$persist" ;;
+esac
+
+if [[ -n "$tmp" ]]; then
+    cp -f -- "$persist" "$tmp" 2>/dev/null || true
+fi
+[[ -s "$persist" ]] || rm -f -- "$persist"

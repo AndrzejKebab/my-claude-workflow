@@ -1,9 +1,44 @@
 #!/usr/bin/env bash
+# Launch Claude Code with this workflow's persistent draft editor.
 set -euo pipefail
 
-EDITOR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/claude-editor
-export EDITOR
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SELF="$(realpath "$0" 2>/dev/null || printf '%s' "$0")"
+
+resolve_claude() {
+    local candidate resolved
+    if [[ -n "${CLAUDE_BIN:-}" ]]; then
+        if resolved="$(command -v "$CLAUDE_BIN" 2>/dev/null)"; then
+            printf '%s\n' "$resolved"
+        elif [[ -x "$CLAUDE_BIN" ]]; then
+            printf '%s\n' "$CLAUDE_BIN"
+        fi
+        return
+    fi
+
+    for candidate in "$HOME/.local/bin/claude.exe" "$HOME/.local/bin/claude"; do
+        [[ -x "$candidate" ]] && { printf '%s\n' "$candidate"; return; }
+    done
+
+    for candidate in claude.exe claude; do
+        resolved="$(command -v "$candidate" 2>/dev/null || true)"
+        [[ -n "$resolved" ]] || continue
+        [[ "$(realpath "$resolved" 2>/dev/null || printf '%s' "$resolved")" == "$SELF" ]] || {
+            printf '%s\n' "$resolved"
+            return
+        }
+    done
+}
+
+CLAUDE_EXECUTABLE="$(resolve_claude || true)"
+if [[ -z "$CLAUDE_EXECUTABLE" ]]; then
+    echo "Claude Code executable not found. Set CLAUDE_BIN to its path." >&2
+    exit 127
+fi
+
+export EDITOR="$SCRIPT_DIR/claude-editor"
 export VISUAL="$EDITOR"
 export CLAUDE_LAUNCH_CWD="$PWD"
+export CLAUDE_DRAFT_DIR="${CLAUDE_DRAFT_DIR:-$SCRIPT_DIR/../local-data/claude-drafts}"
 
-exec "$HOME/.local/bin/claude" "$@"
+exec "$CLAUDE_EXECUTABLE" "$@"
