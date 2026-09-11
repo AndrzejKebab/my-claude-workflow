@@ -386,6 +386,8 @@ install_hook PreToolUse Bash cc-nospin
 # Deterministic checks for rules that prose alone cannot guarantee. See
 # docs/rule-compliance.md; cc-rule-audit can inspect Claude transcripts.
 install_hook SessionStart "" cc-doctrine
+# Deferred tool install: graphify + FFF, cloud-only, backgrounded after launch
+install_hook SessionStart "" "\"$SCRIPT_DIR/bin/install-tools.sh\""
 install_hook Stop "" cc-no-hedge
 install_hook PreToolUse "Read|Bash" cc-whole-file-reads
 install_hook PostToolUse "Write|Edit" cc-comment-wall
