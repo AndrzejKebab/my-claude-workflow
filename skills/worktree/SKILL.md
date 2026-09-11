@@ -1,113 +1,69 @@
 ---
 name: worktree
-description: Create or switch to a git worktree for isolated feature/fix development
+description: Create or reuse an isolated Git worktree for feature, fix, refactor, or documentation work. Use when the user explicitly requests a worktree or isolated branch checkout.
 ---
 
-# MANDATORY WORKFLOW
+# Create or reuse a worktree
 
-When this skill is invoked, you MUST follow these steps IN ORDER. Do NOT skip any step.
+Prefer a host-provided worktree facility when the user is working through Claude or Codex and that facility preserves the requested starting state. Otherwise use Git directly with the workflow below.
 
-## Step 1: Determine Slug (REQUIRED)
+## Choose names and base
 
-Generate a slug from the user's task description:
-- Extract the core concept (2-3 words max)
-- Convert to kebab-case: `player-collision`, `fix-auth-timeout`, `add-retry-logic`
-- Do NOT ask the user for the slug name - generate it automatically
+Derive a short kebab-case slug from the task unless the user supplied one. Use an appropriate branch prefix such as `feat/`, `fix/`, `refactor/`, or `docs/`.
 
-Examples:
-- "Fix the player collision detection" → `player-collision`
-- "Add retry logic to API calls" → `api-retry-logic`
-- "Refactor authentication flow" → `auth-flow`
+Honor an explicit starting branch or ref. Otherwise determine the repository's local default branch rather than assuming it is always `main`:
 
-## Step 2: Determine Branch Type (REQUIRED)
+1. use local `main` when it exists;
+2. otherwise resolve `refs/remotes/origin/HEAD` and use its corresponding local branch when present;
+3. otherwise use local `master` when it exists;
+4. if none is available, ask which local branch should be the base.
 
-| Task type | Branch prefix |
-|-----------|---------------|
-| Features  | `feat/`       |
-| Fixes     | `fix/`        |
-| Refactors | `refactor/`   |
-| Docs      | `docs/`       |
+Do not fetch, pull, or substitute a remote branch unless the user requests network synchronization. Record the selected base.
 
-## Step 3: Get Repo Root
+## Preflight
 
-```bash
-git rev-parse --show-toplevel
-```
+Resolve the repository root with `git rev-parse --show-toplevel` and inspect:
 
-## Step 4: Create or Switch to Worktree
+- `git status --short` for user changes;
+- `git worktree list --porcelain` for an existing checkout;
+- `git show-ref --verify refs/heads/<branch>` for an existing task branch;
+- repository instructions governing branches, worktrees, submodules, and setup.
 
-**CRITICAL:** Always branch from local `main`, NEVER from HEAD. HEAD may be on a
-stale commit (e.g. if you last worked on a different branch or the worktree was
-created from an old session). Using `main` as the explicit start-point guarantees
-the worktree has all recent commits.
+For direct Git use, default to `<repo>/.worktrees/<slug>`. Respect `AGENT_WORKTREE_ROOT` when set. The repository should ignore `/.worktrees/` so the container directory is never committed.
+
+Do not reuse a directory merely because it exists. Confirm it is the worktree registered for the intended branch. If the path or branch conflicts with another task, stop and report the exact conflict.
+
+## Create or switch
+
+Conceptually:
 
 ```bash
-REPO_ROOT=$(git rev-parse --show-toplevel)
-SLUG="<your-generated-slug>"
-TYPE="<feat|fix|refactor|docs>"
+repo_root="$(git rev-parse --show-toplevel)"
+worktree_root="${AGENT_WORKTREE_ROOT:-$repo_root/.worktrees}"
+worktree_path="$worktree_root/<slug>"
+branch="<type>/<slug>"
+base="<detected-local-base>"
 
-if [ -d "${REPO_ROOT}/.claude/worktrees/${SLUG}" ]; then
-    cd "${REPO_ROOT}/.claude/worktrees/${SLUG}"
-    echo "Switched to existing worktree"
-else
-    mkdir -p "${REPO_ROOT}/.claude/worktrees"
-    git worktree add "${REPO_ROOT}/.claude/worktrees/${SLUG}" -b "${TYPE}/${SLUG}" main
-    cd "${REPO_ROOT}/.claude/worktrees/${SLUG}"
-    echo "Created new worktree from main"
-fi
+git worktree add "$worktree_path" -b "$branch" "$base"
 ```
 
-## Step 5: Install JS Dependencies (if applicable)
+If the registered worktree already exists, use it without recreating the branch. Use absolute paths in subsequent operations and clearly report the selected worktree and branch.
 
-After creating a **new** worktree, check for `package.json` and run `pnpm install`:
+## Initialize the checkout
 
-```bash
-if [ -f "package.json" ]; then
-    pnpm install
-fi
-```
+Follow the repository's setup instructions. Do not assume every `package.json` project uses pnpm. When dependency installation is required, infer the command from the lockfile:
 
-Skip this step when switching to an existing worktree.
+| Marker | Typical command |
+| --- | --- |
+| `pnpm-lock.yaml` | `pnpm install` |
+| `yarn.lock` | `yarn install` |
+| `package-lock.json` | `npm install` or documented `npm ci` |
+| `bun.lock` / `bun.lockb` | `bun install` |
 
-## Step 6: Plan Header (MANDATORY when entering plan mode)
+Install only when the user requested a ready-to-work checkout or repository instructions require it. Do not invent setup for an unfamiliar stack.
 
-If entering plan mode, you MUST write this EXACT header at the TOP of the plan file BEFORE any other content.
-Use **absolute paths** so the header survives context compression and fresh sessions:
+For Unity projects, do not copy `Library`, `Temp`, or other generated caches from another checkout. Let the selected Unity version import the worktree independently, and do not open two editors on the same worktree.
 
-```markdown
-## Worktree Context
-- **Slug:** `<slug>`
-- **Worktree:** `${REPO_ROOT}/.claude/worktrees/<slug>`
-- **Branch:** `<type>/<slug>`
+## Report
 
-### ⚠️ CRITICAL: Working Directory
-**ALL file operations (Read, Edit, Write, Glob, Grep) MUST use absolute paths in the worktree:**
-- ✅ `${REPO_ROOT}/.claude/worktrees/<slug>/src/...`
-- ❌ `${REPO_ROOT}/src/...` (WRONG - this is main tree)
-
-Do NOT work in the main repository. The worktree is your working directory.
-
----
-
-```
-
-This is NOT optional. The plan file MUST start with this header.
-
-## Naming Convention
-
-| Component | Format | Example |
-|-----------|--------|---------|
-| Slug | kebab-case, 2-3 words | `player-collision` |
-| Worktree | `${REPO_ROOT}/.claude/worktrees/<slug>` | `${REPO_ROOT}/.claude/worktrees/player-collision` |
-| Branch | `<type>/<slug>` | `feat/player-collision` |
-
-The `<slug>` MUST be identical across all three for `/merge` cleanup to work.
-
-## Rules
-
-1. NEVER ask user for slug name - generate automatically
-2. Location: `REPO_ROOT/.claude/worktrees/<slug>`
-3. Shared target dir via `~/.cargo/config.toml` -- no cache copying needed
-4. All work happens in the worktree, not the main repo
-5. Never push -- user pushes after review
-6. Plan mode ALWAYS gets the worktree context header
+Return the absolute worktree path, branch, base branch/ref, whether it was created or reused, and any setup performed. Never push unless explicitly requested.
