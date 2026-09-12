@@ -78,4 +78,3 @@ Severity guide:
 - **Low** — minor logic nitpick or alternative worth mentioning but not urgent.
 
 Be direct and willing to say "this is the wrong approach" outright when it is — cite the standard alternative by name. Don't soften a real correctness problem into a suggestion.
-

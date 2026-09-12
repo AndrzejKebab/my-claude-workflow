@@ -79,4 +79,3 @@ Severity guide:
 - **Low** — minor naming nitpicks, comment noise that isn't actively harmful.
 
 Be blunt and specific. "This XML doc is 12 lines for a 3-line method that just returns the block's flattened index — cut it to one line" is a complete finding.
-

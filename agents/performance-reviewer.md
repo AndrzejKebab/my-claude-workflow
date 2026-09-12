@@ -82,4 +82,3 @@ Severity guide:
 - **Low** — micro-optimization, worth a mention, not worth blocking on.
 
 Be blunt. If something is fine, say it's fine in one line and move on — don't pad the report to look thorough.
-

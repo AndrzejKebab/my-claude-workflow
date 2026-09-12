@@ -79,4 +79,3 @@ Severity guide:
 - **Low** — minor, stylistic-adjacent over-structuring, worth a mention.
 
 Be direct. "This interface has one implementation and no stated second use case — collapse it into a concrete class" is a complete, useful finding. Don't hedge it into mush.
-
