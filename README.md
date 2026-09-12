@@ -71,10 +71,14 @@ Graphify and FFF setup, maintenance, and search precedence are documented in [Co
 
 ## Specialist agents
 
-The repository contains six focused agent definitions:
+The repository contains ten focused agent definitions:
 
 - `refactor-explorer`, `refactor-architect`, and `refactor-implementer` support the three-phase refactoring workflow.
 - `research-extractor`, `research-vision`, and `research-refiner` support extraction, visual reconstruction, and final cleanup of research material.
+- `logic-design-reviewer`, `performance-reviewer`, `readability-docs-reviewer`, and `simplicity-reviewer` provide evidence-gated Unity voxel/ECS review lenses.
+
+The reviewer contract and scope boundaries are documented in
+[`agents/README.md`](agents/README.md).
 
 Claude receives these definitions under `~/.claude/agents/`. Codex can use the shared skill instructions with its native collaboration roles where available.
 
@@ -121,7 +125,7 @@ The directory is ignored by Git because generated research corpora can be large 
 
 ```text
 my-claude-workflow/
-├── agents/              # refactor and research specialist definitions
+├── agents/              # refactor, research, and Unity review agents
 ├── bin/                 # Unity, Claude, audit, and maintenance helpers
 ├── docs/                # workflow and Unity technical documentation
 ├── memory/shared/       # reusable, reviewed Unity/development knowledge
