@@ -253,7 +253,7 @@ prune_workflow_backups() {
         echo "WORKFLOW_BACKUP_RETENTION must be a non-negative integer" >&2
         exit 1
     }
-    [[ -d "$backup_root" ]] || return
+    [[ -d "$backup_root" ]] || return 0
 
     while IFS= read -r old_backup; do
         [[ -n "$old_backup" ]] || continue
