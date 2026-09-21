@@ -66,11 +66,18 @@ def main():
     if payload.get("stop_hook_active"):
         sys.exit(0)
 
-    path = payload.get("transcript_path") or ""
-    if not path or not os.path.exists(path):
-        sys.exit(0)
+# Both Codex and Claude Code put the assistant text directly in the Stop
+# payload as last_assistant_message. The transcript fallback stays for older
+# clients or other harnesses; the transcript format is documented as not a
+# stable interface, so the payload field is the primary source.
+    text = payload.get("last_assistant_message") or ""
+    if not text:
+        path = payload.get("transcript_path") or ""
+        if not path or not os.path.exists(path):
+            sys.exit(0)
+        text = last_assistant_text(path)
 
-    text = strip_quoted(last_assistant_text(path))
+    text = strip_quoted(text)
     if not text.strip():
         sys.exit(0)
 

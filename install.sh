@@ -357,6 +357,197 @@ print(f"  {cmd} — installed (backup at {bak})")
 PY
 }
 
+# Commands this repo owns. Every one of them is removed from EVERY event and
+# matcher in settings.json before install, so a file that was hand-edited or
+# written by an older installer converges on the canonical layout instead of
+# accumulating duplicates across events. Without this step, moving a hook
+# between events (e.g. cc-doctrine PreToolUse → SessionStart) leaves the old
+# entry behind, and a SessionStart-only hook silently fires on every tool call.
+#
+# Anything NOT on this list — user hooks, graphify hook-guard, third-party
+# plugin hooks — is left untouched.
+OWNED_HOOK_COMMANDS=(
+    cc-nospin
+    cc-doctrine
+    cc-no-hedge
+    cc-whole-file-reads
+    cc-comment-wall
+    cc-cost-tick
+    cc-context-warn
+)
+
+cleanup_owned_hooks() {
+    python3 - "$@" <<'PY'
+import json, os, sys
+owned = set(sys.argv[1:])
+p = os.path.expanduser('~/.claude/settings.json')
+try:
+    with open(p) as f:
+        d = json.load(f)
+except FileNotFoundError:
+    sys.exit(0)
+except json.JSONDecodeError as e:
+    print(f"  settings.json is not valid JSON ({e}); refusing to clean it")
+    sys.exit(0)
+
+hooks = d.get('hooks')
+if not hooks:
+    sys.exit(0)
+
+removed = []
+for event in list(hooks.keys()):
+    kept_entries = []
+    for entry in hooks[event]:
+        inner = entry.get('hooks') or []
+        survivors = [h for h in inner if h.get('command') not in owned]
+        for h in inner:
+            if h.get('command') in owned:
+                removed.append((event, entry.get('matcher', ''), h.get('command')))
+        if survivors:
+            entry['hooks'] = survivors
+            kept_entries.append(entry)
+    if kept_entries:
+        hooks[event] = kept_entries
+    else:
+        del hooks[event]
+
+if not removed:
+    sys.exit(0)
+
+with open(p, 'w') as f:
+    json.dump(d, f, indent=2, ensure_ascii=False)
+    f.write('\n')
+
+for event, matcher, cmd in removed:
+    print(f"  cleaned {event}({matcher or '-'}) {cmd}")
+PY
+}
+
+# Codex reads hooks from ~/.codex/hooks.json. Same shape as Claude Code's
+# settings.json hooks block, but: matchers are regex (anchor them), non-managed
+# hooks must be trusted once via /hooks, and Stop's decision:"block" means
+# "continue with reason as a new prompt" rather than "reject the stop".
+#
+# Only commands this repo owns are replaced. User hooks and the graphify
+# hook-check entry are left alone.
+CODEX_OWNED_HOOK_COMMANDS=(
+    cc-nospin
+    cc-doctrine
+    cc-no-hedge
+    cc-whole-file-reads
+    cc-comment-wall
+)
+
+install_codex_hook() {
+    local event="$1" matcher="$2" cmd="$3"
+    python3 - "$event" "$matcher" "$cmd" <<'PY'
+import json, os, sys
+event, matcher, cmd = sys.argv[1:4]
+p = os.path.expanduser('~/.codex/hooks.json')
+try:
+    with open(p) as f:
+        d = json.load(f)
+except FileNotFoundError:
+    d = {}
+except json.JSONDecodeError as e:
+    print(f"  ~/.codex/hooks.json is not valid JSON ({e}); refusing to touch it")
+    sys.exit(0)
+
+hooks = d.setdefault('hooks', {})
+
+# Drop any prior install of THIS command from EVERY event, so a hook that
+# moved events converges instead of duplicating.
+for ev in list(hooks.keys()):
+    kept = []
+    for entry in hooks[ev]:
+        inner = [h for h in entry.get('hooks', []) if h.get('command') != cmd]
+        if inner:
+            entry['hooks'] = inner
+            kept.append(entry)
+    if kept:
+        hooks[ev] = kept
+    else:
+        del hooks[ev]
+
+# Skip the whole exercise if the entry already exists with this matcher.
+entries = hooks.setdefault(event, [])
+already = any(
+    h.get('command') == cmd
+    for e in entries
+    if e.get('matcher', '') == matcher
+    for h in e.get('hooks', [])
+)
+if already:
+    print(f"  codex: {event}({matcher}) {cmd} — already installed")
+    sys.exit(0)
+
+entry = {"hooks": [{"type": "command", "command": cmd}]}
+if matcher:
+    entry = {"matcher": matcher, **entry}
+entries.insert(0, entry)
+
+bak = p + '.bak'
+if os.path.exists(p):
+    with open(p) as f, open(bak, 'w') as g:
+        g.write(f.read())
+with open(p, 'w') as f:
+    json.dump(d, f, indent=2, ensure_ascii=False)
+    f.write('\n')
+print(f"  codex: {event}({matcher}) {cmd} — installed (backup at {bak})")
+PY
+}
+
+# Analogous to cleanup_owned_hooks, but for ~/.codex/hooks.json. Removes every
+# command this repo owns from every event and matcher before installing, so a
+# hook that moved events (or a name that dropped out of CODEX_OWNED_HOOK_COMMANDS)
+# converges instead of accumulating stale entries.
+cleanup_owned_codex_hooks() {
+    python3 - "$@" <<'PY'
+import json, os, sys
+owned = set(sys.argv[1:])
+p = os.path.expanduser('~/.codex/hooks.json')
+try:
+    with open(p) as f:
+        d = json.load(f)
+except FileNotFoundError:
+    sys.exit(0)
+except json.JSONDecodeError as e:
+    print(f"  ~/.codex/hooks.json is not valid JSON ({e}); refusing to clean it")
+    sys.exit(0)
+
+hooks = d.get('hooks')
+if not hooks:
+    sys.exit(0)
+
+removed = []
+for event in list(hooks.keys()):
+    kept_entries = []
+    for entry in hooks[event]:
+        inner = entry.get('hooks') or []
+        survivors = [h for h in inner if h.get('command') not in owned]
+        for h in inner:
+            if h.get('command') in owned:
+                removed.append((event, entry.get('matcher', ''), h.get('command')))
+        if survivors:
+            entry['hooks'] = survivors
+            kept_entries.append(entry)
+    if kept_entries:
+        hooks[event] = kept_entries
+    else:
+        del hooks[event]
+
+if not removed:
+    sys.exit(0)
+
+with open(p, 'w') as f:
+    json.dump(d, f, indent=2, ensure_ascii=False)
+    f.write('\n')
+
+for event, matcher, cmd in removed:
+    print(f"  codex: cleaned {event}({matcher or '-'}) {cmd}")
+PY
+}
+
 # The bare `unity` name may collide with an installed Unity CLI. Whichever PATH
 # entry comes first wins, so automation should use an unambiguous command.
 #
@@ -379,18 +570,45 @@ fi
 
 echo ""
 echo "Hooks:"
-# Refuses no-op spin loops (`echo .`, `true`) and any command repeated 7+ times
-# in 120s. See docs/no-op-spin.md for why. Fails open if jq is missing.
+# Remove any prior installs of the hooks this repo owns, wherever they live
+# (any event, any matcher). This is what lets the canonical layout below be
+# the only layout: a hook that moved events does not leave a stale entry.
+cleanup_owned_hooks "${OWNED_HOOK_COMMANDS[@]}"
+
+# SessionStart: doctrine, loaded verbatim and re-fired after every compaction.
+# cc-doctrine emits hookSpecificOutput.additionalContext with
+# hookEventName="SessionStart"; PreToolUse ignores both the event name and the
+# field, so the only correct home for it is here.
+install_hook SessionStart "" cc-doctrine
+
+# Stop: refuse to end a turn that hedges or counts. See docs/rule-compliance.md.
+install_hook Stop "" cc-no-hedge
+
+# PreToolUse(Bash): no-op and spin guard. Fails open if jq is missing.
 install_hook PreToolUse Bash cc-nospin
 
-# Deterministic checks for rules that prose alone cannot guarantee. See
-# docs/rule-compliance.md; cc-rule-audit can inspect Claude transcripts.
-install_hook SessionStart "" cc-doctrine
-# Deferred tool install: graphify + FFF, cloud-only, backgrounded after launch
-install_hook SessionStart "" "\"$SCRIPT_DIR/bin/install-tools.sh\""
-install_hook Stop "" cc-no-hedge
+# PreToolUse(Read|Bash): AGENTS.md and CONTEXT.md are read entire.
 install_hook PreToolUse "Read|Bash" cc-whole-file-reads
+
+# PostToolUse(Write|Edit): a wall of comments is a doc page in the wrong file.
 install_hook PostToolUse "Write|Edit" cc-comment-wall
+
+# Codex hooks. Review with /hooks inside Codex once after install; trust is
+# per-hash so a changed hook script needs re-trust.
+echo ""
+echo "Codex hooks:"
+
+# Remove any prior installs of the hooks this repo owns, wherever they live in
+# ~/.codex/hooks.json. Lets the canonical layout below be the only layout, and
+# makes CODEX_OWNED_HOOK_COMMANDS the single source of truth for what this repo
+# manages. User hooks (e.g. graphify hook-check) are left untouched.
+cleanup_owned_codex_hooks "${CODEX_OWNED_HOOK_COMMANDS[@]}"
+
+install_codex_hook SessionStart "" cc-doctrine
+install_codex_hook PreToolUse '^Bash$' cc-nospin
+install_codex_hook PreToolUse '^(Read|Bash)$' cc-whole-file-reads
+install_codex_hook PostToolUse '^(Edit|Write)$' cc-comment-wall
+install_codex_hook Stop "" cc-no-hedge
 
 # cc-context-warn, cc-cost-tick and cc-statusline are deliberately NOT wired any
 # more. They grew up into cha-ching, which does the same job better: it chains to
@@ -406,7 +624,8 @@ install_hook PostToolUse "Write|Edit" cc-comment-wall
 # The scripts stay in bin/ because docs/context-usage.md explains its findings
 # through them, and because they are the smallest working version of the idea —
 # useful to read, and to fall back on. Wiring both would give you two statuslines
-# fighting for one slot and two bells for one turn.
+# fighting for one slot and two bells for one turn. cleanup_owned_hooks above
+# still removes any that a prior install left behind.
 
 echo ""
 echo "Installation complete!"
@@ -426,4 +645,14 @@ if [[ -d "$SCRIPT_DIR/bin" ]]; then
         echo "   add it to ~/.bashrc_custom, ~/.zshrc_custom, ~/.config/fish/config.fish)"
         echo ""
     fi
+fi
+
+# If this script was launched from a Windows shortcut or double-click, the
+# console closes the moment the process exits and the output is unreadable.
+# Pause only when stdout is a terminal so piped/CI runs stay unattended.
+# /dev/tty is used for the read because stdin may be redirected in a shortcut.
+if [[ -t 1 ]]; then
+    echo ""
+    printf 'Press Enter to close... '
+    read -r _ < /dev/tty || true
 fi
