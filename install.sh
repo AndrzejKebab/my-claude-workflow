@@ -23,6 +23,10 @@ HERMES_UNMANAGED_SKILLS=(graphify)
 ACTION=""
 TARGETS=""
 TOOLS=""
+# "none" and "not specified" both leave the list empty, so the two are tracked
+# separately: only an unset list may be filled from the defaults.
+TARGETS_GIVEN=0
+TOOLS_GIVEN=0
 TOOLS_FAILED=""
 ASSUME_YES=0
 INTERACTIVE=0
@@ -190,15 +194,18 @@ parse_args() {
             --targets)
                 [[ $# -ge 2 ]] || { echo "--targets needs a value" >&2; exit 1; }
                 TARGETS="$2"
+                TARGETS_GIVEN=1
                 shift 2
                 ;;
             --tools)
                 [[ $# -ge 2 ]] || { echo "--tools needs a value" >&2; exit 1; }
                 TOOLS="$2"
+                TOOLS_GIVEN=1
                 shift 2
                 ;;
             --no-tools)
                 TOOLS="none"
+                TOOLS_GIVEN=1
                 shift
                 ;;
             --yes|-y)
@@ -1211,7 +1218,7 @@ main() {
         fi
     fi
 
-    if [[ -z "$TARGETS" ]]; then
+    if [[ "$TARGETS_GIVEN" -eq 0 ]]; then
         if [[ "$INTERACTIVE" -eq 1 ]]; then
             prompt_targets "$ACTION"
         else
@@ -1219,7 +1226,7 @@ main() {
         fi
     fi
 
-    if [[ -z "$TOOLS" ]]; then
+    if [[ "$TOOLS_GIVEN" -eq 0 ]]; then
         if [[ "$INTERACTIVE" -eq 1 ]]; then
             prompt_tools
         else
