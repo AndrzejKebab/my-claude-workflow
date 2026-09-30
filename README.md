@@ -1,25 +1,10 @@
-# Claude and Codex Unity workflow
+# Claude, Codex, and Hermes Unity workflow
 
 A shared collection of agent skills, specialist definitions, documentation, and command-line helpers. The repository is maintained for a Windows-based Unity workflow, with emphasis on ECS, jobs, Burst, rendering, profiling, and voxel-game development. Portable skills remain usable on other platforms where their dependencies are available.
 
-The files in this repository are canonical. Change them here, commit the change, and rerun the installer when you want to refresh the active Claude and Codex copies.
+The files in this repository are canonical. Change them here, commit the change, and rerun the installer when you want to refresh the active Claude, Codex, and Hermes copies.
 
 ## Install
-
-For a Linux Claude cloud environment, run the bootstrap and optionally pass the
-project that should receive the Graphify graph and Git hook:
-
-```bash
-./setup-claude-cloud.sh /workspace/my-project
-```
-
-It installs Graphify and FFF, registers FFF as a user-scoped Claude MCP server,
-clones or fast-forward-updates this workflow under `$HOME/my-claude-workflow`,
-runs the workflow installer, and prepares Graphify inside the selected project.
-The workflow checkout defaults to the `kebab-unity` branch; override it with
-`WORKFLOW_BRANCH` only when intentionally testing another branch.
-Graphify downloads use a 300-second uv timeout and retry transient failures
-three times. Set `UV_HTTP_TIMEOUT` to override the timeout for a slower mirror.
 
 On Windows, run the installer from Git Bash:
 
@@ -28,7 +13,50 @@ cd /f/Programowanie/my-claude-workflow
 ./install.sh
 ```
 
-The installer requires Bash, Git utilities, and `python3`. Set `CODEX_HOME` before running it only when Codex uses a non-default configuration directory.
+It asks what to do, then which agents to touch:
+
+```text
+What do you want to do?
+  1) Install   create or refresh the selected tools
+  2) Update    refresh only what this workflow already installed
+
+install — select the tools:
+  [x] 1) Claude   /c/Users/you/.claude           installed
+  [x] 2) Codex    /c/Users/you/.codex            detected
+  [x] 3) Hermes   /f/.../Hermes                  installed
+Select targets (1,3 — or "all" / "none") [1,2,3]:
+```
+
+An agent is offered when its configuration directory holds its own config file
+or its command is on `PATH`, and the detected ones are preselected. `Update`
+preselects only what this workflow already installed, and skips a selected agent
+that carries no managed manifest because there is nothing of this workflow's to
+refresh there yet.
+
+Unattended runs answer both questions with flags:
+
+```bash
+./install.sh --action install --targets claude,codex,hermes --yes
+./install.sh --action update  --targets all --tools none --yes
+```
+
+The installer requires Bash, Git utilities, and `python3`. Set `CODEX_HOME` or
+`HERMES_HOME` before running it only when those tools use a non-default
+configuration directory.
+
+### Linux cloud container
+
+For a Linux Claude cloud environment, run the bootstrap. It installs only and
+never touches a project directory:
+
+```bash
+./setup-claude-cloud.sh
+```
+
+It clones or fast-forward-updates this workflow under `$HOME/my-claude-workflow`
+and then runs the installer unattended for Claude. The workflow checkout
+defaults to the `kebab-unity` branch; override it with `WORKFLOW_BRANCH` only
+when intentionally testing another branch.
 
 ### What the installer manages
 
@@ -39,9 +67,41 @@ The installer requires Bash, Git utilities, and `python3`. Set `CODEX_HOME` befo
 - Backups live under each tool's `backups/my-claude-workflow/` directory, outside skill discovery. The newest five install backup sets are retained by default; set `WORKFLOW_BACKUP_RETENTION` to a non-negative integer to change that limit.
 - Claude specialist agents and the selected root instruction documents are installed as managed copies under `~/.claude/`.
 - Claude hooks are merged into `~/.claude/settings.json` without replacing unrelated settings. Codex does not use those Claude hook entries.
+- Hermes receives the same skills under `${HERMES_HOME:-~/.hermes}/skills/`, and the shared rules as the skill `my-claude-workflow`. Hermes reads project rules from the working directory and ignores a home-level `AGENTS.md`, so the rules ship as a loadable skill rather than a dumped instruction file.
+- The tools this workflow depends on are installed once per machine and registered with each selected agent. See [Tools](#tools).
 - Files under `bin/` are made executable but are not added to `PATH` automatically.
 
-The installer keeps manifests in the Claude and Codex configuration roots to distinguish repository-managed copies from user-owned content. Legacy backups accidentally placed inside skill discovery are moved to the external backup area.
+The installer keeps manifests in the Claude, Codex, and Hermes configuration roots to distinguish repository-managed copies from user-owned content. Legacy backups accidentally placed inside skill discovery are moved to the external backup area.
+
+## Tools
+
+`install.sh` installs the tools this workflow depends on, once per machine, then
+registers each with the agents selected in the same run. Control them with
+`--tools graphify,fff,semantica`, `--tools all`, or `--no-tools`.
+
+| Tool | What it provides | Registration |
+| --- | --- | --- |
+| `graphify` | Codebase knowledge graph, queried with `graphify query`/`path`/`explain`. | `graphify install --platform <agent>`, which it supports for claude, codex, and hermes. |
+| `fff` | Rust file-search MCP server with frecency-ranked fuzzy matching. | Registered as the MCP server `fff` with `claude mcp add`, `codex mcp add`, or `hermes mcp add`. |
+| `semantica` | Context and decision graph over the markdown corpus. | Executable only. Its MCP server needs a project graph path, so registration stays per project. |
+
+`graphify` is installed with `uv tool install --upgrade graphifyy` when `uv` is
+present and `python3 -m pip install --user --upgrade graphifyy` otherwise, with
+a 300-second timeout and three attempts. `fff` is installed from its upstream
+`install-mcp.sh`. `semantica` requires Python below 3.14, so it is installed
+into its own virtual environment (`SEMANTICA_VENV`, default
+`${HOME}/.local/share/semantica/venv`) and the `bin`/`Scripts` layout is
+detected rather than assumed, which is what lets the same installer work on a
+Linux container and on Windows.
+
+A tool that fails to install is reported at the end of the run and does not undo
+the rest of the install.
+
+`graphify` resolves the Hermes home itself, and on Windows it has been observed
+writing its skill to the Hermes install root rather than to `HERMES_HOME`. The
+installer warns when `HERMES_HOME` is not the default so the placement can be
+checked. `graphify` is also deliberately excluded from the managed skill copies
+for Hermes: it owns that directory and refreshes it itself.
 
 ## Skills
 
@@ -133,7 +193,8 @@ my-claude-workflow/
 ├── skills/              # canonical shared skill directories
 ├── CLAUDE.md            # Claude instruction entry point
 ├── DOCTRINE.list        # optional extra documents injected by cc-doctrine
-├── install.sh           # managed Claude and Codex installer
+├── install.sh           # managed installer for Claude, Codex, and Hermes
+├── setup-claude-cloud.sh # install-only bootstrap for a Linux Claude container
 └── research-library/    # generated local corpus; ignored by Git
 ```
 
