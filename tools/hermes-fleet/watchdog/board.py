@@ -55,6 +55,7 @@ def log(message: str) -> None:
         print(f'[dry-run] {message}', file=sys.stderr)
         return
     stamp = time.strftime('%Y-%m-%d %H:%M:%S')
+    LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
     with LOG_FILE.open('a', encoding='utf-8') as handle:
         handle.write(f'{stamp} {message}\n')
 
@@ -1005,7 +1006,9 @@ DAILY_KEYS = ('deadbranch#', 'localbranch#')
 
 
 def owns_key(job: str, key: str) -> bool:
-    return key.startswith(DAILY_KEYS) == (job == 'daily')
+    if job == 'daily':
+        return key.startswith(DAILY_KEYS)
+    return job == 'board-audit' and not key.startswith(DAILY_KEYS)
 
 
 def load_state(job: str, legacy: Path | None) -> dict:
@@ -1085,9 +1088,12 @@ def cli(job: str, repo: Path, hermes_root: Path, data_dir: Path, legacy_state: P
     state = load_state(job, legacy_state)
     _STATE_CACHE.clear()
     _FETCH_CACHE.clear()
+    import lesson_detect
+    jobs = {'board-audit': board_audit, 'daily': daily, 'lesson-detect': lesson_detect.lesson_detect}
     try:
-        run(tool('git'), 'fetch', '-q', 'origin', cwd=REPO)
-        alerts = board_audit(now, state) if job == 'board-audit' else daily(now, state)
+        if job != 'lesson-detect':
+            run(tool('git'), 'fetch', '-q', 'origin', cwd=REPO)
+        alerts = jobs[job](now, state)
     except OverBudget as error:
         log(f'{job} stopped: over its {budget_seconds:.0f}s budget at {error}')
         alerts = []

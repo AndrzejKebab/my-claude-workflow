@@ -1,3 +1,4 @@
+import json
 import sqlite3
 import sys
 import unittest
@@ -59,6 +60,43 @@ class FalseCannot(unittest.TestCase):
                 ('s', 'assistant', 'I cannot run this script from here.', None, 220.0)]
         replay = [(s, r, c, t, ts + 10_000) for s, r, c, t, ts in rows[1:]]
         self.assertEqual(len(fm.false_cannot(fake_db(rows + replay))), 1)
+
+
+class IncrementalScan(unittest.TestCase):
+    ROWS = [
+        ('s', 'tool', APPROVED, 'terminal', 100.0),
+        ('t', 'user', 'Message from Manager: go', None, 150.0),
+        ('s', 'user', 'Message from Manager: run it', None, 200.0),
+        ('s', 'tool', BLOCKED, 'terminal', 210.0),
+        ('t', 'tool', BLOCKED, 'terminal', 215.0),
+        ('s', 'assistant', 'I cannot run this script from here.', None, 220.0),
+        ('t', 'assistant', 'I cannot do that.', None, 225.0),
+        ('s', 'user', 'Watchdog: lesson check - you said you cannot', None, 300.0),
+        ('s', 'tool', BLOCKED, 'terminal', 310.0),
+        ('s', 'assistant', 'I cannot run it, still blocked.', None, 320.0),
+        ('s', 'tool', BLOCKED, 'terminal', 410.0),
+        ('s', 'assistant', 'I cannot run this script from here.', None, 420.0),
+    ]
+
+    def rows(self):
+        return [(index + 1, *row[:3], row[4]) for index, row in enumerate(self.ROWS)]
+
+    def test_split_scan_finds_what_one_scan_finds(self):
+        rows = self.rows()
+        full, _ = fm.scan(rows, {})
+        for cut in range(len(rows) + 1):
+            first, carry = fm.scan(rows[:cut], {})
+            carry = json.loads(json.dumps(carry))  # the carry is saved as JSON between runs
+            second, _ = fm.scan(rows[cut:], carry)
+            for kind in full:
+                self.assertEqual(first[kind] + second[kind], full[kind], f'{kind} split at {cut}')
+
+    def test_event_names_the_earlier_approval_and_the_turn(self):
+        events, _ = fm.scan(self.rows(), {})
+        claims = events['false_cannot']
+        self.assertEqual([e.message_id for e in claims], [6, 10])
+        self.assertEqual(claims[0].approved_id, 1)
+        self.assertTrue(claims[1].turn.startswith('Watchdog: lesson check'))
 
 
 class HeadlessBlocks(unittest.TestCase):

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import hashlib
 import json
 import re
 import sqlite3
@@ -45,10 +46,60 @@ class Event:
     timestamp: float
     category: str
     text: str
+    turn: str = ''
+    approved_id: int = 0
+    approved_ts: float = 0.0
 
 
-def _rows(db: sqlite3.Connection):
-    return db.execute('select id, session_id, role, coalesce(content, ""), timestamp from messages order by id')
+def _rows(db: sqlite3.Connection, after: int = 0):
+    return db.execute('select id, session_id, role, coalesce(content, ""), timestamp from messages where id > ? '
+                      'order by id', (after,))
+
+
+REPLAY_MEMORY = 500
+
+
+def scan(rows, carry: dict) -> tuple[dict[str, list[Event]], dict]:
+    """One pass over transcript rows for every count. `carry` is the previous pass's state (JSON-safe), so
+    scanning in pieces finds exactly what one scan finds."""
+    approved = carry.setdefault('approved', {})   # session -> category -> [id, ts]
+    pending = carry.setdefault('pending', {})     # session -> category blocked in this turn
+    turn = carry.setdefault('turn', {})           # session -> head of the user row that opened the turn
+    seen = carry.setdefault('seen', {})           # kind -> session -> recent text hashes
+    events = {'false_cannot': [], 'headless_block': [], 'cannot_claim': []}
+
+    def first_time(kind: str, session: str, text: str) -> bool:
+        recent = seen.setdefault(kind, {}).setdefault(session, [])
+        digest = hashlib.sha1(text.encode('utf-8')).hexdigest()[:16]
+        if digest in recent:
+            return False
+        recent.append(digest)
+        del recent[:-REPLAY_MEMORY]
+        return True
+
+    for mid, session, role, text, ts in rows:
+        if role == 'tool':
+            if match := APPROVED.search(text):
+                approved.setdefault(session, {})[match.group(1)] = [mid, ts]
+            elif match := HEADLESS_BLOCK.search(text):
+                events['headless_block'].append(Event('headless_block', session, mid, ts, match.group(1), text[:200],
+                                                      turn.get(session, '')))
+                if match.group(1) in approved.get(session, {}):
+                    pending[session] = match.group(1)
+        elif role == 'user' and not text.lstrip().startswith(NOT_A_TURN):
+            pending.pop(session, None)
+            turn[session] = text.lstrip()[:200]
+        elif role == 'assistant' and CANNOT.search(text):
+            if first_time('cannot_claim', session, text):
+                events['cannot_claim'].append(Event('cannot_claim', session, mid, ts, '', text[:300],
+                                                    turn.get(session, '')))
+            if session in pending:
+                category = pending.pop(session)
+                if first_time('false_cannot', session, text):
+                    ref_id, ref_ts = approved[session][category]
+                    events['false_cannot'].append(Event('false_cannot', session, mid, ts, category, text[:300],
+                                                        turn.get(session, ''), ref_id, ref_ts))
+    return events, carry
 
 
 def turn_starts(db: sqlite3.Connection) -> list[float]:
@@ -58,44 +109,18 @@ def turn_starts(db: sqlite3.Connection) -> list[float]:
 
 
 def headless_blocks(db: sqlite3.Connection) -> list[Event]:
-    events = []
-    for mid, session, role, text, ts in _rows(db):
-        if role == 'tool' and (match := HEADLESS_BLOCK.search(text)):
-            events.append(Event('headless_block', session, mid, ts, match.group(1), text[:200]))
-    return events
+    return scan(_rows(db), {})[0]['headless_block']
 
 
 def false_cannot(db: sqlite3.Connection) -> list[Event]:
     """A headless block of a command category the guard had approved earlier in the same session,
     followed in that turn by a claim of inability. Replayed claims (same session, same text) count once."""
-    approved: dict[str, set[str]] = {}
-    pending: dict[str, str] = {}
-    seen: set[tuple[str, str]] = set()
-    events = []
-    for mid, session, role, text, ts in _rows(db):
-        if role == 'tool':
-            if match := APPROVED.search(text):
-                approved.setdefault(session, set()).add(match.group(1))
-            elif (match := HEADLESS_BLOCK.search(text)) and match.group(1) in approved.get(session, set()):
-                pending[session] = match.group(1)
-        elif role == 'user' and not text.lstrip().startswith(NOT_A_TURN):
-            pending.pop(session, None)
-        elif role == 'assistant' and session in pending and CANNOT.search(text):
-            if (session, text) not in seen:
-                seen.add((session, text))
-                events.append(Event('false_cannot', session, mid, ts, pending[session], text[:300]))
-            pending.pop(session, None)
-    return events
+    return scan(_rows(db), {})[0]['false_cannot']
 
 
 def cannot_claims(db: sqlite3.Connection) -> list[Event]:
     """Broad secondary count: any assistant text claiming inability, replays counted once."""
-    seen, events = set(), []
-    for mid, session, role, text, ts in _rows(db):
-        if role == 'assistant' and CANNOT.search(text) and (session, text) not in seen:
-            seen.add((session, text))
-            events.append(Event('cannot_claim', session, mid, ts, '', text[:300]))
-    return events
+    return scan(_rows(db), {})[0]['cannot_claim']
 
 
 def simulate_trigger(days: list[tuple[int, int]], *, base_days: int, window_days: int, factor: float,
