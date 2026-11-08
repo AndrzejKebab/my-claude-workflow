@@ -79,6 +79,19 @@ class Turns(unittest.TestCase):
         self.assertEqual(len(fm.turn_starts(db)), 2)
 
 
+class Bounces(unittest.TestCase):
+    def test_other_labels_between_do_not_hide_a_bounce(self):
+        labels = ['waits-for-review', 'waits-for-final-review', 'worker:3', 'High', 'in-progress']
+        self.assertEqual(fm.final_review_bounces(labels), 1)
+
+    def test_old_status_prefix_counts(self):
+        self.assertEqual(fm.final_review_bounces(['status:waits-for-final-review', 'status:in-progress']), 1)
+
+    def test_clean_path_is_no_bounce(self):
+        self.assertEqual(fm.final_review_bounces(['in-progress', 'waits-for-review', 'waits-for-final-review',
+                                                  'ready-to-merge']), 0)
+
+
 class Trigger(unittest.TestCase):
     def series(self, base_rate_events, recent_events, days_base=14, days_recent=9, turns=100):
         return ([(base_rate_events, turns)] * days_base) + ([(recent_events, turns)] * days_recent)

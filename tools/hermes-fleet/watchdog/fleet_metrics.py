@@ -27,6 +27,14 @@ CANNOT = re.compile(r"\b(I|I'm|I am|we)\s+(cannot|can't|can not|could not|couldn
                     r"have no way to|am not able to|don't have (a |the )?(way|tool|access))\b", re.I)
 NOT_A_TURN = ('[CONTEXT COMPACTION', '[IMPORTANT: Background process')
 SIGNER = re.compile(r'^#\s+(.+?)\s*$')
+STATUS_LABELS = {'ready', 'in-progress', 'waits-for-review', 'in-review', 'waits-for-final-review',
+                 'waits-for-eye-review', 'ready-to-merge', 'blocked', 'needs-owner', 'needs-human'}
+
+
+def final_review_bounces(labels: list[str]) -> int:
+    """Times a PR went from waiting for final review back to the author, over status labels only."""
+    status = [name.removeprefix('status:') for name in labels if name.removeprefix('status:') in STATUS_LABELS]
+    return sum(1 for a, b in zip(status, status[1:]) if a == 'waits-for-final-review' and b == 'in-progress')
 
 
 @dataclass(frozen=True)
@@ -152,11 +160,14 @@ def _signer(body: str) -> str:
     return re.sub(r'^Worker[ -]?(\d)$', r'Worker-\1', match.group(1))
 
 
-def pr_stats(repo: str, since: str, cache: Path) -> list[dict]:
-    """Per merged PR since `since`: posts and characters by signer, review requests, age, final-review bounces."""
+def pr_stats(repo: str, since: str, cache: Path, state: str = 'merged') -> list[dict]:
+    """Per PR (merged since `since`, or open now): posts and characters by signer, review requests, age,
+    final-review bounces. Open PRs are aged to now, so a long-running one shows how long it has run."""
     cache.mkdir(parents=True, exist_ok=True)
-    prs = _gh(['pr', 'list', '-R', repo, '--state', 'merged', '--limit', '500', '--search', f'merged:>={since}',
+    search = ['--search', f'merged:>={since}'] if state == 'merged' else []
+    prs = _gh(['pr', 'list', '-R', repo, '--state', state, '--limit', '500', *search,
                '--json', 'number,createdAt,mergedAt', '-q', '.[] | @json'], cache)
+    now = dt.datetime.now(dt.timezone.utc)
     stats = []
     for pr in prs:
         n = pr['number']
@@ -172,13 +183,13 @@ def pr_stats(repo: str, since: str, cache: Path) -> list[dict]:
                 entry[1] += len(body)
         labels = [e['label']['name'].removeprefix('status:') for e in timeline
                   if e.get('event') == 'labeled' and e.get('label')]
-        bounces = sum(1 for a, b in zip(labels, labels[1:]) if a == 'waits-for-final-review' and b == 'in-progress')
         created = dt.datetime.fromisoformat(pr['createdAt'].replace('Z', '+00:00'))
-        merged = dt.datetime.fromisoformat(pr['mergedAt'].replace('Z', '+00:00'))
+        ended = dt.datetime.fromisoformat(pr['mergedAt'].replace('Z', '+00:00')) if pr.get('mergedAt') else now
         stats.append({'pr': n, 'posts': sum(v[0] for v in by_signer.values()),
                       'chars': sum(v[1] for v in by_signer.values()), 'by_signer': by_signer,
-                      'review_requests': labels.count('waits-for-review'), 'final_review_bounces': bounces,
-                      'age_days': round((merged - created).total_seconds() / 86400, 2)})
+                      'review_requests': labels.count('waits-for-review'),
+                      'final_review_bounces': final_review_bounces(labels),
+                      'age_days': round((ended - created).total_seconds() / 86400, 2)})
     return stats
 
 
@@ -218,7 +229,12 @@ def baseline(args) -> dict:
         for factor in (1.25, 1.5, 2.0, 3.0):
             key = f'base{base_days}_x{factor}'
             row = {}
-            for profile, (turns, counts) in per_bot.items():
+            # Per-bot counts are often too sparse to reach min_events; the fleet-wide series shows whether
+            # aggregating would make the trigger usable.
+            fleet = ([t for turns, _ in per_bot.values() for t in turns],
+                     {kind: [e for _, counts in per_bot.values() for e in counts[kind]] for kind in
+                      next(iter(per_bot.values()))[1]})
+            for profile, (turns, counts) in [*per_bot.items(), ('fleet', fleet)]:
                 for kind, events in counts.items():
                     series = daily_series(events, turns, dates)
                     fires = simulate_trigger(series, base_days=base_days, window_days=7, factor=factor,
@@ -233,6 +249,11 @@ def baseline(args) -> dict:
                             for k in ('posts', 'chars', 'review_requests', 'final_review_bounces', 'age_days')},
                          'bounced_prs': sum(1 for s in stats if s['final_review_bounces'])}
         report['pr_detail'] = stats
+        open_prs = pr_stats(args.repo, args.since, Path(args.cache), state='open')
+        # Decision 47's trigger (5 review rounds or 7 days open) would fire on these the day it goes live.
+        report['open_prs'] = [{k: s[k] for k in ('pr', 'posts', 'chars', 'review_requests', 'age_days')}
+                              | {'long_pr_trigger': s['review_requests'] >= 5 or s['age_days'] >= 7}
+                              for s in open_prs]
     return report
 
 
