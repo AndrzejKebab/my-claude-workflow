@@ -66,6 +66,11 @@ Terms are defined in [CONTEXT.md](CONTEXT.md). Settled with the owner, 2026-11-0
 | 51 | After the merge | The Worker's PR carries its `.project-state/<area>-state.md` update (per `_state-template.md`) and any `Docs/TODO.md` tick, merging with the code. The Advisor's final review checks it against the diff and the merge proof; a missing or wrong update is an Issue to Fix citing the repo rule. Manager combines notes only for split groups and marks roadmap progress after the owner confirms. |
 | 52 | Scratch discipline | Causes seen: POSIX paths reaching native programs (`F:\tmp`, `F:\f`, `F:\c`), turns started in `~` (home-folder outputs), drive-less paths resolved on `C:` (a ghost `C:\Programowanie\...` tree). Each profile's `.env` sets `TMPDIR`/`TEMP`/`TMP` to its scratch (`<worktree>/.scratch/tmp` for Workers, `profiles/<bot>/cache/scratch/tmp` for the rest). Wakes start turns in the bot's workspace, not `~`. `fleet_run.py` sets cwd and temp for every toolbox run. A daily stray sweep checks drive roots and their `tmp`/`c`/`f` folders, the home folder's top level, and copies of known trees on the wrong drive; it attributes each file through the transcripts, reports it, turns it into a lesson, and never deletes. |
 
+## Rollout status
+
+- **Step 1, baseline:** done 2026-11-08 (`tools/hermes-fleet/watchdog/fleet_metrics.py`).
+- **Step 2, lesson homes:** done 2026-11-08. `skills/fleet-lessons` (`lesson.py` add/search/accept/retire/index/check) and the General home `memory/shared/` with lesson 1 (`hermes/headless-heredoc`). Every bot: `memory.nudge_interval: 0`, `skills.external_dirs` → this repository's `skills/`, `skills.auto_load: [fleet-lessons]`; Hermes lists `fleet-lessons` as an external skill. A Specific in-prompt index waits for decision 52: Hermes loads `<repo>/.agents/skills` only for the session's git root, and bot sessions start in the home folder, so until then Specific lessons are reached by `lesson.py search` only. Not yet observed: the index inside a bot's system prompt after its next turn.
+
 ## Still open
 
 - Stray files found 2026-11-08 (`F:\tmp`, `F:\f`, `F:\c`, `C:\tmp`, `C:\tmp_orch_guard_test`, `C:\Programowanie\...`, home-folder outputs): owner decides on removal.
