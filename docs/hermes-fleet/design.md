@@ -79,6 +79,8 @@ Terms are defined in [CONTEXT.md](CONTEXT.md). Settled with the owner, 2026-11-0
 
 The bots run only while the owner has Hermes open: the gateway is the Desktop app's own. On 2026-11-08 a `hermes gateway restart --detach` (run without the owner's agreement to change the mode) replaced it with a standalone persistent gateway, which broke his Desktop group chat; it was stopped the same evening. Never start, restart or run the gateway from the CLI; a restart is the owner's, by restarting the Desktop app.
 
+Observed the same evening: closing the Desktop app does not stop the bots. A new `gateway run` started at 23:22:55 from a process that then exited, seconds after the app's gateway shut down, and it ran the watchdog cron. This predates today (the watchdog ran at 03:52 on 2026-11-03). Until a Desktop setting for it is found, the owner stops everything with `hermes gateway stop` (`--yes` when a cron run is in progress).
+
 ## Still open
 
 - Stray files found 2026-11-08 (`F:\tmp`, `F:\f`, `F:\c`, `C:\tmp`, `C:\tmp_orch_guard_test`, `C:\Programowanie\...`, home-folder outputs): owner decides on removal.
