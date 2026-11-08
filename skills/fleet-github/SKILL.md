@@ -41,8 +41,7 @@ python ${HERMES_SKILL_DIR}/scripts/label.py <N> --to <status> --signer <You> --r
 - The first `--to in-progress` needs the draft PR's `## Work plan` and Reviewer's `Plan approved`
   (`--pr <draft PR>` when labelling the issue).
 - `--to waits-for-review` on a PR needs `## Evidence` with one line per acceptance criterion; on a bug,
-  also `Cause:`, `Reproduction:` and an `Approach approved` comment from the Advisor (the owner until
-  the Advisor exists).
+  also `Cause:`, `Reproduction:` and an `Approach approved` comment from the Advisor or the owner.
 
 ## Self-check
 

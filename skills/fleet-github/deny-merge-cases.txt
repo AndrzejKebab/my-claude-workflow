@@ -1,0 +1,9 @@
+BLOCK gh pr merge 431 --squash --match-head-commit abc
+BLOCK gh api -X PUT repos/o/r/pulls/431/merge
+BLOCK git push origin HEAD:main
+BLOCK git push origin main
+ALLOW git push
+ALLOW git push -u origin agent/snow-cover
+ALLOW git push --force-with-lease
+ALLOW gh pr view 431 --json mergeable
+ALLOW python F:/Programowanie/my-claude-workflow/skills/fleet-github/scripts/docs_push.py --repo-dir F:/Unity/Projects/VoxelGame --allow Docs/**

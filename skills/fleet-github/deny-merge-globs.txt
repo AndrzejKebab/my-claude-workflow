@@ -1,0 +1,5 @@
+*gh pr merge*
+*gh api*pulls/*/merge*
+*gh api graphql*mergepullrequest*
+*git push*:main*
+*git push*origin main*

@@ -38,8 +38,7 @@ def review_problems(body: str) -> list[str]:
     if OLD_HEADINGS.search(body):
         problems.append('Blocking / Should-fix / Nit headings are retired: put every item under `### Issues to Fix`')
     if SPEC_HEADING.search(body):
-        problems.append('spec questions do not go in a review: send each one to the Advisor (the owner until '
-                        'the Advisor exists), one line each')
+        problems.append('spec questions do not go in a review: send each one to the Advisor, one line each')
     for item in _items(_section(body, 'Issues to Fix')):
         if not GROUNDS.search(item):
             problems.append(f'no grounds on: {item[:90]} — end it with (criterion: "<quote>"), (rule: <file or '
@@ -109,7 +108,7 @@ def _approved(comments: list[str], phrase: str, signers: tuple[str, ...], owner_
 
 def ready_problems(pr_body: str, issue_body: str, is_bug: bool, comments: list[str]) -> list[str]:
     """Before `waits-for-review`: one evidence line per acceptance criterion; on a bug, the cause, the
-    reproduction and the approach approval (the Advisor's, or the owner's until the Advisor exists)."""
+    reproduction and the approach approval (the Advisor's or the owner's)."""
     problems = []
     wanted, given = len(criteria(issue_body)), len(_items(_section(pr_body, 'Evidence')))
     if given < wanted:

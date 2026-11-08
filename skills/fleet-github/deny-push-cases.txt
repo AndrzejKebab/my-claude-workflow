@@ -1,0 +1,6 @@
+BLOCK git push origin HEAD:main
+BLOCK git push
+BLOCK gh pr merge 431 --squash
+ALLOW python F:/Programowanie/my-claude-workflow/skills/fleet-github/scripts/docs_push.py --repo-dir F:/Unity/Projects/VoxelGame --allow Docs/**
+ALLOW git commit -m "docs: record ore vein state"
+ALLOW git pull --ff-only
