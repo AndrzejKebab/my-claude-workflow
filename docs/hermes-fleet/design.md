@@ -49,6 +49,13 @@ Terms are defined in [CONTEXT.md](CONTEXT.md). Settled with the owner, 2026-11-0
 | 36 | Advisor on Discord | Advisor takes Reviewer's Discord account and thread, digest included; Reviewer reaches the owner only through the Advisor. Manager's `config.yaml` `platforms.discord.home_channel` must point at Manager's own thread. No `run_script.py`: General lesson 1 is "write the script with `write_file` into `.scratch/`, run `python <file>`". |
 | 37 | This document | Lives here, as General. Project-specific pointers go in the game repo's `AGENTS.md` once built. |
 
+| 38 | Tool creation | Any bot drafts a tool in its worktree's `.scratch/` and may use it for its own task. Promotion needs `--help`, an index line, clean `loop_guard.py`, and one recorded example run (command and real output) in the header, enforced by `tool_check.py`; a draft duplicating an existing tool is refused (add a flag instead). Specific tools enter through the Worker's PR; General tools through the Advisor's daily batch. |
+| 39 | Non-intrusive tools | Declare: the header lists every program the tool starts; `tool_check.py` refuses undeclared process starts and any GUI program. Contain: toolbox tools run through `fleet_run.py` (grown from `mem_guard.py`), one Windows Job Object per run with a deadline and memory cap, whole tree killed on exit, timeout or crash. Stop: `fleet-stop` kills fleet jobs only, never the owner's processes. Watchdog kills a spawn storm (same program started >5 times in 10 min inside fleet jobs) and reports once. Every stop prints one fixed line with its reason and a distinct exit code (finished, deadline, memory cap, spawn storm, stopped by owner); the self-check quotes that line, so a bot does not report a stop as a bug. |
+
+| 40 | Tool use | Skill list in the prompt; a search runs before any new script is written. `fleet_run.py` logs tool, bot, exit reason and duration. A real failure in use goes to the Advisor's batch (fix the tool or record how to call it). Unused for 60 days → `retired/` with last use date, moved not deleted. Digest lists most-used, failed and promoted tools. |
+| 41 | Tools as skills | Every tool is a skill (`SKILL.md` + `scripts/`), grouped by job, description written by symptom; body holds usage, `spawns:`, `fleet_run` stop lines and the example run. General → this repository's `skills/`; Specific → the game repo's `.agents/skills/` (repo added with `hermes skills trust`). The skill list replaces tool indexes; `tool_check.py` becomes `skill_check.py`. Toolbox skills are excluded from Hermes's curator. |
+
 ## Still open
 
-- Tools: how they are created and used.
+- Hundreds of one-off review drafts in `profiles/reviewer-tmp/`: owner decides on removal.
+- Turns repeated word for word after a gateway outage (seen on one Worker): cause not yet found.

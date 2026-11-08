@@ -62,6 +62,16 @@ _Avoid_: green tests, CI pass, the author's verification
 The four lines a bot writes before it reports an error, sets `blocked` or says "cannot": the failure quoted, its own cause ruled out, the other route tried, and the claim with its evidence.
 _Avoid_: error report, blocker note
 
+### Tools
+
+**Toolbox skill**:
+A tool packaged as a skill: a description written by the symptom it answers, how to call it, the programs it starts, and one recorded run. Specific or General like a lesson.
+_Avoid_: bot-tool, script, helper
+
+**Fleet job**:
+The container one toolbox run executes in, holding the tool and every process it starts. Ends with one stop line naming why it ended.
+_Avoid_: process tree, run
+
 ### Learning
 
 **Lesson**:
