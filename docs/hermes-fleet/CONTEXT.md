@@ -22,6 +22,24 @@ _Avoid_: forwarding, relay
 The owner looking at a change himself before it merges. Required when the change makes any difference to how the game looks or plays, however small; not required when the output is shown to be identical. The owner may waive it for one PR.
 _Avoid_: final review (that is the Advisor's check), owner approval
 
+### Planning
+
+**Roadmap**:
+The owner's plan for the whole game, split into phases. Written by the owner, with any agent he chooses.
+_Avoid_: backlog, TODO (that is near-term open work)
+
+**Phase plan**:
+The owner's design for one phase of the roadmap, in numbered steps. The source every issue in that phase is cut from.
+_Avoid_: spec, design doc
+
+**Work plan**:
+A Worker's plan for one issue, written as the draft PR's body before any work: which phase-plan step it serves, the approach, what it touches, and the evidence per criterion.
+_Avoid_: PR description, task plan
+
+**Plan gap**:
+A place where the roadmap, a phase plan or a design says nothing, or contradicts itself or another feature. Only the owner fills it; Manager asks him, grilling-style, and no bot fills it on its own.
+_Avoid_: missing detail, assumption, spec question (that is a Reviewer disagreeing with what the plan does say)
+
 ### Sessions and turns
 
 **Canonical session**:
