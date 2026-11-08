@@ -238,7 +238,7 @@ def baseline(args) -> dict:
                 for kind, events in counts.items():
                     series = daily_series(events, turns, dates)
                     fires = simulate_trigger(series, base_days=base_days, window_days=7, factor=factor,
-                                             min_events=5, hold_days=2, cooldown_days=7)
+                                             min_events=args.min_events, hold_days=2, cooldown_days=7)
                     row[f'{profile}/{kind}'] = {'fires': len(fires),
                                                 'evaluable_days': max(len(series) - base_days - 6, 0)}
             report['calibration'][key] = row
@@ -269,6 +269,7 @@ def main() -> int:
     base.add_argument('--cache', help='GitHub response cache dir (default: <out>.ghcache)')
     base.add_argument('--samples', type=int, default=0, help='keep the last N events per count for hand-checking')
     base.add_argument('--skip-github', action='store_true')
+    base.add_argument('--min-events', type=int, default=5, help='trigger minimum events in the 7-day window')
     args = parser.parse_args()
     if not args.skip_github and not args.repo:
         parser.error('--repo is required unless --skip-github')
