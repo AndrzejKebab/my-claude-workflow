@@ -18,8 +18,9 @@ python ${HERMES_SKILL_DIR}/scripts/review.py <PR> --approve-plan "<phase plan §
 
 Body: `# Reviewer`, then `### Issues to Fix`, one `- [ ]` item each, ending with its grounds:
 `(criterion: "<quote from the issue>")`, `(rule: <file or rule>)` or `(breakage: <evidence>)`. An item
-with no grounds is a spec question: send it to the Advisor, not to the Worker. Open items post as
-request-changes; `--approve` is refused while one is open.
+with no grounds is a spec question: send it to the Advisor, not to the Worker. Every review posts
+as a plain comment review (GitHub refuses approve or request-changes on your own PR): an open `- [ ]`
+item means fixes are needed, none means clean. `--approve` is refused while one is open.
 
 ## Comment — `scripts/comment.py`
 

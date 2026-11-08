@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Post a review whose flag follows from the body, or approve a work plan.
 
-    review.py 261 -f .scratch/review-261.md [--repo owner/name]   # Issues to Fix -> request-changes
-    review.py 261 -f body.md --approve                            # refused while an item is open
+    review.py 261 -f .scratch/review-261.md [--repo owner/name]   # the verdict is the Issues to Fix list
+    review.py 261 -f body.md --approve                            # clean pass; refused while an item is open
     review.py 261 --approve-plan "Phase_10_Part_2_Plan §5.3"      # posts `Plan approved: <step>`
 
 Every item under `### Issues to Fix` ends with its grounds: (criterion: "…"), (rule: …) or (breakage: …).
@@ -58,7 +58,9 @@ def main() -> int:
         print('refused:\n- ' + '\n- '.join(problems), file=sys.stderr)
         return 1
 
-    flag = '--approve' if args.approve else '--request-changes' if open_items else '--comment'
+    # Every PR is authored by the account the bots post as, and GitHub refuses approve or request-changes
+    # on your own PR, so the verdict lives in the body only.
+    flag = '--comment'
     command = ['pr', 'review', str(args.number), flag, '-F', args.file, *repo]
     print(f'{flag} with {args.file}')
     if args.dry_run:
