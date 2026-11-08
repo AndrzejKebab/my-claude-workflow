@@ -127,6 +127,13 @@ def ready_problems(pr_body: str, issue_body: str, is_bug: bool, comments: list[s
     return problems
 
 
+def linked_pr_problems(linked_prs: list[int]) -> list[str]:
+    """An issue may wait for review only through a PR that closes it; the gate runs on that PR."""
+    if linked_prs:
+        return []
+    return ['no PR closes this issue: put `closes #<issue>` in the PR body, then label the PR or the issue']
+
+
 def start_problems(pr_body: str, comments: list[str]) -> list[str]:
     """Before the first `in-progress`: a work plan in the draft PR body and the Reviewer's plan approval."""
     problems = []

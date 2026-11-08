@@ -97,6 +97,14 @@ class ReadyForReview(unittest.TestCase):
         self.assertEqual(r.ready_problems(pr, ISSUE, is_bug=True, comments=owner), [])
 
 
+class IssueSide(unittest.TestCase):
+    def test_issue_without_a_linked_pr_cannot_wait_for_review(self):
+        self.assertTrue(r.linked_pr_problems([]))
+
+    def test_issue_with_a_linked_pr_is_gated_on_that_pr(self):
+        self.assertEqual(r.linked_pr_problems([431]), [])
+
+
 class StartWork(unittest.TestCase):
     def test_plan_and_reviewer_approval_pass(self):
         pr = '## Work plan\n\nPhase_10_Part_2_Plan §5.3: climate pass, files X, evidence per criterion.\n'

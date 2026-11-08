@@ -51,8 +51,12 @@ def gate(args, current: list[str], repo: list[str]) -> list[str]:
         return rules.start_problems(pr['body'], [c['body'] for c in pr['comments']])
     if args.to == 'waits-for-review':
         pr = pr_facts(args.number, repo)
-        if pr is None:
-            return []  # the issue side follows its PR, which carries the gate
+        if pr is None:  # an issue: gate on the PR that closes it
+            raw = gh('issue', 'view', str(args.number), '--json', 'closedByPullRequestsReferences', *repo)
+            linked = [p['number'] for p in json.loads(raw).get('closedByPullRequestsReferences') or []]
+            if problems := rules.linked_pr_problems(linked):
+                return problems
+            pr = pr_facts(linked[-1], repo)
         linked = pr.get('closingIssuesReferences') or []
         issue = json.loads(gh('issue', 'view', str(linked[0]['number']), '--json', 'body,labels', *repo)) \
             if linked else {'body': '', 'labels': []}
