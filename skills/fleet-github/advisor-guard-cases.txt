@@ -1,0 +1,10 @@
+ALLOW git fetch origin
+ALLOW git switch -C pr431 0123abc
+ALLOW git switch main
+BLOCK git branch -D pr431
+ALLOW git update-ref -d refs/heads/pr431
+ALLOW git push origin --delete agent/snow-cover
+ALLOW git pull --ff-only
+ALLOW gh pr merge 431 --squash --match-head-commit 0123abc --subject "feat(content): snow cover (#431)" --body "Closes #427"
+ALLOW python F:/Programowanie/my-claude-workflow/skills/fleet-github/scripts/label.py 431 --to in-progress --signer Advisor --reason x
+ALLOW python F:/Programowanie/my-claude-workflow/skills/fleet-lessons/scripts/lesson.py accept --home x heredoc --sha abc
