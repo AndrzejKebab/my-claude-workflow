@@ -1,0 +1,21 @@
+BLOCK gh pr review 431 --request-changes -F body.md
+BLOCK gh pr comment 431 -F body.md
+BLOCK gh issue comment 164 --body "Ack"
+BLOCK gh pr edit 431 --add-label in-progress --remove-label waits-for-review
+BLOCK gh issue edit 164 --remove-label blocked
+BLOCK gh api repos/o/r/issues/164/comments -f body=hello
+BLOCK gh api -X POST repos/o/r/issues/164/comments --input body.json
+BLOCK gh api repos/o/r/issues/164/labels -f labels[]=blocked
+BLOCK gh api --method DELETE repos/o/r/issues/164/labels/blocked
+BLOCK gh api repos/o/r/pulls/431/reviews -f event=APPROVE
+BLOCK gh api graphql -f query='mutation { addComment(input: {}) { clientMutationId } }'
+ALLOW gh pr view 431 --json body,comments
+ALLOW gh api --paginate repos/o/r/issues/164/comments -q '.[] | @json'
+ALLOW gh api repos/o/r/pulls/431/reviews --jq '.[].state'
+ALLOW gh issue view 164 --json labels
+BLOCK gh pr create --draft --title "x" --label worker:1 --label in-progress
+ALLOW gh pr create --draft --title "x" --label worker:1 --body-file plan.md
+ALLOW gh pr edit 431 --body-file plan.md
+ALLOW python F:/Programowanie/my-claude-workflow/skills/fleet-github/scripts/comment.py --pr 431 --body-file b.md --signer "# Worker-1"
+ALLOW python F:/Programowanie/my-claude-workflow/skills/fleet-github/scripts/label.py 164 --to in-progress --signer Worker-4 --reason x
+ALLOW python F:/Programowanie/my-claude-workflow/skills/fleet-github/scripts/review.py 431 -f r.md

@@ -1,0 +1,27 @@
+*gh pr review*
+*gh pr comment*
+*gh issue comment*
+*gh pr edit*--add-label*
+*gh pr edit*--remove-label*
+*gh issue edit*--add-label*
+*gh issue edit*--remove-label*
+*gh pr create*--label*in-progress*
+*gh pr create*--label*waits-for-*
+*gh api*comments*-f *
+*gh api*comments*--field*
+*gh api*comments*--raw-field*
+*gh api*comments*--input*
+*gh api*-x post*comments*
+*gh api*--method post*comments*
+*gh api*/labels*-f *
+*gh api*/labels*--field*
+*gh api*/labels*--input*
+*gh api*-x delete*/labels*
+*gh api*--method delete*/labels*
+*gh api*/reviews*-f *
+*gh api*/reviews*--field*
+*gh api*/reviews*--input*
+*gh api graphql*addcomment*
+*gh api graphql*addlabels*
+*gh api graphql*removelabels*
+*gh api graphql*addpullrequestreview*
