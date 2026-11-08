@@ -50,6 +50,13 @@ def has_open_issues(body: str) -> bool:
     return any(item.startswith('- [ ]') for item in _items(_section(body, 'Issues to Fix')))
 
 
+def review_verdict(body: str) -> str:
+    """'fixes', 'clean', or '' when the body has no `Issues to Fix` section to read a verdict from."""
+    if not re.search(r'^#{2,3}\s*Issues to Fix\s*$', body, re.I | re.M):
+        return ''
+    return 'fixes' if has_open_issues(body) else 'clean'
+
+
 def self_check_problems(text: str) -> list[str]:
     problems = []
     for name in SELF_CHECK_LINES:

@@ -17,6 +17,11 @@ from pathlib import Path
 
 import comment_signing
 
+FLEET_GITHUB = Path(__file__).resolve().parents[3] / 'skills' / 'fleet-github' / 'scripts'
+LABEL_PY = FLEET_GITHUB / 'label.py'
+sys.path.insert(0, str(FLEET_GITHUB))
+import fleet_rules  # noqa: E402
+
 # Set by configure() from the Specific config; see configure().
 REPO = Path()
 GITHUB_REPO = ''
@@ -363,6 +368,8 @@ def labelled_items(label: str) -> list[dict]:
                                     default=('', {}))[1]
                 entry['review_last_state'] = newest_review.get('state', '')
                 entry['review_last_url'] = newest_review.get('url', '')
+                entry['review_last_at'] = newest_review.get('at', '')
+                entry['review_last_body'] = newest_review.get('body') or ''
                 body = (newest_review.get('body') or '').lower()
                 # An unchecked box under a Blocking heading is an open finding, whatever the state says.
                 entry['review_blocking'] = 'blocking' in body and '- [ ]' in body
@@ -770,24 +777,64 @@ def _stamp(value: str) -> float:
         return time.time()
 
 
-def stray_labels(now: float) -> tuple[list[tuple[str, str, str]], list[tuple[str, str]], list[str]]:
-    """Returns (wakes, report_lines, seen_keys) for labels that no longer describe reality.
+def label_fixes(now: float, state: dict) -> set[int]:
+    """Move a label whose next state follows from the Reviewer's newest review alone (#44).
 
-    The label map in each bot's SOUL says who must act next, so a label sitting wrong is somebody
-    having stopped without moving it. Every stray is reported to the owner AND DM'd to the bot whose
-    turn the label claims. `waits-for-final-review` and `ready-to-merge` are left to the owner ping:
-    that is his turn by design.
+    Only a review newer than the head commit, signed `# Reviewer`, with an `Issues to Fix` section: an
+    open item means `in-progress`, none means `waits-for-final-review`. One attempt per review; returns
+    the items moved, so the stray check leaves them alone this run.
     """
-    wakes, reports, seen = [], [], []
+    moved = set()
+    for label in ('waits-for-review', 'in-review', 'in-progress'):
+        for item in labelled_items(label):
+            body, at = item.get('review_last_body') or '', item.get('review_last_at') or ''
+            pushed = item.get('head_committed_at') or ''
+            if not (item['is_pr'] and at and pushed and at > pushed and body.lstrip().startswith('# Reviewer')):
+                continue
+            verdict = fleet_rules.review_verdict(body)
+            target = {'fixes': 'in-progress', 'clean': 'waits-for-final-review'}.get(verdict)
+            if not target or target == label or parked(item, now) or not signed_ago(at, WATCHDOG_MINUTES, now):
+                continue
+            key = f'labelfix#{item["number"]}#{_digest(at + target)}'
+            if key in state:
+                continue
+            reason = (f'the Reviewer\'s review of {_ago(at, now)} has '
+                      f'{"open Issues to Fix" if verdict == "fixes" else "no open Issues to Fix"} '
+                      f'and the label did not move ({item.get("review_last_url") or "newest review"})')
+            output = run(sys.executable, str(LABEL_PY), str(item['number']), '--to', target, '--signer', 'Watchdog',
+                         '--reason', reason, '--repo', GITHUB_REPO, *(['--dry-run'] if DRY_RUN else []))
+            state[key] = now if output else f'failed {now:.0f}'
+            if output:
+                moved.add(item['number'])
+                log(f'label fix #{item["number"]}: {label} -> {target}')
+            else:
+                log(f'label fix #{item["number"]} {label} -> {target} refused by label.py; waking instead')
+    return moved
+
+
+def nudge_record(state: dict, key: str, profile: str) -> dict:
+    """Wake count for one stray state; the single-file watchdog's `#dm#`/`#reported` keys read as one wake
+    and as the owner already told."""
+    name = f'{key}#nudge'
+    if not isinstance(state.get(name), dict):
+        told = state.get(f'{key}#dm#{profile}')
+        told = told if isinstance(told, (int, float)) else 0.0
+        state[name] = {'wakes': 1 if told else 0, 'last_wake': float(told),
+                       'alerted': bool(state.get(f'{key}#reported'))}
+    return state[name]
+
+
+def stray_labels(now: float, skip: set[int] = frozenset()) -> tuple[list[tuple[str, str, str, str]], list[str]]:
+    """Returns (strays, seen_keys) for labels that no longer describe reality.
+
+    A stray is (state key, profile holding the next step, owner line, message to that profile). The label
+    map in each bot's SOUL says who must act next, so a label sitting wrong is somebody having stopped
+    without moving it. `waits-for-final-review` and `ready-to-merge` are left to the owner ping.
+    """
+    strays, seen = [], []
 
     def stray(key: str, line: str, profile: str, message: str) -> None:
-        reports.append((f'{key}#reported', line))
-        wakes.append((f'{key}#dm#{profile}', profile, message))
-        if profile != 'manager':
-            # The board owner is told what the responsible bot was told, so he is never the only one
-            # who knows a task is stuck.
-            wakes.append((f'{key}#dm#manager', 'manager',
-                          f'{line} {profile} was told to fix the label or the work order.'))
+        strays.append((key, profile, line, message))
 
     # `waits-for-review` — queued for Reviewer. Nobody has started reviewing.
     for item in labelled_items('waits-for-review'):
@@ -805,20 +852,7 @@ def stray_labels(now: float) -> tuple[list[tuple[str, str, str]], list[tuple[str
                   f'waits-for-review, but you posted your findings {_ago(item["reviewer_at"], now)}. Set the '
                   f'label to what is actually true: in-progress if the author must fix something, '
                   f'waits-for-final-review if the review is clean.')
-        else:
-            reports.append((f'{key}#reported', f'#{item["number"]} ({item["kind"]}, worker:'
-                                              f'{item["worker"] or "?"}) waits-for-review {wait} with no '
-                                              f'Reviewer comment or review: the review never started.'))
-            wakes.append((f'{key}#dm#manager', 'manager',
-                          f'#{item["number"]} has waited {wait} for a review and the Reviewer has not '
-                          f'started; it is woken every run.'))
-            continue
-            stray(key, '', 'reviewer',
-                  f'{item["kind"]} #{item["number"]} {item["title"]} ({item["url"]}) has been queued for you '
-                  f'as waits-for-review for {wait} and you have not commented on it. Start now: set it to '
-                  f'in-review while you work, post your findings, then set in-progress or '
-                  f'waits-for-final-review and DM the author. If you cannot review it, say why on it in one '
-                  f'line.')
+        # Not answered: the Reviewer queue wakes the Reviewer and tells the owner.
 
     # `in-review` — the Reviewer has it open. This is minutes of work, so hours mean it was abandoned.
     for item in labelled_items('in-review'):
@@ -835,18 +869,7 @@ def stray_labels(now: float) -> tuple[list[tuple[str, str, str]], list[tuple[str
                   f'PR #{item["number"]} {item["title"]} ({item["url"]}): you reviewed it and left findings '
                   f'{_ago(item["reviewer_at"], now)}, but it is still labelled in-review. The label says you '
                   f'are still reading it. Set in-progress (the author fixes) or waits-for-final-review now.')
-        else:
-            reports.append((f'{key}#reported', f'#{item["number"]} ({item["kind"]}, worker:'
-                                              f'{item["worker"] or "?"}) in-review {wait} with no Reviewer '
-                                              f'comment or review: the review started and stopped.'))
-            wakes.append((f'{key}#dm#manager', 'manager',
-                          f'#{item["number"]} has been in-review {wait} with no review posted by the '
-                          f'Reviewer; it is woken every run.'))
-            continue
-            stray(key, '', 'reviewer',
-                  f'PR #{item["number"]} {item["title"]} ({item["url"]}) has been labelled in-review for '
-                  f'{wait}, which means you have it open, but you never posted findings. Finish the review '
-                  f'now and set in-progress or waits-for-final-review, or say on the PR why it is stuck.')
+        # Not answered: the Reviewer queue wakes the Reviewer and tells the owner.
 
     # `in-progress` — the author is working. A long silence means they stopped without saying so.
     for item in labelled_items('in-progress'):
@@ -925,17 +948,13 @@ def stray_labels(now: float) -> tuple[list[tuple[str, str, str]], list[tuple[str
         if answer and not signed_ago(answer, WATCHDOG_MINUTES, now):
             continue  # an answer just landed; give the author one run to act on it
         if answer:
-            # The author hears every run; the owner only once it has outlived the answer by 30 minutes.
-            if signed_ago(answer, STALE_LABEL_MINUTES, now):
-                reports.append((f'{key}#reported', f'#{item["number"]} ({item["kind"]}, {author}) still '
-                                                  f'blocked {wait} after it was answered '
-                                                  f'{_ago(answer, now)}: the label should be back to '
-                                                  f'in-progress.'))
-            wakes.append((f'{key}#dm#{author}', author,
+            stray(key, f'#{item["number"]} ({item["kind"]}, {author}) still blocked {wait} after it was '
+                       f'answered {_ago(answer, now)}: the label should be back to in-progress.',
+                  author,
                   f'{item["kind"]} #{item["number"]} {item["title"]} ({item["url"]}) is still labelled '
                   f'blocked, but it was answered {_ago(answer, now)}. Read the answer, set the label to '
                   f'in-progress with a one-line comment `Label: blocked → in-progress — <why>`, and carry on. '
-                  f'If the answer does not unblock you, say exactly what is still missing on the PR.'))
+                  f'If the answer does not unblock you, say exactly what is still missing on the PR.')
         elif signed_ago(item['labelled_at'], STALE_LABEL_MINUTES, now):
             stray(key, f'#{item["number"]} ({item["kind"]}, {author}) blocked {wait} and nobody has '
                        f'answered.',
@@ -944,7 +963,7 @@ def stray_labels(now: float) -> tuple[list[tuple[str, str, str]], list[tuple[str
                   f'{wait} with no answer. Read the blocker, answer it or relay it to the owner as an '
                   f'Owner-inbox question, and set the label back to in-progress when it is answered.')
 
-    return wakes, reports, seen
+    return [entry for entry in strays if int(entry[0].split('#')[2]) not in skip], seen
 
 
 def _ago(stamp: str, now: float) -> str:
@@ -1078,6 +1097,11 @@ def cli(job: str, repo: Path, hermes_root: Path, data_dir: Path, legacy_state: P
 
 
 def board_audit(now: float, state: dict) -> list[str]:
+    try:
+        moved = label_fixes(now, state)
+    except Exception as error:
+        log(f'label fix check failed: {type(error).__name__}: {error}')
+        moved = set()
     trees = worktrees()
     items = in_progress_items()
 
@@ -1270,37 +1294,37 @@ def board_audit(now: float, state: dict) -> list[str]:
     # Stray labels: a label is a claim about who must act next, and these two ways of it being wrong
     # are what leaves a PR sitting for hours with nobody moving.
     try:
-        stray_wakes, stray_reports, stray_keys = stray_labels(now)
+        strays, stray_keys = stray_labels(now, skip=moved)
     except Exception as error:
         log(f'stray label check failed: {type(error).__name__}: {error}')
     else:
         for key in stray_keys:
             state.setdefault(key, now)
-        for report_key, line in stray_reports:
-            if state.get(report_key):
+        for key, profile, line, message in strays:
+            number = key.split('#')[2]
+            record = nudge_record(state, key, profile)
+            if record['alerted'] or (record['wakes'] and now - record['last_wake'] < STALE_LABEL_MINUTES * 60):
                 continue
-            state[report_key] = line
-            alerts.append(line)
-            log(f'stray label: {line[:120]}')
-        for key, profile, message in stray_wakes:
-            last = state.get(key) or 0
-            if last and last != now and (now - last) / 60 < STALE_LABEL_REPEAT_MINUTES:
+            if record['wakes'] >= MAX_WAKES:
+                alerts.append(f'{line} {profile} was told {MAX_WAKES} times and did not act.')
+                record['alerted'] = True
+                log(f'stray label, owner told: {line[:120]}')
                 continue
             if turn_running(profile):
-                skips = f'{key}#skips'
-                state[skips] = int(state.get(skips) or 0) + 1
-                log(f'{profile} is mid-turn; will tell it about {key.split("#")[2]} next run '
-                    f'(skipped {state[skips]}x)')
-                if state[skips] == 4 and not DRY_RUN:
-                    alerts.append(f'{profile} has been mid-turn for an hour and #{key.split("#")[2]} '
+                record['skips'] = record.get('skips', 0) + 1
+                log(f'{profile} is mid-turn; will tell it about {number} next run (skipped {record["skips"]}x)')
+                if record['skips'] == 4:
+                    alerts.append(f'{profile} has been mid-turn for an hour and #{number} '
                                   f'is still waiting for it. It cannot be nudged, so it needs you.')
-                continue  # not marked: retried, so the stray is never dropped
-            state[key] = now
+                    record['alerted'] = True
+                continue
+            record['wakes'] += 1
+            record['last_wake'] = now
             if DRY_RUN:
                 log(f'would tell {profile}: {message[:90]}')
                 continue
             wake(profile, message)
-            log(f'told {profile} about stray label {key.split("#")[2]}')
+            log(f'told {profile} about stray label {number} ({record["wakes"]}/{MAX_WAKES})')
 
     # Numbered copies in a scratch directory: the tool rule, enforced.
     try:
@@ -1336,7 +1360,7 @@ def board_audit(now: float, state: dict) -> list[str]:
         for line in signed_lines:
             log(line)
 
-    kept = ('ownerreply#', 'finalping#', 'finalwake#', 'waitreview#', 'stray#', 'sprawl#', 'multijob#')
+    kept = ('ownerreply#', 'finalping#', 'finalwake#', 'labelfix#', 'waitreview#', 'stray#', 'sprawl#', 'multijob#')
     state_keys = {key: value for key, value in state.items()
                   if key in seen or key == 'signing_watermark' or key.startswith(kept)}
     state.clear()

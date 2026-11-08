@@ -59,8 +59,11 @@ class BoardCase(unittest.TestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
 
-    def audit(self, state):
-        return board.board_audit(time.time(), state)
+    def audit(self, state, now=None):
+        alerts = board.board_audit(now or time.time(), state)
+        log = board.LOG_FILE.read_text(encoding='utf-8') if board.LOG_FILE.exists() else ''
+        self.assertNotIn('failed', log)
+        return alerts
 
 
 class AdvisorHandoff(BoardCase):
@@ -136,6 +139,105 @@ class CarriedState(BoardCase):
             self.assertEqual(self.audit(state), [])
         self.assertEqual(self.woken, [])
         self.assertEqual(board.load_state('daily', legacy), {'deadbranch#x#reported': 1.0})
+
+
+STRAY = pr(256, worker='5', labelled_at=iso(35), author_at=iso(43), other_at=iso(32), head_committed_at=iso(43))
+STRAY_KEY = f'stray#in-progress#256#{STRAY["labelled_at"]}'
+
+
+class NoManagerCopies(BoardCase):
+    board_items = {
+        'waits-for-review': [dict(pr(245, worker='5', labelled_at=iso(40)), is_pr=False, kind='Issue')],
+        'in-progress': [STRAY],
+    }
+
+    def test_only_the_bot_holding_the_next_step_hears(self):
+        alerts = self.audit({})
+        profiles = [profile for profile, _ in self.woken]
+        self.assertNotIn('manager', profiles)
+        self.assertIn('worker-5', profiles)
+        self.assertEqual(alerts, [])  # the owner hears only after two ignored wakes
+
+
+class StrayNudging(BoardCase):
+    board_items = {'in-progress': [STRAY]}
+
+    def test_two_wakes_then_one_owner_alert_then_silence(self):
+        state, start = {}, time.time()
+        runs = [(0, 1, 0), (16, 0, 0), (31, 1, 0), (62, 0, 1), (93, 0, 0), (124, 0, 0)]
+        told = []
+        for minutes, wakes, alerts in runs:
+            self.woken.clear()
+            sent = self.audit(state, start + minutes * 60)
+            told += sent
+            self.assertEqual([p for p, _ in self.woken], ['worker-5'] * wakes, f'wakes at +{minutes} min')
+            self.assertEqual(len(sent), alerts, f'alerts at +{minutes} min')
+        self.assertIn('#256', told[0])
+
+    def test_state_from_the_old_watchdog_repeats_nothing(self):
+        state = {f'{STRAY_KEY}#dm#worker-5': time.time() - 600, f'{STRAY_KEY}#reported': 'told'}
+        self.assertEqual(self.audit(state), [])
+        self.assertEqual(self.woken, [])
+
+
+REVIEW_FIXES = '# Reviewer\n\n### Issues to Fix\n\n- [ ] off by one (breakage: test X fails)\n'
+REVIEW_CLEAN = '# Reviewer\n\n### Issues to Fix\n\nNone.\n'
+REVIEW_OLD = '# Reviewer\n\n### Blocking\n\n- [ ] off by one\n'
+
+
+def reviewed(number, label_age, body):
+    return pr(number, worker='2', labelled_at=iso(label_age), head_committed_at=iso(90), author_at=iso(90),
+              reviewer_at=iso(40), reviewer_answered=True, review_last_at=iso(40), review_last_body=body)
+
+
+class LabelFix(BoardCase):
+    def setUp(self):
+        super().setUp()
+        self.calls = []
+        self.label_result = 'labels now: [x]'
+
+        def run(*args, **kwargs):
+            if any(str(arg).endswith('label.py') for arg in args):
+                self.calls.append(args)
+                return self.label_result
+            return ''
+        patcher = mock.patch.object(board, 'run', run)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def target(self, call):
+        return call[call.index('--to') + 1]
+
+    def test_open_issue_moves_to_in_progress(self):
+        self.board_items = {'waits-for-review': [reviewed(301, 60, REVIEW_FIXES)]}
+        self.audit({})
+        self.assertEqual([self.target(c) for c in self.calls], ['in-progress'])
+        self.assertIn('Watchdog', self.calls[0])
+
+    def test_clean_review_moves_to_final_review(self):
+        self.board_items = {'in-review': [reviewed(302, 60, REVIEW_CLEAN)]}
+        self.audit({})
+        self.assertEqual([self.target(c) for c in self.calls], ['waits-for-final-review'])
+
+    def test_in_progress_with_open_issue_is_already_right(self):
+        self.board_items = {'in-progress': [reviewed(303, 60, REVIEW_FIXES)]}
+        self.audit({})
+        self.assertEqual(self.calls, [])
+
+    def test_old_format_review_is_not_guessed(self):
+        self.board_items = {'waits-for-review': [reviewed(304, 60, REVIEW_OLD)]}
+        self.audit({})
+        self.assertEqual(self.calls, [])
+        self.assertTrue(any('#304' in text for profile, text in self.woken if profile == 'reviewer'))
+
+    def test_one_attempt_per_state_and_a_failure_falls_back_to_a_wake(self):
+        self.label_result = ''
+        self.board_items = {'waits-for-review': [reviewed(305, 60, REVIEW_FIXES)]}
+        state = {}
+        self.audit(state)
+        self.audit(state, time.time() + 16 * 60)
+        self.assertEqual(len(self.calls), 1)
+        self.assertTrue(any('#305' in text for profile, text in self.woken if profile == 'reviewer'))
 
 
 class Plumbing(unittest.TestCase):
