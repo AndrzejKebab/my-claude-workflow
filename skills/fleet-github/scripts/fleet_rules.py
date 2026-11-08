@@ -14,11 +14,10 @@ GROUNDS = re.compile(r'\((criterion|rule|breakage):\s*[^)]+\)\s*$')
 OLD_HEADINGS = re.compile(r'^#{2,}\s*(blocking|should[- ]fix|nits?)\b', re.I | re.M)
 SPEC_HEADING = re.compile(r'^#{2,}\s*spec questions?\b', re.I | re.M)
 ACK = re.compile(r'^\W*(ack|noted|thanks|thank you|got it|acknowledged|understood|on it|will do)\b', re.I)
-CANNOT = re.compile(r"\b(I|I'm|I am|we)\s+(cannot|can't|can not|could not|couldn't|am unable to|was unable to|"
-                    r"have no way to|am not able to)\b", re.I)
 DETAILS = re.compile(r'<details>.*?</details>', re.I | re.S)
 SELF_CHECK_LINES = ('Failure', 'Own cause ruled out', 'Tried', 'Claim')
-MAX_CHARS = 800
+MAX_CHARS = 2000  # measured: refuses the longest 20% of 3,170 real bot posts; 800 refused 70%
+PLAN_GATE_SINCE = '2026-11-08'  # PRs opened earlier keep the evidence gate but skip the work-plan gate
 
 SELF_CHECK_FORMAT = ('Failure: <exact command> -> <output>\nOwn cause ruled out: <what you changed since it last '
                      'worked, and why that is not it>\nTried: <session search result>; <lesson search result>; '
@@ -84,8 +83,6 @@ def comment_problems(body: str, signer: str, allow_paths: bool = False) -> list[
     if len(visible) > MAX_CHARS:
         problems.append(f'{len(visible)} characters outside <details>; the cap is {MAX_CHARS}. Lead with the '
                         f'point, move evidence into <details><summary>Evidence</summary> … </details>')
-    if CANNOT.search(visible):
-        problems += self_check_problems(rest)
     if not allow_paths:
         hits = [f'line {n}: {line.strip()}' for n, line in enumerate(lines, 1)
                 if PRIVACY.search(line) and 'privacy-ok:' not in line]
@@ -134,8 +131,10 @@ def linked_pr_problems(linked_prs: list[int]) -> list[str]:
     return ['no PR closes this issue: put `closes #<issue>` in the PR body, then label the PR or the issue']
 
 
-def start_problems(pr_body: str, comments: list[str]) -> list[str]:
+def start_problems(pr_body: str, comments: list[str], created_at: str | None = None) -> list[str]:
     """Before the first `in-progress`: a work plan in the draft PR body and the Reviewer's plan approval."""
+    if created_at and created_at[:10] < PLAN_GATE_SINCE:
+        return []
     problems = []
     if not _section(pr_body, 'Work plan').strip():
         problems.append('the draft PR body needs a `## Work plan`: the phase-plan step it serves, the approach, '

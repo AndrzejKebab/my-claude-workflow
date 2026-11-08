@@ -34,7 +34,8 @@ def gh(*args: str, stdin: str | None = None, check: bool = True) -> str:
 
 
 def pr_facts(number: int, repo: list[str]) -> dict | None:
-    raw = gh('pr', 'view', str(number), '--json', 'body,comments,closingIssuesReferences', *repo, check=False)
+    raw = gh('pr', 'view', str(number), '--json', 'body,comments,closingIssuesReferences,createdAt', *repo,
+             check=False)
     return json.loads(raw) if raw else None
 
 
@@ -48,7 +49,7 @@ def gate(args, current: list[str], repo: list[str]) -> list[str]:
         if pr is None:
             return ['starting work needs the draft PR first: open it with a `## Work plan` body, get "Plan '
                     'approved" from Reviewer, then pass --pr <draft PR number> when labelling the issue']
-        return rules.start_problems(pr['body'], [c['body'] for c in pr['comments']])
+        return rules.start_problems(pr['body'], [c['body'] for c in pr['comments']], pr.get('createdAt'))
     if args.to == 'waits-for-review':
         pr = pr_facts(args.number, repo)
         if pr is None:  # an issue: gate on the PR that closes it

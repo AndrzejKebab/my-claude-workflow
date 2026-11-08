@@ -4,8 +4,8 @@
     comment.py --pr 286 --body-file body.md --signer "# Worker-3"
     echo body | comment.py --issue 274 --stdin --signer "# Manager"
 
-Refused: a missing or wrong signer, an acknowledgement opener, more than 800 characters outside
-<details> blocks, a first-person "I cannot" without the four-line self-check, local paths.
+Refused: a missing or wrong signer, an acknowledgement opener, more than 2000 characters outside
+<details> blocks, local paths.
 Programs started: gh.
 """
 from __future__ import annotations

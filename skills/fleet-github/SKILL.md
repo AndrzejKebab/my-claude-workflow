@@ -27,9 +27,9 @@ request-changes; `--approve` is refused while one is open.
 python ${HERMES_SKILL_DIR}/scripts/comment.py --pr <N> --body-file <body.md> --signer "# <You>"
 ```
 
-Refused: a wrong signer, an acknowledgement opener, more than 800 characters outside
-`<details><summary>Evidence</summary> … </details>`, local paths, and any first-person "I cannot"
-without the self-check below.
+Refused: a wrong signer, an acknowledgement opener, more than 2000 characters outside
+`<details><summary>Evidence</summary> … </details>`, and local paths. Saying honestly what you could
+not do is welcome; claiming you are blocked goes through `label.py --to blocked` with the self-check.
 
 ## Label — `scripts/label.py`
 

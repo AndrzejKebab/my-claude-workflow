@@ -47,16 +47,19 @@ class Comment(unittest.TestCase):
         self.assertTrue(r.comment_problems('# Worker-1\n\n**Noted** — will do.\n', '# Worker-1'))
 
     def test_long_text_outside_details_is_refused(self):
-        body = '# Worker-1\n\n' + 'word ' * 300
+        body = '# Worker-1\n\n' + 'word ' * 500
         self.assertTrue(any('characters' in p for p in r.comment_problems(body, '# Worker-1')))
+
+    def test_median_length_post_passes(self):
+        self.assertEqual(r.comment_problems('# Worker-1\n\n' + 'word ' * 300, '# Worker-1'), [])
 
     def test_long_evidence_inside_details_is_fine(self):
         body = '# Worker-1\n\nCause found.\n\n<details><summary>Evidence</summary>\n\n' + 'log ' * 600 + '\n</details>\n'
         self.assertEqual(r.comment_problems(body, '# Worker-1'), [])
 
-    def test_cannot_needs_a_self_check(self):
-        self.assertTrue(r.comment_problems('# Worker-5\n\nI cannot proceed with the cleanup.\n', '# Worker-5'))
-        self.assertEqual(r.comment_problems('# Worker-5\n\nI cannot proceed.\n\n' + SELF_CHECK, '# Worker-5'), [])
+    def test_honest_gap_statement_is_not_refused(self):
+        body = '# Worker-5\n\nI cannot rule out the altitude; the suite did not run at this head.\n'
+        self.assertEqual(r.comment_problems(body, '# Worker-5'), [])
 
     def test_local_paths_are_refused(self):
         self.assertTrue(r.comment_problems('# Worker-2\n\nlog at F:/Unity/x.log\n', '# Worker-2'))
@@ -109,6 +112,10 @@ class StartWork(unittest.TestCase):
     def test_plan_and_reviewer_approval_pass(self):
         pr = '## Work plan\n\nPhase_10_Part_2_Plan §5.3: climate pass, files X, evidence per criterion.\n'
         self.assertEqual(r.start_problems(pr, ['# Reviewer\n\nPlan approved: §5.3']), [])
+
+    def test_pr_opened_before_the_plan_gate_is_exempt(self):
+        self.assertEqual(r.start_problems('', [], created_at='2026-11-02T10:00:00Z'), [])
+        self.assertTrue(r.start_problems('', [], created_at='2026-11-09T10:00:00Z'))
 
     def test_missing_plan_or_approval_is_refused(self):
         self.assertTrue(r.start_problems('', ['# Reviewer\n\nPlan approved: §5.3']))
