@@ -54,6 +54,7 @@ Terms are defined in [CONTEXT.md](CONTEXT.md). Settled with the owner, 2026-11-0
 
 | 40 | Tool use | Skill list in the prompt; a search runs before any new script is written. `fleet_run.py` logs tool, bot, exit reason and duration. A real failure in use goes to the Advisor's batch (fix the tool or record how to call it). Unused for 60 days → `retired/` with last use date, moved not deleted. Digest lists most-used, failed and promoted tools. |
 | 41 | Tools as skills | Every tool is a skill (`SKILL.md` + `scripts/`), grouped by job, description written by symptom; body holds usage, `spawns:`, `fleet_run` stop lines and the example run. General → this repository's `skills/`; Specific → the game repo's `.agents/skills/` (repo added with `hermes skills trust`). The skill list replaces tool indexes; `tool_check.py` becomes `skill_check.py`. Toolbox skills are excluded from Hermes's curator. |
+| 42 | Toolsets | Every bot, Advisor included: `terminal`, `file`, `skills`, `vision`, `delegation`, `memory`, `session_search`. Removed: `todo` (never called) and Manager's `cronjob` (never called; the watchdog cron runs without it). `skills.create_dir` per bot points at `profiles/<bot>/skill-drafts/`, so self-made skills stay drafts until promoted. No web or browser: no recorded need. |
 
 ## Still open
 
