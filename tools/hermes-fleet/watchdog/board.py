@@ -1076,6 +1076,35 @@ def send_text(text: str, profile: str, target: str) -> bool:
     return not failed
 
 
+SKILLS = Path(__file__).resolve().parents[3] / 'skills'
+
+
+def seat_board():
+    sys.path.insert(0, str(SKILLS / 'fleet-seat' / 'scripts'))
+    import seat
+    return seat.Board(STATE_FILE.parent / 'seat.json')
+
+
+def stop_runs(bot: str) -> None:
+    run(sys.executable, str(SKILLS / 'fleet-run' / 'scripts' / 'fleet_run.py'), 'stop', '--bot', bot,
+        '--data', str(STATE_FILE.parent))
+
+
+def seat_preemption(now: float) -> None:
+    """The owner's own Editor on the project ends any bot's seat lease and stops that bot's contained runs (#35)."""
+    holder = seat_board().preempted(now)
+    if not holder:
+        return
+    if DRY_RUN:
+        log(f'would free the seat from {holder}')
+        return
+    stop_runs(holder)
+    wake(holder, "The owner's Editor is open on the project, so your Unity seat lease has ended and your fleet_run "
+                 "runs were stopped (exit 143, `stopped by owner`). Do not restart them; take the seat again when he "
+                 "has closed the Editor.")
+    log(f'seat freed from {holder}: the owner opened the Editor')
+
+
 def refresh_graphs() -> list[Path]:
     """Rebuild each Worker worktree's graphify graph that is older than the worktree's last commit.
 
@@ -1177,6 +1206,12 @@ def board_audit(now: float, state: dict) -> list[str]:
         raise
     except Exception as error:
         log(f'pending digest check failed: {type(error).__name__}: {error}')
+    try:
+        seat_preemption(now)
+    except OverBudget:
+        raise
+    except Exception as error:
+        log(f'seat check failed: {type(error).__name__}: {error}')
     try:
         moved = label_fixes(now, state)
     except Exception as error:
