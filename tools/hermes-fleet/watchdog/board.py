@@ -1076,8 +1076,36 @@ def send_text(text: str, profile: str, target: str) -> bool:
     return not failed
 
 
+def refresh_graphs() -> list[Path]:
+    """Rebuild each Worker worktree's graphify graph that is older than the worktree's last commit.
+
+    The repository's post-commit hook rebuilds only the main clone's graph; it skips linked worktrees.
+    """
+    graphify = shutil.which('graphify') or str(Path.home() / '.local' / 'bin' / 'graphify.EXE')
+    rebuilt = []
+    for n in range(1, 6):
+        tree = (REPO / WORKTREE_PATTERN.format(n=n)).resolve()
+        graph = tree / 'graphify-out' / 'graph.json'
+        if not graph.is_file():
+            continue
+        head = run(tool('git'), 'log', '-1', '--format=%ct', cwd=tree)
+        if not head or graph.stat().st_mtime >= float(head):
+            continue
+        if DRY_RUN:
+            log(f'would rebuild the graph in {tree}')
+            continue
+        os.environ.setdefault('PYTHONHASHSEED', '0')  # the repository hook pins it so communities do not churn
+        os.environ.setdefault('GRAPHIFY_MAX_WORKERS', '1')
+        if run(graphify, 'update', '.', cwd=tree, timeout=300):
+            rebuilt.append(tree)
+            log(f'graph rebuilt in {tree}')
+        else:
+            log(f'graph rebuild failed in {tree}')
+    return rebuilt
+
+
 def daily(now: float, state: dict) -> list[str]:
-    """Dead branches on origin and in the owner's clone."""
+    """Dead branches on origin and in the owner's clone; stale worktree graphs."""
     alerts = []
     seen = set()
     for name, check in (('dead branch', dead_branches), ('local branch', local_branches)):
@@ -1101,6 +1129,12 @@ def daily(now: float, state: dict) -> list[str]:
     state_keys = {key: value for key, value in state.items() if key in seen or key.startswith(DAILY_KEYS)}
     state.clear()
     state.update(state_keys)
+    try:
+        refresh_graphs()
+    except OverBudget:
+        raise
+    except Exception as error:
+        log(f'graph refresh failed: {type(error).__name__}: {error}')
     import daily_digest
     try:
         daily_digest.digest(now, state)

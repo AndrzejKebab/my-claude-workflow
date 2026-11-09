@@ -77,6 +77,15 @@ class Fff(Base):
         self.assertEqual(self.pre('terminal', command='cd F:/x && rg Foo')['action'], 'block')
         self.assertEqual(self.pre('search_files', pattern='Foo', path='F:/x', session='s2')['action'], 'block')
 
+    def test_a_repo_with_a_graph_is_pointed_at_graphify_first(self):
+        repo = self.dir / 'game'
+        (repo / 'graphify-out').mkdir(parents=True)
+        (repo / 'graphify-out' / 'graph.json').write_text('{}', encoding='utf-8')
+        message = self.pre('terminal', command='grep -rn Foo Assets/', workdir=str(repo / 'Assets'))['message']
+        self.assertIn('graphify query', message)
+        self.assertLess(message.index('graphify query'), message.index('mcp_fff_grep'))
+        self.assertNotIn('graphify', self.pre('terminal', command='rg Foo', session='s3', workdir=str(self.dir))['message'])
+
     def test_grep_on_a_pipe_is_filtering_not_searching(self):
         self.assertIsNone(self.pre('terminal', command='git log --oneline | grep fix'))
         self.assertIsNone(self.pre('terminal', command='grep -c ok F:/x/build.log'))

@@ -98,12 +98,30 @@ def searches_code(command: str) -> bool:
     return False
 
 
-def fff_nudge(key: str, state: State, now: float) -> dict | None:
+CD = re.compile(r'^\s*cd\s+("[^"]+"|\'[^\']+\'|\S+)')
+
+
+def graph_for(*places: str) -> Path | None:
+    """The repository holding a graphify graph that contains the first place given, if any."""
+    for place in filter(None, places):
+        path = Path(place.strip('"\''))
+        if re.match(r'^/[a-zA-Z]/', place):
+            path = Path(f'{place[1]}:{place[2:]}')
+        for folder in (path, *path.parents):
+            if (folder / 'graphify-out' / 'graph.json').is_file():
+                return folder
+    return None
+
+
+def fff_nudge(key: str, state: State, now: float, repo: Path | None) -> dict | None:
     nudged = state.data.setdefault('fff', {})
     if now - nudged.get(key, -1e18) <= FFF_RETRY_SECONDS:
         return None
     nudged[key] = now
-    return block(FFF_ADVICE)
+    if repo is None:
+        return block(FFF_ADVICE)
+    return block(f'This repository has a code graph. To learn how things connect (who calls what, where a concept '
+                 f'lives), first run `graphify query "<question>"` in {repo.as_posix()}. Then: ' + FFF_ADVICE)
 
 
 def walls_in(text: str, suffix: str) -> list[str]:
@@ -133,7 +151,7 @@ def new_wall(path: str, new_text: str) -> str:
             'of measurements belongs in a doc page with a one-line pointer left here. Cut or move it, then write again.')
 
 
-def pre_tool(tool: str, args: dict, session: str, state: State, now: float) -> dict | None:
+def pre_tool(tool: str, args: dict, session: str, state: State, now: float, cwd: str = '') -> dict | None:
     if tool == 'read_file':
         name = os.path.basename(str(args.get('path') or ''))
         if name in whole_file.WHOLE_FILE and (args.get('limit') or args.get('offset')):
@@ -151,9 +169,12 @@ def pre_tool(tool: str, args: dict, session: str, state: State, now: float) -> d
             return block(f'Refused: this exact command ran {len(stamps)} times in {SPIN_WINDOW} s, which is a spin, '
                          'not work. ' + SPIN_ADVICE)
         if searches_code(command):
-            return fff_nudge(digest(session, command), state, now)
+            cd = CD.match(command)
+            repo = graph_for(cd.group(1) if cd else '', str(args.get('workdir') or ''), cwd)
+            return fff_nudge(digest(session, command), state, now, repo)
     if tool == 'search_files':
-        return fff_nudge(digest(session, json.dumps(args, sort_keys=True)), state, now)
+        repo = graph_for(str(args.get('path') or ''), cwd)
+        return fff_nudge(digest(session, json.dumps(args, sort_keys=True)), state, now, repo)
     if tool in ('write_file', 'patch'):
         path = str(args.get('path') or '')
         if not path or not comment_wall.is_code(path, '')[0] and Path(path).suffix:
@@ -205,7 +226,7 @@ def main() -> int:
                 return 0
             state, now = State(Path(args.state)), time.time()
             result = pre_tool(payload.get('tool_name') or '', payload.get('tool_input') or {},
-                              payload.get('session_id') or '', state, now)
+                              payload.get('session_id') or '', state, now, payload.get('cwd') or '')
             state.save(now)
     except Exception:  # noqa: BLE001 - advisory hooks fail open; the workspace guard is the hard one
         return 0
