@@ -86,6 +86,8 @@ Observed the same evening: closing the Desktop app does not stop the bots. A new
 
 ## Still open
 
+- The `ready-to-merge` label stays on GitHub (owner, 2026-11-09), unused since `waits-for-eye-review` replaced it.
+
 - Stray files found 2026-11-08 (`F:\tmp`, `F:\f`, `F:\c`, `C:\tmp`, `C:\tmp_orch_guard_test`, `C:\Programowanie\...`, home-folder outputs): owner decides on removal.
 
 - Hundreds of one-off review drafts in `profiles/reviewer-tmp/`: owner decides on removal.
