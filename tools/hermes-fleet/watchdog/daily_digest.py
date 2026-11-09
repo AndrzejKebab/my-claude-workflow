@@ -162,8 +162,63 @@ def supervision() -> list[str]:
     return out.splitlines() if out else ['supervision: no checks recorded']
 
 
+LONG_PR_ROUNDS, LONG_PR_DAYS = 5, 7
+WITH_ADVISOR_OR_OWNER = {'waits-for-final-review', 'waits-for-eye-review', 'ready-to-merge'}
+
+
+def open_prs() -> list[dict]:
+    raw = board.run(board.tool('gh'), 'pr', 'list', '-R', board.GITHUB_REPO, '--state', 'open', '--limit', '200',
+                    '--json', 'number,createdAt,url,title,labels')
+    return json.loads(raw or '[]')
+
+
+def pr_labels(number: int) -> list[tuple[str, str]]:
+    """(when, label) for every label put on the PR, oldest first."""
+    events = board._paged_json_lines(f'repos/{board.GITHUB_REPO}/issues/{number}/timeline?per_page=100',
+                                     '.[] | select(.event == "labeled") | {at: .created_at, label: .label.name} | @json')
+    return sorted((event['at'], event['label']) for event in events)
+
+
+def advisor_view(number: int) -> str:
+    """URL of the newest `# Advisor` comment on the PR, or ''."""
+    comments = board._paged_json_lines(f'repos/{board.GITHUB_REPO}/issues/{number}/comments?per_page=100',
+                                       '.[] | select((.body // "") | startswith("# Advisor")) | '
+                                       '{at: .created_at, url: .html_url} | @json')
+    return max(comments, key=lambda c: c['at'])['url'] if comments else ''
+
+
+def long_prs(now: float, state: dict) -> tuple[list[dict], list[str]]:
+    """(PRs for the Advisor's batch, second-trigger lines for the owner), design.md #47.
+
+    Trigger: LONG_PR_ROUNDS review requests since the PR last reached final review, or LONG_PR_DAYS days, both
+    counted from the PR's opening or its last trigger, whichever is later.
+    """
+    first, second = [], []
+    for pr in open_prs():
+        number = pr['number']
+        if {label['name'] for label in pr.get('labels') or []} & WITH_ADVISOR_OR_OWNER:
+            continue
+        record = state.get(f'longpr#{number}') or {'since': board._stamp(pr['createdAt']), 'triggers': 0}
+        since = max(record['since'], board._stamp(pr['createdAt']))
+        labels = [(board._stamp(at), name) for at, name in pr_labels(number) if board._stamp(at) >= since]
+        finals = [at for at, name in labels if name == 'waits-for-final-review']
+        rounds = sum(1 for at, name in labels if name == 'waits-for-review' and at > max(finals, default=0))
+        days = (now - since) / 86400
+        if rounds < LONG_PR_ROUNDS and days < LONG_PR_DAYS:
+            continue
+        why = f'{rounds} review rounds' if rounds >= LONG_PR_ROUNDS else f'{days:.0f} days'
+        if record['triggers'] == 0:
+            first.append({**pr, 'why': why})
+        else:
+            view = advisor_view(number) or 'no Advisor comment found'
+            second.append(f'PR #{number} {pr["title"]} hit the long-PR trigger again ({why} since the Advisor\'s '
+                          f'look); the Advisor\'s view: {view} - {pr["url"]}')
+        state[f'longpr#{number}'] = {'since': now, 'triggers': record['triggers'] + 1}
+    return first, second
+
+
 def batch_message(day: str, drafts: list[Path], failed: list[dict], fired: list[str], active: bool,
-                  facts: Path, notes: Path) -> str:
+                  facts: Path, notes: Path, long: list[dict] = ()) -> str:
     parts = [f'Watchdog: daily batch for {day}. Every path below is absolute.']
     if drafts:
         parts.append('Draft lessons to review (accept, rewrite and accept, merge, or reject):\n'
@@ -174,6 +229,11 @@ def batch_message(day: str, drafts: list[Path], failed: list[dict], fired: list[
             for e in failed))
     if fired:
         parts.append('Trend trigger fired; find the cause and act on it:\n' + '\n'.join(f'- {line}' for line in fired))
+    if long:
+        parts.append('Long PRs (#47). For each, name the cause from the PR history (spec not settled, scope grew, '
+                     'Worker stuck, Reviewer moving goalposts), act on it, and post one history comment on the PR, '
+                     'signed `# Advisor`:\n' + '\n'.join(f'- #{p["number"]} {p["title"]} ({p["why"]}) {p["url"]}'
+                                                          for p in long))
     if active:
         parts.append('Reviewer or Manager worked since yesterday: run the daily-batch audits (Reviewer\'s Issues to '
                      'Fix, Manager\'s explanatory answers) and record each check in the supervision ledger.')
@@ -203,12 +263,14 @@ def digest(now: float, state: dict) -> None:
     counts, fired, active = trends(now)
     drafts, changed = lesson_files(since)
     actions, failed = lesson_events(since)
+    long, again = long_prs(now, state)
     lines = [f'Fleet digest {day}', '', 'Counts, last 7 live days against the 14 before (watchdog wakes are not turns):',
              *counts, '', 'Trend trigger: ' + ('; '.join(fired) if fired else 'quiet'), '',
              f'Lessons: {len(drafts)} draft(s) waiting' + (f' ({", ".join(p.stem for p in drafts)})' if drafts else ''),
              *changed,
              'Lesson checks: ' + (', '.join(f'{n} {action}' for action, n in sorted(actions.items())) or 'none'),
-             '', *supervision(), advisor_usage(now, state),
+             '', 'Long PRs: ' + (', '.join(f'#{p["number"]} ({p["why"]}) sent to the Advisor' for p in long) or 'none new'),
+             *again, '', *supervision(), advisor_usage(now, state),
              'Not counted here yet: per-PR figures (#21) and tool use (#40).']
     text = '\n'.join(lines)
     data = board.STATE_FILE.parent
@@ -220,12 +282,12 @@ def digest(now: float, state: dict) -> None:
         return
     data.mkdir(parents=True, exist_ok=True)
     facts.write_text(text + '\n', encoding='utf-8')
-    if not (drafts or failed or fired or active):
+    if not (drafts or failed or fired or active or long):
         send(text)
         board.log(f'digest {day} sent, no Advisor batch needed')
         return
     pending.write_text(json.dumps({'facts': str(facts), 'notes': str(notes), 'woken': now}), encoding='utf-8')
-    board.wake('advisor', batch_message(day, drafts, failed, fired, active, facts, notes))
+    board.wake('advisor', batch_message(day, drafts, failed, fired, active, facts, notes, long))
     board.log(f'digest {day}: Advisor woken for its batch')
 
 

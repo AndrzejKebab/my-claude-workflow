@@ -1002,7 +1002,7 @@ def read_config(repo: Path) -> dict:
 
 
 # State keys each job owns; `seed_state` copies them out of the single-file watchdog's state.
-DAILY_KEYS = ('deadbranch#', 'localbranch#', 'digest#', 'advtokens#')
+DAILY_KEYS = ('deadbranch#', 'localbranch#', 'digest#', 'advtokens#', 'longpr#')
 
 
 def owns_key(job: str, key: str) -> bool:

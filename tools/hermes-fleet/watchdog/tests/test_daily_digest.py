@@ -71,9 +71,11 @@ class Trigger(Base):
 class Digest(Base):
     def setUp(self):
         super().setUp()
-        patcher = mock.patch.object(dd, 'trends', lambda now: (['fleet: false "cannot" 0'], [], False))
-        patcher.start()
-        self.addCleanup(patcher.stop)
+        for name, value in (('trends', lambda now: (['fleet: false "cannot" 0'], [], False)),
+                            ('long_prs', lambda now, state: ([], []))):
+            patcher = mock.patch.object(dd, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
 
     def test_no_work_sends_at_once_and_wakes_nobody(self):
         dd.digest(time.time(), {})
@@ -112,6 +114,75 @@ class Digest(Base):
         dd.send_pending(now + dd.NOTES_HOURS * 3600 + 900)
         self.assertEqual(len(self.sent), 1)
         self.assertIn('did not finish', self.sent[0][2])
+
+
+def iso(seconds: float) -> str:
+    return time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(seconds))
+
+
+class LongPrs(Base):
+    def setUp(self):
+        super().setUp()
+        self.now = time.time()
+        self.prs = []
+        self.labels = {}
+        self.advisor_comment = {}
+        for name, value in (('open_prs', lambda: self.prs),
+                            ('pr_labels', lambda number: self.labels.get(number, [])),
+                            ('advisor_view', lambda number: self.advisor_comment.get(number, ''))):
+            patcher = mock.patch.object(dd, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def pr(self, number, days_old, current=('in-progress',)):
+        self.prs.append({'number': number, 'createdAt': iso(self.now - days_old * 86400), 'url': f'u{number}',
+                         'title': 't', 'labels': [{'name': name} for name in current]})
+
+    def rounds(self, number, *labels):
+        self.labels[number] = [(iso(self.now - 3600 * (len(labels) - i)), name) for i, name in enumerate(labels)]
+
+    def test_seven_days_open_goes_to_the_advisor(self):
+        self.pr(1, 8)
+        first, second = dd.long_prs(self.now, {})
+        self.assertEqual([p['number'] for p in first], [1])
+        self.assertEqual(second, [])
+
+    def test_five_rounds_without_final_review(self):
+        self.pr(2, 2)
+        self.rounds(2, *['waits-for-review', 'in-progress'] * 5)
+        first, _ = dd.long_prs(self.now, {})
+        self.assertEqual([p['number'] for p in first], [2])
+
+    def test_reaching_final_review_restarts_the_rounds(self):
+        self.pr(3, 2)
+        self.rounds(3, 'waits-for-review', 'waits-for-review', 'waits-for-review', 'waits-for-final-review',
+                    'in-progress', 'waits-for-review', 'waits-for-review')
+        self.assertEqual(dd.long_prs(self.now, {}), ([], []))
+
+    def test_counter_restarts_then_a_second_trigger_goes_to_the_owner(self):
+        self.pr(4, 8)
+        self.advisor_comment[4] = 'https://github.com/x/pull/4#issuecomment-9'
+        state = {}
+        self.assertEqual(len(dd.long_prs(self.now, state)[0]), 1)
+        self.assertEqual(dd.long_prs(self.now + 86400, state), ([], []))
+        first, second = dd.long_prs(self.now + 8 * 86400, state)
+        self.assertEqual(first, [])
+        self.assertEqual(len(second), 1)
+        self.assertIn('#4', second[0])
+        self.assertIn('issuecomment-9', second[0])
+
+    def test_items_with_the_advisor_or_owner_are_not_counted(self):
+        self.pr(5, 9, current=('waits-for-final-review',))
+        self.pr(6, 9, current=('waits-for-eye-review',))
+        self.assertEqual(dd.long_prs(self.now, {}), ([], []))
+
+    def test_digest_puts_long_prs_in_the_advisor_batch(self):
+        self.pr(7, 8)
+        with mock.patch.object(dd, 'trends', lambda now: ([], [], False)):
+            dd.digest(self.now, {})
+        self.assertEqual([p for p, _ in self.woken], ['advisor'])
+        self.assertIn('#7', self.woken[0][1])
+        self.assertIn('history comment', self.woken[0][1])
 
 
 class AdvisorUsage(Base):
