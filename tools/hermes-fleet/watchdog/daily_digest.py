@@ -256,7 +256,22 @@ def send(text: str) -> bool:
     return board.send_text(f'{owner_mention()} {text}'.strip(), DIGEST_PROFILE, 'discord')
 
 
-def digest(now: float, state: dict, strays: list[str] = ()) -> None:
+def guard_refusals(since: float) -> str:
+    """Workspace-guard refusals since `since`, per tool, from the guard's own log."""
+    path = board.STATE_FILE.parent / 'guard.jsonl'
+    counts: dict[str, int] = {}
+    if path.exists():
+        for line in path.read_text(encoding='utf-8').splitlines():
+            try:
+                entry = json.loads(line)
+            except ValueError:
+                continue
+            if entry.get('at', 0) >= since:
+                counts[entry.get('profile', '?')] = counts.get(entry.get('profile', '?'), 0) + 1
+    return 'Workspace guard refusals: ' + (', '.join(f'{p} {n}' for p, n in sorted(counts.items())) or 'none')
+
+
+def digest(now: float, state: dict) -> None:
     """Called by `daily`: build the facts, then send them or hand them to the Advisor's batch."""
     since = float(state.get('digest#last') or now - 86400)
     day = dt.date.fromtimestamp(now).isoformat()
@@ -270,7 +285,7 @@ def digest(now: float, state: dict, strays: list[str] = ()) -> None:
              *changed,
              'Lesson checks: ' + (', '.join(f'{n} {action}' for action, n in sorted(actions.items())) or 'none'),
              '', 'Long PRs: ' + (', '.join(f'#{p["number"]} ({p["why"]}) sent to the Advisor' for p in long) or 'none new'),
-             *again, 'Strays: ' + (f'{len(strays)} new' if strays else 'none new'), *strays, '', *supervision(), advisor_usage(now, state),
+             *again, guard_refusals(since), '', *supervision(), advisor_usage(now, state),
              'Not counted here yet: per-PR figures (#21) and tool use (#40).']
     text = '\n'.join(lines)
     data = board.STATE_FILE.parent

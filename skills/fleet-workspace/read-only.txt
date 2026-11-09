@@ -1,0 +1,12 @@
+# Paths outside the work folders a bot may read or run, never write. `~` is the owner's home folder.
+~/AppData/Local/Unity                        # Unity CLI (bin), Editor logs
+~/AppData/Local/Temp/Unity/Editor/Crashes    # Editor crash reports
+~/AppData/LocalLow/AndrzejKebab/VoxelGame    # the game's Player.log
+~/AppData/Local/Temp/AndrzejKebab/VoxelGame  # the game's crash reports
+~/AppData/Local/Microsoft/WindowsApps        # app aliases (cdb, winget)
+~/AppData/Roaming/Hermes/composer-images     # screenshots the owner pastes into chat
+~/.dotnet/tools                              # dotnet tool programs
+C:/Program Files                             # installed programs: Unity Hub, git
+C:/Program Files (x86)/Windows Kits          # the cdb debugger
+F:/Unity Editors                             # the installed Unity editors
+C:/ProgramData/Unity                         # Unity licence logs

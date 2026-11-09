@@ -1024,7 +1024,7 @@ def read_config(repo: Path) -> dict:
 
 
 # State keys each job owns; `seed_state` copies them out of the single-file watchdog's state.
-DAILY_KEYS = ('deadbranch#', 'localbranch#', 'digest#', 'advtokens#', 'longpr#', 'strays#')
+DAILY_KEYS = ('deadbranch#', 'localbranch#', 'digest#', 'advtokens#', 'longpr#')
 
 
 def owns_key(job: str, key: str) -> bool:
@@ -1102,16 +1102,8 @@ def daily(now: float, state: dict) -> list[str]:
     state.clear()
     state.update(state_keys)
     import daily_digest
-    import stray_sweep
     try:
-        strays = stray_sweep.stray_sweep(now, state)
-    except OverBudget:
-        raise
-    except Exception as error:
-        log(f'stray sweep failed: {type(error).__name__}: {error}')
-        strays = []
-    try:
-        daily_digest.digest(now, state, strays)
+        daily_digest.digest(now, state)
     except OverBudget:
         raise
     except Exception as error:
