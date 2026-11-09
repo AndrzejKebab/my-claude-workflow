@@ -87,8 +87,25 @@ class Files(unittest.TestCase):
         self.assertEqual(check('vision_analyze', image_url='E:/shots/a.png', question='?')['action'], 'block')
         self.assertIsNone(check('vision_analyze', image_url='https://example.com/a.png', question='?'))
 
-    def test_relative_paths_stay_where_they_are(self):
-        self.assertIsNone(check('write_file', path='.scratch/out.txt', content='x'))
+    def test_relative_paths_resolve_against_the_session_folder(self):
+        inside = wg.Rules(**{**RULES.__dict__, 'cwd': 'F:/Unity/Projects/Game'})
+        self.assertIsNone(wg.verdict('write_file', {'path': '.scratch/out.txt', 'content': 'x'}, inside))
+        outside = wg.Rules(**{**RULES.__dict__, 'cwd': HOME})
+        self.assertEqual(wg.verdict('write_file', {'path': 'notes.md', 'content': 'x'}, outside)['action'], 'block')
+        self.assertEqual(wg.verdict('read_file', {'path': 'Desktop/a.txt'}, outside)['action'], 'block')
+
+
+class SessionFolder(unittest.TestCase):
+    def test_a_continuation_takes_its_parent_sessions_folder(self):
+        import sqlite3
+        db_path = Path(tempfile.mkdtemp()) / 'state.db'
+        db = sqlite3.connect(db_path)
+        db.execute('create table sessions (id text, cwd text, parent_session_id text)')
+        db.executemany('insert into sessions values (?,?,?)', [('a', 'C:\\Users\\me', None), ('b', None, 'a')])
+        db.commit()
+        db.close()
+        self.assertEqual(wg.session_cwd(db_path, 'b'), 'C:/Users/me')
+        self.assertEqual(wg.session_cwd(db_path, 'missing'), '')
 
 
 class Hook(unittest.TestCase):

@@ -37,6 +37,7 @@ class Rules:
     scratch: str
     read_only: list[str] = field(default_factory=list)
     drives: set[str] | None = None  # None: the drives this machine has
+    cwd: str = ''  # the session's folder; '' when unknown, and then a relative file path is refused
 
     def is_drive(self, letter: str) -> bool:
         if self.drives is None:
@@ -79,8 +80,11 @@ def command_paths(command: str, rules: Rules) -> list[str]:
 
 def refusal(path: str, rules: Rules, write: bool) -> dict:
     where = 'write there' if write else 'touch it'
+    shown = f'`{path}`'
+    if not is_absolute(path, rules.home) and path != '/tmp':
+        shown += f' (a relative path, so it lands in `{rules.cwd or "an unknown folder"}`; give an absolute path)'
     return {'action': 'block', 'message': (
-        f'Refused by the workspace guard: `{path}` is outside your work folders ({", ".join(rules.roots)}), so you '
+        f'Refused by the workspace guard: {shown} is outside your work folders ({", ".join(rules.roots)}), so you '
         f'may not {where}. Put every output, report and temporary file in your scratch, {rules.scratch} '
         f'(also $TMPDIR). Do not retry this path another way. If you need to read a tool or log that lives there, '
         f'ask the owner through Manager to add it to the read-only list.')}
@@ -104,15 +108,45 @@ def verdict(tool: str, args: dict, rules: Rules) -> dict | None:
         if args.get('mode') == 'patch':
             paths += [a or b for a, b in PATCH_FILES.findall(args.get('patch') or '')]
         for path in filter(None, paths):
-            if is_absolute(path, rules.home) and not under(expand(path, rules.home), rules.roots):
+            if not under(resolve(path, rules), rules.roots):
                 return refusal(path, rules, write=True)
         return None
     if tool in READ_TOOLS:
         path = args.get(READ_TOOLS[tool]) or ''
-        if path and not re.match(r'^[a-z]+://', path, re.I) and is_absolute(path, rules.home) \
-                and not under(expand(path, rules.home), rules.roots + rules.read_only):
+        if path and not re.match(r'^[a-z]+://', path, re.I) \
+                and not under(resolve(path, rules), rules.roots + rules.read_only):
             return refusal(path, rules, write=False)
     return None
+
+
+def resolve(path: str, rules: Rules) -> str:
+    """An absolute form of a file tool's path: a relative one lands in the session's folder, which for a group chat
+    or a CLI-made session is the home folder."""
+    if is_absolute(path, rules.home):
+        return expand(path, rules.home)
+    return f'{rules.cwd}/{path}' if rules.cwd else f'(unknown folder)/{path}'
+
+
+def session_cwd(state_db: Path, session: str) -> str:
+    """The folder Hermes recorded for this session, following a continuation back to the session that has one."""
+    if not session or not state_db.exists():
+        return ''
+    import sqlite3
+    try:
+        db = sqlite3.connect(f'file:{state_db.as_posix()}?mode=ro', uri=True, timeout=5)
+        try:
+            for _ in range(20):
+                row = db.execute('select cwd, parent_session_id from sessions where id = ?', (session,)).fetchone()
+                if not row:
+                    return ''
+                if row[0]:
+                    return row[0].replace('\\', '/')
+                session = row[1]
+        finally:
+            db.close()
+    except sqlite3.Error:
+        return ''
+    return ''
 
 
 def is_absolute(path: str, home: str) -> bool:
@@ -140,18 +174,36 @@ def main() -> int:
     home = args.home.replace('\\', '/')
     rules = Rules(args.root, home, args.scratch, read_only_list(Path(args.allow), home))
     tool, tool_input = payload.get('tool_name') or '', payload.get('tool_input') or {}
+    if tool in WRITE_TOOLS or tool in READ_TOOLS:
+        profile_home = os.environ.get('HERMES_HOME') or (
+            str(Path(args.log).resolve().parents[1] / 'profiles' / (payload.get('profile') or args.profile))
+            if args.log else '')
+        if profile_home:
+            rules.cwd = session_cwd(Path(profile_home) / 'state.db', payload.get('session_id') or '')
     result = verdict(tool, tool_input, rules)
     if result and result['action'] == 'modify':
-        os.makedirs(rules.scratch, exist_ok=True)
+        try:
+            os.makedirs(rules.scratch, exist_ok=True)
+        except OSError:
+            pass
     if result and result['action'] == 'block' and args.log:
+        log_entry(args, payload, tool, tool_input, result)
+    if result:
+        print(json.dumps(result))
+    return 0
+
+
+def log_entry(args, payload: dict, tool: str, tool_input: dict, result: dict) -> None:
+    """Never let the log break the guard: it fails closed, so a crash here would block every tool call."""
+    try:
+        Path(args.log).parent.mkdir(parents=True, exist_ok=True)
         with open(args.log, 'a', encoding='utf-8') as handle:
             handle.write(json.dumps({'at': time.time(), 'profile': args.profile, 'tool': tool,
                                      'session': payload.get('session_id', ''),
                                      'message': result['message'][:300],
                                      'input': json.dumps(tool_input)[:300]}) + '\n')
-    if result:
-        print(json.dumps(result))
-    return 0
+    except OSError:
+        pass
 
 
 if __name__ == '__main__':
