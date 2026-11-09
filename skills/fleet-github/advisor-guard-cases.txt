@@ -8,3 +8,5 @@ ALLOW git pull --ff-only
 ALLOW gh pr merge 431 --squash --match-head-commit 0123abc --subject "feat(content): snow cover (#431)" --body "Closes #427"
 ALLOW python F:/Programowanie/my-claude-workflow/skills/fleet-github/scripts/label.py 431 --to in-progress --signer Advisor --reason x
 ALLOW python F:/Programowanie/my-claude-workflow/skills/fleet-lessons/scripts/lesson.py accept --home x heredoc --sha abc
+ALLOW git -C F:/Programowanie/my-claude-workflow rev-parse HEAD
+ALLOW python F:/Programowanie/my-claude-workflow/skills/fleet-supervision/scripts/supervision.py record --ledger x --bot reviewer --category issues --agree

@@ -1002,7 +1002,7 @@ def read_config(repo: Path) -> dict:
 
 
 # State keys each job owns; `seed_state` copies them out of the single-file watchdog's state.
-DAILY_KEYS = ('deadbranch#', 'localbranch#')
+DAILY_KEYS = ('deadbranch#', 'localbranch#', 'digest#', 'advtokens#')
 
 
 def owns_key(job: str, key: str) -> bool:
@@ -1031,13 +1031,16 @@ def save_state(state: dict) -> None:
 
 def send_alerts(lines: list[str]) -> None:
     """Owner alerts go out through the alert profile's own Discord account; the job's profile has none."""
-    if not lines:
-        return
-    text = '\n'.join(lines)
+    if lines:
+        send_text('\n'.join(lines), ALERT_PROFILE, f'discord:{ALERT_CHANNEL}')
+
+
+def send_text(text: str, profile: str, target: str) -> bool:
+    """Send through `profile`'s own platform account; an unsent text is logged and kept in the run output."""
     if DRY_RUN:
         print(text)
-        return
-    command = [str(HERMES_EXE), '-p', ALERT_PROFILE, 'send', '--to', f'discord:{ALERT_CHANNEL}', '--quiet', text]
+        return True
+    command = [str(HERMES_EXE), '-p', profile, 'send', '--to', target, '--quiet', text]
     try:
         result = subprocess.run(command, capture_output=True, text=True, encoding='utf-8', errors='replace',
                                 timeout=120)
@@ -1046,8 +1049,9 @@ def send_alerts(lines: list[str]) -> None:
     except (OSError, subprocess.TimeoutExpired) as error:
         failed, detail = True, f'{type(error).__name__}: {error}'
     if failed:
-        log(f'alert not sent ({detail}): {text[:300]}')
-        print(text)  # kept in the cron run output, so the alert is not lost
+        log(f'not sent as {profile} ({detail}): {text[:300]}')
+        print(text)  # kept in the cron run output, so it is not lost
+    return not failed
 
 
 def daily(now: float, state: dict) -> list[str]:
@@ -1075,6 +1079,13 @@ def daily(now: float, state: dict) -> list[str]:
     state_keys = {key: value for key, value in state.items() if key in seen or key.startswith(DAILY_KEYS)}
     state.clear()
     state.update(state_keys)
+    import daily_digest
+    try:
+        daily_digest.digest(now, state)
+    except OverBudget:
+        raise
+    except Exception as error:
+        log(f'digest failed: {type(error).__name__}: {error}')
     return alerts
 
 
@@ -1103,6 +1114,13 @@ def cli(job: str, repo: Path, hermes_root: Path, data_dir: Path, legacy_state: P
 
 
 def board_audit(now: float, state: dict) -> list[str]:
+    import daily_digest
+    try:
+        daily_digest.send_pending(now)
+    except OverBudget:
+        raise
+    except Exception as error:
+        log(f'pending digest check failed: {type(error).__name__}: {error}')
     try:
         moved = label_fixes(now, state)
     except Exception as error:

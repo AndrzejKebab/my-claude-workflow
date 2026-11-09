@@ -103,9 +103,10 @@ def scan(rows, carry: dict) -> tuple[dict[str, list[Event]], dict]:
 
 
 def turn_starts(db: sqlite3.Connection) -> list[float]:
-    """Timestamps of user rows that start a turn: owner messages, peer DMs, wakes."""
+    """Timestamps of user rows that start a turn: owner messages and peer DMs. Watchdog wakes are left out:
+    their number changes whenever the watchdog does, which would move every rate with no change in the bots."""
     return [ts for _, _, role, text, ts in _rows(db)
-            if role == 'user' and not text.lstrip().startswith(NOT_A_TURN)]
+            if role == 'user' and not text.lstrip().startswith(NOT_A_TURN + ('Watchdog:',))]
 
 
 def headless_blocks(db: sqlite3.Connection) -> list[Event]:

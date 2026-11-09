@@ -116,6 +116,13 @@ class Turns(unittest.TestCase):
         ])
         self.assertEqual(len(fm.turn_starts(db)), 2)
 
+    def test_excludes_watchdog_wakes(self):
+        db = fake_db([
+            ('s', 'user', 'Message from Manager: go', None, 1.0),
+            ('s', 'user', 'Watchdog: PR #5 is still labelled waits-for-review', None, 2.0),
+        ])
+        self.assertEqual(len(fm.turn_starts(db)), 1)
+
 
 class Bounces(unittest.TestCase):
     def test_other_labels_between_do_not_hide_a_bounce(self):
