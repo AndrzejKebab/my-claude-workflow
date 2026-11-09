@@ -283,9 +283,83 @@ def baseline(args) -> dict:
     return report
 
 
+def tool_calls(db: sqlite3.Connection, since: float):
+    """(session, timestamp, tool name, arguments) for every tool call a bot made since `since`."""
+    for session, raw, ts in db.execute("select session_id, tool_calls, timestamp from messages where role = "
+                                       "'assistant' and tool_calls is not null and timestamp > ? order by id",
+                                       (since,)):
+        try:
+            calls = json.loads(raw)
+        except ValueError:
+            continue
+        for call in calls if isinstance(calls, list) else []:
+            function = call.get('function', call)
+            arguments = function.get('arguments')
+            try:
+                arguments = json.loads(arguments) if isinstance(arguments, str) else (arguments or {})
+            except ValueError:
+                arguments = {}
+            yield session, ts, function.get('name') or '', arguments if isinstance(arguments, dict) else {}
+
+
+def open_profile(home: Path, profile: str) -> sqlite3.Connection:
+    return sqlite3.connect(f'file:{(home / "profiles" / profile / "state.db").as_posix()}?mode=ro', uri=True)
+
+
+def tool_uses(home: Path, profiles: list[str], roots: list[Path], days: int) -> list[tuple[int, float, str]]:
+    """(calls naming it, last use, path) for every file under `roots`, by file name in the call's arguments."""
+    files = {p: p.name for root in roots for p in root.rglob('*')
+             if p.is_file() and '__pycache__' not in p.parts and p.suffix.lower() != '.md'}
+    uses, last = {p: 0 for p in files}, {p: 0.0 for p in files}
+    since = time.time() - days * 86400
+    for profile in profiles:
+        db = open_profile(home, profile)
+        try:
+            for _, ts, _, arguments in tool_calls(db, since):
+                text = json.dumps(arguments)
+                for path, name in files.items():
+                    if name in text:
+                        uses[path] += 1
+                        last[path] = max(last[path], ts)
+        finally:
+            db.close()
+    return sorted(((uses[p], last[p], str(p)) for p in files), key=lambda row: -row[0])
+
+
+def call_counts(home: Path, profiles: list[str], days: int, tool: str = '', match: str = '') -> dict:
+    """Tool calls per bot and tool, optionally only those whose arguments match a regular expression."""
+    pattern = re.compile(match) if match else None
+    since = time.time() - days * 86400
+    counts: dict[str, dict[str, int]] = {}
+    for profile in profiles:
+        db = open_profile(home, profile)
+        try:
+            for _, _, name, arguments in tool_calls(db, since):
+                if tool and name != tool:
+                    continue
+                if pattern and not pattern.search(json.dumps(arguments).replace('\\\\', '\\')):
+                    continue
+                counts.setdefault(profile, {}).setdefault(name, 0)
+                counts[profile][name] += 1
+        finally:
+            db.close()
+    return counts
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=(__doc__ or '').splitlines()[0])
     sub = parser.add_subparsers(dest='command', required=True)
+    uses = sub.add_parser('uses', help='how often bots used each file under the given tool folders')
+    uses.add_argument('--hermes-home', required=True)
+    uses.add_argument('--profiles', required=True)
+    uses.add_argument('--root', action='append', required=True)
+    uses.add_argument('--days', type=int, default=60)
+    calls = sub.add_parser('calls', help='tool calls per bot, optionally filtered by tool and an argument regex')
+    calls.add_argument('--hermes-home', required=True)
+    calls.add_argument('--profiles', required=True)
+    calls.add_argument('--days', type=int, default=30)
+    calls.add_argument('--tool', default='')
+    calls.add_argument('--match', default='', help='regular expression over the call arguments (JSON)')
     base = sub.add_parser('baseline', help='counts over history plus trigger calibration')
     base.add_argument('--hermes-home', required=True)
     base.add_argument('--profiles', required=True, help='comma-separated profile names')
@@ -297,6 +371,16 @@ def main() -> int:
     base.add_argument('--skip-github', action='store_true')
     base.add_argument('--min-events', type=int, default=5, help='trigger minimum events in the 7-day window')
     args = parser.parse_args()
+    if args.command == 'uses':
+        for count, last, path in tool_uses(Path(args.hermes_home), args.profiles.split(','),
+                                           [Path(r) for r in args.root], args.days):
+            when = time.strftime('%Y-%m-%d', time.localtime(last)) if last else 'never'
+            print(f'{count:6}  {when:10}  {path}')
+        return 0
+    if args.command == 'calls':
+        print(json.dumps(call_counts(Path(args.hermes_home), args.profiles.split(','), args.days, args.tool,
+                                     args.match), indent=1))
+        return 0
     if not args.skip_github and not args.repo:
         parser.error('--repo is required unless --skip-github')
     args.cache = args.cache or args.out + '.ghcache'

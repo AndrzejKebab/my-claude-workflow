@@ -10,4 +10,6 @@ targets, and design decisions in the game repository that owns them.
 - [Game-development verification](testing.md)
 - [Evidence-based review](evidence-based-review.md)
 - [Unity ECS voxel-game reference](voxel/README.md)
-- [Hermes bot fleet: glossary](hermes-fleet/CONTEXT.md) and [design decisions](hermes-fleet/design.md)
+- [Hermes bot fleet: glossary](hermes-fleet/CONTEXT.md) and [design decisions](hermes-fleet/design.md);
+  questions about what the bots did are answered from their transcripts with
+  `tools/hermes-fleet/watchdog/fleet_metrics.py` (`baseline`, `uses` per tool file, `calls` per tool and argument pattern)

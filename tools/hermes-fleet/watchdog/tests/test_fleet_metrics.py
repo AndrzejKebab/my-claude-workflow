@@ -1,6 +1,7 @@
 import json
 import sqlite3
 import sys
+import time
 import unittest
 from pathlib import Path
 
@@ -97,6 +98,36 @@ class IncrementalScan(unittest.TestCase):
         self.assertEqual([e.message_id for e in claims], [6, 10])
         self.assertEqual(claims[0].approved_id, 1)
         self.assertTrue(claims[1].turn.startswith('Watchdog: lesson check'))
+
+
+class ToolCalls(unittest.TestCase):
+    def setUp(self):
+        import tempfile
+        self.home = Path(tempfile.mkdtemp())
+        path = self.home / 'profiles' / 'worker-1' / 'state.db'
+        path.parent.mkdir(parents=True)
+        db = sqlite3.connect(path)
+        db.execute('create table messages (id integer primary key, session_id text, role text, tool_calls text, '
+                   'timestamp real)')
+        calls = [{'function': {'name': 'terminal', 'arguments': json.dumps({'command': 'python F:/t/probe.py'})}},
+                 {'function': {'name': 'read_file', 'arguments': json.dumps({'path': 'C:/Users/me/a.txt'})}}]
+        db.execute("insert into messages (session_id, role, tool_calls, timestamp) values ('s', 'assistant', ?, ?)",
+                   (json.dumps(calls), time.time()))
+        db.commit()
+        db.close()
+        self.tools = self.home / 'tools'
+        self.tools.mkdir()
+        for name in ('probe.py', 'unused.py'):
+            (self.tools / name).write_text('x', encoding='utf-8')
+
+    def test_uses_counts_files_by_name(self):
+        rows = {Path(p).name: (n, last) for n, last, p in fm.tool_uses(self.home, ['worker-1'], [self.tools], 60)}
+        self.assertEqual(rows['probe.py'][0], 1)
+        self.assertEqual(rows['unused.py'], (0, 0.0))
+
+    def test_calls_filter_by_tool_and_pattern(self):
+        self.assertEqual(fm.call_counts(self.home, ['worker-1'], 30), {'worker-1': {'terminal': 1, 'read_file': 1}})
+        self.assertEqual(fm.call_counts(self.home, ['worker-1'], 30, match=r'C:/Users'), {'worker-1': {'read_file': 1}})
 
 
 class HeadlessBlocks(unittest.TestCase):
