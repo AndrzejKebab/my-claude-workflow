@@ -256,7 +256,7 @@ def send(text: str) -> bool:
     return board.send_text(f'{owner_mention()} {text}'.strip(), DIGEST_PROFILE, 'discord')
 
 
-def digest(now: float, state: dict) -> None:
+def digest(now: float, state: dict, strays: list[str] = ()) -> None:
     """Called by `daily`: build the facts, then send them or hand them to the Advisor's batch."""
     since = float(state.get('digest#last') or now - 86400)
     day = dt.date.fromtimestamp(now).isoformat()
@@ -270,7 +270,7 @@ def digest(now: float, state: dict) -> None:
              *changed,
              'Lesson checks: ' + (', '.join(f'{n} {action}' for action, n in sorted(actions.items())) or 'none'),
              '', 'Long PRs: ' + (', '.join(f'#{p["number"]} ({p["why"]}) sent to the Advisor' for p in long) or 'none new'),
-             *again, '', *supervision(), advisor_usage(now, state),
+             *again, 'Strays: ' + (f'{len(strays)} new' if strays else 'none new'), *strays, '', *supervision(), advisor_usage(now, state),
              'Not counted here yet: per-PR figures (#21) and tool use (#40).']
     text = '\n'.join(lines)
     data = board.STATE_FILE.parent

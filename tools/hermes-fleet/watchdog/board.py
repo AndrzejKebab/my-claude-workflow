@@ -212,7 +212,27 @@ def dm_text(text: str) -> str:
     return stripped if stripped.startswith('Watchdog:') else f'Watchdog: {stripped}'
 
 
+def gateway_live() -> bool:
+    """A gateway is running now. A `hermes chat` client starts one when none is, and that one outlives the
+    owner's Desktop session, so a wake without a live gateway would start the fleet on its own."""
+    try:
+        record = json.loads((HERMES_ROOT / 'gateway.pid').read_text(encoding='utf-8'))
+        state = json.loads((HERMES_ROOT / 'gateway_state.json').read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return False
+    return state.get('gateway_state') == 'running' and process_alive(record.get('pid'), None)
+
+
+def workspace(profile: str) -> Path:
+    if profile.startswith('worker-'):
+        return (REPO / WORKTREE_PATTERN.format(n=profile.split('-')[-1])).resolve()
+    return HERMES_ROOT / 'profiles' / profile
+
+
 def wake(profile: str, text: str) -> bool:
+    if not DRY_RUN and not gateway_live():
+        log(f'no live gateway: {profile} not woken')
+        return False
     text = dm_text(text)
     handle, dm_file = tempfile.mkstemp(prefix='watchdog-', suffix='.txt')
     with os.fdopen(handle, 'w', encoding='utf-8') as stream:
@@ -220,7 +240,9 @@ def wake(profile: str, text: str) -> bool:
     command = [hermes_python(), str(DM_RUNNER), '--run-delivery',
                '--author', json.dumps({'id': 'bot:watchdog', 'name': 'watchdog', 'is_bot': True}),
                'query-file', dm_file,
-               str(HERMES_EXE), '-p', profile, 'chat', '--in', '~', '-c', 'Bot Chat', '--create-if-missing', '-Q']
+               # `--in` sets the folder only when Bot Chat is created; an existing one keeps its own.
+               str(HERMES_EXE), '-p', profile, 'chat', '--in', str(workspace(profile)), '-c', 'Bot Chat',
+               '--create-if-missing', '-Q']
     if DRY_RUN:
         os.unlink(dm_file)
         return True
@@ -1002,7 +1024,7 @@ def read_config(repo: Path) -> dict:
 
 
 # State keys each job owns; `seed_state` copies them out of the single-file watchdog's state.
-DAILY_KEYS = ('deadbranch#', 'localbranch#', 'digest#', 'advtokens#', 'longpr#')
+DAILY_KEYS = ('deadbranch#', 'localbranch#', 'digest#', 'advtokens#', 'longpr#', 'strays#')
 
 
 def owns_key(job: str, key: str) -> bool:
@@ -1080,8 +1102,16 @@ def daily(now: float, state: dict) -> list[str]:
     state.clear()
     state.update(state_keys)
     import daily_digest
+    import stray_sweep
     try:
-        daily_digest.digest(now, state)
+        strays = stray_sweep.stray_sweep(now, state)
+    except OverBudget:
+        raise
+    except Exception as error:
+        log(f'stray sweep failed: {type(error).__name__}: {error}')
+        strays = []
+    try:
+        daily_digest.digest(now, state, strays)
     except OverBudget:
         raise
     except Exception as error:
