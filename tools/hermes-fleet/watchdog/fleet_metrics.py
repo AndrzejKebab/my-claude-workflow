@@ -313,6 +313,8 @@ def tool_uses(home: Path, profiles: list[str], roots: list[Path], days: int) -> 
     uses, last = {p: 0 for p in files}, {p: 0.0 for p in files}
     since = time.time() - days * 86400
     for profile in profiles:
+        if not (home / 'profiles' / profile / 'state.db').exists():
+            continue
         db = open_profile(home, profile)
         try:
             for _, ts, _, arguments in tool_calls(db, since):

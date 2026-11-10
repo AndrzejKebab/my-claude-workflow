@@ -271,6 +271,33 @@ def guard_refusals(since: float) -> str:
     return 'Workspace guard refusals: ' + (', '.join(f'{p} {n}' for p, n in sorted(counts.items())) or 'none')
 
 
+RETIRE_DAYS = 60
+
+
+def unused_tools() -> str:
+    """Toolbox scripts no bot named in a tool call for RETIRE_DAYS: the Advisor's to retire (#40)."""
+    skills = lesson_detect.ROOT / 'skills'
+    toolbox = [p for p in skills.glob('fleet-*') if p.name not in HERMES_RUN]
+    rows = fleet_metrics.tool_uses(board.HERMES_ROOT, list(lesson_detect.PROFILES), toolbox, RETIRE_DAYS)
+    unused = sorted(Path(path).relative_to(skills).as_posix() for count, _, path in rows
+                    if count == 0 and retirable(Path(path)))
+    return f'Unused for {RETIRE_DAYS} days (retire to retired/): ' + (', '.join(unused) or 'none')
+
+
+HERMES_RUN = {'fleet-hooks', 'fleet-workspace'}  # hook scripts Hermes runs itself; no bot ever names them
+
+
+def retirable(path: Path) -> bool:
+    """A command-line tool in a skill's scripts/ that has been in git for RETIRE_DAYS (a newer one has no history)."""
+    if path.parent.name != 'scripts' or path.suffix not in ('.py', '.sh', '.ps1', '.cs'):
+        return False
+    if path.suffix == '.py' and '__main__' not in path.read_text(encoding='utf-8', errors='replace'):
+        return False  # a library other tools import
+    added = board.run(board.tool('git'), 'log', '--diff-filter=A', '--format=%ct', '--', path.name, cwd=path.parent)
+    first = min((float(t) for t in added.split()), default=time.time())
+    return time.time() - first >= RETIRE_DAYS * 86400
+
+
 def tool_use(since: float) -> str:
     """fleet_run runs since `since`, most-used first, with how many each stopped and why (#40)."""
     path = board.STATE_FILE.parent / 'runs.jsonl'
@@ -305,7 +332,7 @@ def digest(now: float, state: dict) -> None:
              *changed,
              'Lesson checks: ' + (', '.join(f'{n} {action}' for action, n in sorted(actions.items())) or 'none'),
              '', 'Long PRs: ' + (', '.join(f'#{p["number"]} ({p["why"]}) sent to the Advisor' for p in long) or 'none new'),
-             *again, guard_refusals(since), tool_use(since), '', *supervision(), advisor_usage(now, state),
+             *again, guard_refusals(since), tool_use(since), unused_tools(), '', *supervision(), advisor_usage(now, state),
              'Not counted here yet: per-PR figures (#21).']
     text = '\n'.join(lines)
     data = board.STATE_FILE.parent
