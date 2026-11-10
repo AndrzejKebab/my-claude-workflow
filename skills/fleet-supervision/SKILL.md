@@ -25,6 +25,8 @@ None. The ledger is one JSON line per check.
 
 ## Recorded run
 
+Example run:
+
 ```
 $ python scripts/supervision.py status --ledger ledger.jsonl
 manager/answers: spot, 20/20 agreed in the last 20 checks

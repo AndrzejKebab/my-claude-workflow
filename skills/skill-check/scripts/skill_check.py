@@ -32,9 +32,12 @@ GUI = re.compile(r'^\s*["\']?(notepad(\.exe)?|explorer(\.exe)?|mspaint|[\w:/\\ .
 
 
 def help_works(path: Path) -> bool:
-    runner = {'.py': [sys.executable], '.sh': ['bash'], '.ps1': ['powershell', '-NoProfile', '-File']}[path.suffix]
+    if path.suffix == '.ps1':  # a script's usage comes from Get-Help, not a --help flag
+        command = ['powershell', '-NoProfile', '-Command', f"Get-Help '{path}'"]
+    else:
+        command = [sys.executable if path.suffix == '.py' else 'bash', str(path), '--help']
     try:
-        result = subprocess.run([*runner, str(path), '--help'], capture_output=True, text=True, timeout=20,
+        result = subprocess.run(command, capture_output=True, text=True, timeout=20,
                                 stdin=subprocess.DEVNULL)
     except (OSError, subprocess.TimeoutExpired):
         return False

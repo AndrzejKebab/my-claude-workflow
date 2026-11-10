@@ -69,6 +69,7 @@ def gate(args, current: list[str], repo: list[str]) -> list[str]:
 
 
 def main() -> int:
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')  # the comment's arrow breaks a cp1250 console
     parser = argparse.ArgumentParser(description=(__doc__ or '').splitlines()[0])
     parser.add_argument('number', type=int)
     parser.add_argument('--to', required=True, choices=STATUS)

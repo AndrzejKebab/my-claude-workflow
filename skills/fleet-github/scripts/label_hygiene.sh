@@ -2,6 +2,7 @@
 # Strip in-flight status labels from closed issues and PRs: REPO=owner/name label_hygiene.sh [--apply]
 
 set -u
+case "${1:-}" in -h|--help) sed -n 2p "$0" | sed 's/^# //'; exit 0 ;; esac
 REPO="${REPO:?set REPO=owner/name}"
 APPLY=0
 [ "${1:-}" = "--apply" ] && APPLY=1

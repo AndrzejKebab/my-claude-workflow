@@ -50,6 +50,13 @@ $ python scripts/lesson.py search --home ../../memory/shared "heredoc blocked he
 ../../memory/shared/hermes/headless-heredoc.md  BLOCKED: Command flagged as dangerous (script execution via heredoc) in a headless turn
 ```
 
+## Example run
+
+```
+$ python scripts/lesson.py search --home memory/shared "script execution via heredoc headless"
+memory\shared\hermes\headless-heredoc.md  BLOCKED: Command flagged as dangerous (script execution via heredoc) in a headless turn
+```
+
 ## General index
 
 Paths are relative to the General home.
