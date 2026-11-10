@@ -3,20 +3,23 @@
 
     fleet_hooks.py pre-tool   --state <file.json>   # Hermes pre_tool_call
     fleet_hooks.py pre-verify                       # Hermes pre_verify
+    fleet_hooks.py pre-llm --state <cache.json> --profile <p>   # Hermes pre_llm_call: plan limits
 
 Rules come from the Claude hooks in this repository's bin/ (cc-whole-file-reads, cc-comment-wall, cc-no-hedge);
 cc-nospin is re-implemented here because it is a bash script with Claude-only advice. Reads the hook payload on
-stdin, prints a Hermes directive or nothing, and fails open. Programs started: none.
+stdin, prints a Hermes directive or nothing, and fails open. Programs started: `hermes usage` (pre-llm only).
 """
 from __future__ import annotations
 
 import argparse
+import datetime
 import hashlib
 import importlib.machinery
 import importlib.util
 import json
 import os
 import re
+import subprocess
 import sys
 import tempfile
 import time
@@ -265,14 +268,71 @@ def pre_verify(text: str) -> dict | None:
     return {'action': 'continue', 'message': ' '.join(reasons) + ' Rewrite your reply without it.'} if reasons else None
 
 
+USAGE_TTL = 300
+WEEK_HOURS = 7 * 24
+HERMES = Path(__file__).resolve().parents[3].parent / 'KebabAI OS' / 'Hermes' / 'hermes-agent' / '.hermes' / 'bin' / 'hermes.exe'
+
+
+def usage_doc(cache: Path, profile: str, now: float) -> dict:
+    """`hermes usage --json` for the profile's provider, cached: one fetch takes about 3 s."""
+    try:
+        cached = json.loads(cache.read_text(encoding='utf-8'))
+        if now - cached['fetched'] < USAGE_TTL:
+            return cached['doc']
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    out = subprocess.run([str(HERMES), '-p', profile, 'usage', '--json'], capture_output=True, text=True,
+                         timeout=20, encoding='utf-8', errors='replace')
+    doc = json.loads(out.stdout) if out.returncode == 0 else {}
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    cache.write_text(json.dumps({'fetched': now, 'doc': doc}), encoding='utf-8')
+    return doc
+
+
+def limits_text(doc: dict, now: float) -> str:
+    parts = []
+    for window in doc.get('windows') or []:
+        used, reset = window.get('used_percent'), window.get('resets_at')
+        if used is None or not reset:
+            continue
+        reset_at = datetime.datetime.fromisoformat(reset)
+        hours = max(0.0, (reset_at.timestamp() - now) / 3600)
+        clock = reset_at.astimezone().strftime('%a %H:%M')
+        label = window.get('label') or ''
+        if 'week' in label.lower():
+            left = max(0.0, 100 - used)
+            even = 100 * (1 - hours / WEEK_HOURS)
+            rate = f'{left / hours:.2f}%/h' if hours else 'now'
+            parts.append(f'{label.lower().replace("current ", "")} {used:.0f}% used, {left:.0f}% left, resets '
+                         f'{clock} (in {hours:.1f} h): {rate} spends it exactly; even pace {even:.0f}%')
+        else:
+            parts.append(f'session (5 h) {used:.0f}% used, resets {clock}')
+    if not parts:
+        return ''
+    return ('Claude plan limits (whole account; a spent session window stops you until it resets): '
+            + '; '.join(parts) + '.')
+
+
+def pre_llm(extra: dict, cache: Path, profile: str, now: float) -> dict | None:
+    if extra.get('parent_session_id'):
+        return None
+    text = limits_text(usage_doc(cache, profile, now), now)
+    return {'context': text} if text else None
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=(__doc__ or '').splitlines()[0])
-    parser.add_argument('event', choices=('pre-tool', 'pre-verify'))
-    parser.add_argument('--state', help='per-profile state file (pre-tool)')
+    parser.add_argument('event', choices=('pre-tool', 'pre-verify', 'pre-llm'))
+    parser.add_argument('--state', help='per-profile state file (pre-tool), usage cache (pre-llm)')
+    parser.add_argument('--profile', help='whose plan limits to show (pre-llm)')
     args = parser.parse_args()
     try:
         payload = json.loads(sys.stdin.read() or '{}')
-        if args.event == 'pre-verify':
+        if args.event == 'pre-llm':
+            if not (args.state and args.profile):
+                return 0
+            result = pre_llm(payload.get('extra') or {}, Path(args.state), args.profile, time.time())
+        elif args.event == 'pre-verify':
             result = pre_verify((payload.get('extra') or {}).get('final_response') or '')
         else:
             if not args.state:

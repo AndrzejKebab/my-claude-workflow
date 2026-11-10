@@ -25,6 +25,10 @@ finish a turn that edited code (`pre_verify`). Each refusal says what to do inst
 - **No trailing offers** at the end of a turn that edited code: "want me to", "shall I", a tally ("three of
   the"), or a caveat with no number sends the reply back once (rules from `bin/cc-no-hedge`).
 
+- **Plan limits (Advisor only)**: `pre-llm` (`pre_llm_call`) adds a `Claude plan limits` line to the start of each
+  turn from `hermes usage --json`, cached 5 min; subagent turns get none. Hermes's turn-end events cannot add context,
+  so the next turn's start carries it.
+
 `graphify hook-guard` is folded into the search nudge (a Hermes hook cannot add context to a call it lets run).
 Not ported: `cc-doctrine` (its list is empty).
 

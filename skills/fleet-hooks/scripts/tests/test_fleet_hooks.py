@@ -138,6 +138,35 @@ class NoHedge(unittest.TestCase):
         self.assertIsNone(fh.pre_verify('Fixed the mesh seam; 42 tests pass.'))
 
 
+USAGE = {'provider': 'anthropic', 'windows': [
+    {'label': 'Current session', 'used_percent': 80.0, 'resets_at': '2026-11-10T04:59:59+00:00'},
+    {'label': 'Current week', 'used_percent': 60.0, 'resets_at': '2026-11-12T17:59:59+00:00'}]}
+NOW = 1794272700.0  # 2026-11-10 01:05 UTC: 64.9 h before the weekly reset
+
+
+class Limits(Base):
+    def test_the_week_line_gives_left_rate_and_pace(self):
+        text = fh.limits_text(USAGE, NOW)
+        self.assertIn('week 60% used, 40% left', text)
+        self.assertIn('in 64.9 h', text)
+        self.assertIn('0.62%/h', text)
+        self.assertIn('even pace 61%', text)
+        self.assertIn('session (5 h) 80% used', text)
+
+    def test_no_windows_says_nothing(self):
+        self.assertEqual(fh.limits_text({'windows': []}, NOW), '')
+
+    def test_a_fresh_cache_is_used_without_fetching(self):
+        cache = self.dir / 'usage.json'
+        cache.write_text(json.dumps({'fetched': NOW - 60, 'doc': USAGE}), encoding='utf-8')
+        with mock.patch.object(fh.subprocess, 'run') as run:
+            self.assertEqual(fh.usage_doc(cache, 'advisor', NOW), USAGE)
+        run.assert_not_called()
+
+    def test_a_subagent_turn_gets_no_context(self):
+        self.assertIsNone(fh.pre_llm({'parent_session_id': 'p'}, self.dir / 'usage.json', 'advisor', NOW))
+
+
 class Wire(Base):
     def run_hook(self, event, payload):
         out = subprocess.run([sys.executable, str(HERE / 'fleet_hooks.py'), event, '--state', str(self.state)],
