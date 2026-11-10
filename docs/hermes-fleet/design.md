@@ -87,6 +87,11 @@ Terms are defined in [CONTEXT.md](CONTEXT.md). Settled with the owner, 2026-11-0
   - The game's own probes and scripts move in a Worker PR: [AndrzejKebab/VoxelGame#439](https://github.com/AndrzejKebab/VoxelGame/issues/439) (`ready`). After it merges, each bot's `external_dirs` gains its checkout's `.agents/skills`.
   - #40 in the hooks: the first write of a new script into a scratch folder is refused with where to look; a retry goes through. The digest lists `fleet_run` runs per tool with their stops, and toolbox scripts unused for 60 days (only those in git that long) for the Advisor to retire.
   - The `external/` tools (edhm, timber-and-stone) were retired by the owner on 2026-11-10, into `bot-tools/retired/external/`.
+  - Semantica (owner, 2026-11-10): the game's document graph (`.memory`, `.project-state`, `Docs`; 299 nodes) is served to every bot by its own `semantica` MCP server on the main clone's `semantica-graph.json`, with only the read tools (`query_graph`, `query_decisions`, `find_precedents`, `get_causal_chain`, `get_graph_summary`, `get_graph_analytics`): eight servers writing one file could corrupt it. `daily` rebuilds the graph (extract 6 s, import 3 s, measured) when a source document is newer than it. Doc searches are pointed at it first. One idle server measured about 15 MB. Takes effect at the next gateway restart.
+
+## First live runs (2026-11-10)
+
+`daily` caught up at 01:32 after Hermes had been closed since 05:03 the day before; it built the digest and woke the Advisor for 7 long PRs; `board-audit` sent the digest with the Advisor's notes at 01:48. The Advisor's FFF connected. Its batch accepted four lessons (`memory/shared/fleet/`) and wrote `skills/fleet-github/references/long-pr-triage.md` and a daily-audit section in `fleet-supervision`.
 
 ## Running mode
 

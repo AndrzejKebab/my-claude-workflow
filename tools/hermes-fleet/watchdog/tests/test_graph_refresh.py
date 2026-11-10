@@ -57,5 +57,39 @@ class GraphRefresh(unittest.TestCase):
         self.assertTrue(all(Path(cwd) != self.trees[2][0] for _, cwd in self.calls))
 
 
+class SemanticaRefresh(unittest.TestCase):
+    def setUp(self):
+        self.repo = Path(tempfile.mkdtemp()) / 'game'
+        (self.repo / 'Docs').mkdir(parents=True)
+        self.doc = self.repo / 'Docs' / 'plan.md'
+        self.doc.write_text('x', encoding='utf-8')
+        self.graph = self.repo / 'semantica-graph.json'
+        self.graph.write_text('{}', encoding='utf-8')
+        config = dict(CONFIG, semantica={'python': 'venv/python.exe', 'extract': 'tools/extract.py',
+                                          'import': 'tools/import.py', 'graph': 'semantica-graph.json',
+                                          'sources': ['Docs', '.memory']})
+        board.configure(self.repo, self.repo.parent / 'hermes', self.repo.parent / 'data', 'daily', config)
+        board.DEADLINE = float('inf')
+        self.calls = []
+        patcher = mock.patch.object(board, 'run', lambda *args, cwd=None, timeout=120: self.calls.append(args) or 'ok')
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        patcher = mock.patch.object(board, 'DRY_RUN', False)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_a_changed_doc_rebuilds_extract_then_import(self):
+        old = time.time() - 3600
+        os.utime(self.graph, (old, old))
+        self.assertTrue(board.refresh_semantica())
+        self.assertEqual([Path(args[1]).name for args in self.calls], ['extract.py', 'import.py'])
+
+    def test_an_unchanged_set_is_left_alone(self):
+        old = time.time() - 3600
+        os.utime(self.doc, (old, old))
+        self.assertFalse(board.refresh_semantica())
+        self.assertEqual(self.calls, [])
+
+
 if __name__ == '__main__':
     unittest.main()

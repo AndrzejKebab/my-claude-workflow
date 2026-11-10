@@ -3,6 +3,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parents[1]
@@ -85,6 +86,25 @@ class Fff(Base):
         self.assertIn('graphify query', message)
         self.assertLess(message.index('graphify query'), message.index('mcp_fff_grep'))
         self.assertNotIn('graphify', self.pre('terminal', command='rg Foo', session='s3', workdir=str(self.dir))['message'])
+
+    def test_a_docs_search_is_pointed_at_semantica(self):
+        repo = self.dir / 'game2'
+        (repo / 'Docs').mkdir(parents=True)
+        (repo / 'semantica-graph.json').write_text('{}', encoding='utf-8')
+        docs = self.pre('terminal', command=f'grep -rn "region lattice" {repo.as_posix()}/Docs', session='d1')
+        self.assertIn('mcp_semantica_query_graph', docs['message'])
+        code = self.pre('terminal', command=f'grep -rn "ChunkMesh" {repo.as_posix()}/Assets', session='d2')
+        self.assertNotIn('semantica', code['message'])
+
+    def test_a_worktree_docs_search_uses_the_bots_own_graph(self):
+        home = self.dir / 'profiles' / 'worker-1'
+        home.mkdir(parents=True)
+        (home / 'config.yaml').write_text('mcp_servers:\n  semantica:\n    env:\n      SEMANTICA_KG_PATH: '
+                                          'F:/Unity/Projects/Game/semantica-graph.json\n', encoding='utf-8')
+        with mock.patch.dict(fh.os.environ, {'HERMES_HOME': str(home)}):
+            result = self.pre('terminal', command='grep -rn "lattice" F:/Unity/Projects/Game-worker-1/Docs', session='d3')
+        self.assertIn('mcp_semantica_query_graph', result['message'])
+        self.assertIn('F:/Unity/Projects/Game', result['message'])
 
     def test_grep_on_a_pipe_is_filtering_not_searching(self):
         self.assertIsNone(self.pre('terminal', command='git log --oneline | grep fix'))

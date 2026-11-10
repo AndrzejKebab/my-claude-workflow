@@ -128,15 +128,43 @@ def graph_for(*places: str) -> Path | None:
     return None
 
 
-def fff_nudge(key: str, state: State, now: float, repo: Path | None) -> dict | None:
+DOCS = re.compile(r'(^|[/\\\s"\'])(Docs|\.memory|\.project-state)([/\\\s"\']|$)|\.md\b', re.I)
+PATHS = re.compile(r'[A-Za-z]:[\\/][^\s"\'|;&]+|/[a-zA-Z]/[^\s"\'|;&]+')
+
+
+def semantica_for(*places: str) -> Path | None:
+    """The folder of the document graph this bot's own `semantica` MCP server reads, else one beside the search."""
+    home = os.environ.get('HERMES_HOME')
+    if home:
+        try:
+            config = (Path(home) / 'config.yaml').read_text(encoding='utf-8', errors='replace')
+        except OSError:
+            config = ''
+        match = re.search(r'SEMANTICA_KG_PATH:\s*["\']?([^"\'\n]+)', config)
+        if match:
+            return Path(match.group(1).strip()).parent
+    for place in filter(None, places):
+        path = Path(f'{place[1]}:{place[2:]}') if re.match(r'^/[a-zA-Z]/', place) else Path(place.strip('"\''))
+        for folder in (path, *path.parents):
+            if (folder / 'semantica-graph.json').is_file():
+                return folder
+    return None
+
+
+def fff_nudge(key: str, state: State, now: float, repo: Path | None, docs: Path | None = None) -> dict | None:
     nudged = state.data.setdefault('fff', {})
     if now - nudged.get(key, -1e18) <= FFF_RETRY_SECONDS:
         return None
     nudged[key] = now
-    if repo is None:
-        return block(FFF_ADVICE)
-    return block(f'This repository has a code graph. To learn how things connect (who calls what, where a concept '
-                 f'lives), first run `graphify query "<question>"` in {repo.as_posix()}. Then: ' + FFF_ADVICE)
+    advice = FFF_ADVICE
+    if repo is not None:
+        advice = (f'This repository has a code graph. To learn how things connect (who calls what, where a concept '
+                  f'lives), first run `graphify query "<question>"` in {repo.as_posix()}. Then: ' + advice)
+    if docs is not None:
+        advice = (f'This searches the project\'s documents. Their decisions, lessons, notes and state records are a '
+                  f'graph: ask `mcp_semantica_query_graph`, `mcp_semantica_query_decisions` or '
+                  f'`mcp_semantica_find_precedents` first ({docs.as_posix()}). For literal text: ' + advice)
+    return block(advice)
 
 
 def walls_in(text: str, suffix: str) -> list[str]:
@@ -185,11 +213,15 @@ def pre_tool(tool: str, args: dict, session: str, state: State, now: float, cwd:
                          'not work. ' + SPIN_ADVICE)
         if searches_code(command):
             cd = CD.match(command)
-            repo = graph_for(cd.group(1) if cd else '', str(args.get('workdir') or ''), cwd)
-            return fff_nudge(digest(session, command), state, now, repo)
+            places = [cd.group(1) if cd else '', *PATHS.findall(command), str(args.get('workdir') or ''), cwd]
+            repo = graph_for(*places)
+            docs = semantica_for(*places) if DOCS.search(command) else None
+            return fff_nudge(digest(session, command), state, now, repo, docs)
     if tool == 'search_files':
-        repo = graph_for(str(args.get('path') or ''), cwd)
-        return fff_nudge(digest(session, json.dumps(args, sort_keys=True)), state, now, repo)
+        places = [str(args.get('path') or ''), cwd]
+        text = json.dumps(args, sort_keys=True)
+        docs = semantica_for(*places) if DOCS.search(text) else None
+        return fff_nudge(digest(session, text), state, now, graph_for(*places), docs)
     if tool == 'write_file' and new_scratch_script(str(args.get('path') or '')):
         nudged = state.data.setdefault('fff', {})
         key = digest(session, 'new-script', str(args.get('path')))

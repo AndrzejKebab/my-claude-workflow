@@ -12,7 +12,9 @@ finish a turn that edited code (`pre_verify`). Each refusal says what to do inst
   refused. Inside a repository with `graphify-out/graph.json` it points you at `graphify query "<question>"`
   for how things connect; for literal text, at `mcp_fff_grep`, `mcp_fff_find_files`, `mcp_fff_multi_grep`
   (FFF indexes your workspace). The same command run again goes through, for paths neither covers. `grep` on a
-  pipe passes. Worker graphs are rebuilt daily by the watchdog.
+  pipe passes. Worker graphs are rebuilt daily by the watchdog. A search of `Docs`, `.memory`, `.project-state`
+  or `.md` files is pointed at the document graph first: `mcp_semantica_query_graph`, `query_decisions`,
+  `find_precedents` (read-only; the watchdog rebuilds it when a document changes).
 - **Look before you write a script.** The first `write_file` of a new script into a scratch folder is refused
   with where to look (the skill list, the game's `.agents/skills`); writing it again goes through.
 - **Read AGENTS.md and CONTEXT.md whole**: no `limit`/`offset`, no `head`/`tail` (from `bin/cc-whole-file-reads`).

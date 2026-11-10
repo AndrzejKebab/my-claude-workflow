@@ -1001,11 +1001,12 @@ def _hours(minutes: int) -> str:
 def configure(repo: Path, hermes_root: Path, data_dir: Path, job: str, config: dict) -> None:
     """Point every module global at one deployment. `config` is the Specific config file's content."""
     global REPO, GITHUB_REPO, HERMES_ROOT, HERMES_EXE, DM_RUNNER, STATE_FILE, LOG_FILE
-    global WORKTREE_PATTERN, KEPT_BRANCHES, ALERT_PROFILE, ALERT_CHANNEL
+    global WORKTREE_PATTERN, KEPT_BRANCHES, ALERT_PROFILE, ALERT_CHANNEL, SEMANTICA
     REPO, HERMES_ROOT = Path(repo), Path(hermes_root)
     GITHUB_REPO = config['github_repo']
     WORKTREE_PATTERN = config['worker_worktree']
     KEPT_BRANCHES = set(config.get('kept_branches', []))
+    SEMANTICA = config.get('semantica') or {}
     ALERT_PROFILE, ALERT_CHANNEL = config['alerts']['profile'], config['alerts']['channel']
     HERMES_EXE = HERMES_ROOT / 'hermes-agent' / '.hermes' / 'bin' / 'hermes.exe'
     DM_RUNNER = HERMES_ROOT / 'hermes-agent' / 'tools' / 'bot_mode_dm.py'
@@ -1133,8 +1134,33 @@ def refresh_graphs() -> list[Path]:
     return rebuilt
 
 
+SEMANTICA: dict = {}
+
+
+def refresh_semantica() -> bool:
+    """Rebuild the main clone's Semantica document graph when a source document is newer than the graph."""
+    if not SEMANTICA:
+        return False
+    graph = REPO / SEMANTICA['graph']
+    built = graph.stat().st_mtime if graph.exists() else 0.0
+    newest = max((p.stat().st_mtime for source in SEMANTICA['sources'] for p in (REPO / source).rglob('*')
+                  if p.is_file()), default=0.0)
+    if newest <= built:
+        return False
+    if DRY_RUN:
+        log('would rebuild the Semantica graph')
+        return True
+    python = str(REPO / SEMANTICA['python'])
+    for step in ('extract', 'import'):
+        if not run(python, str(REPO / SEMANTICA[step]), cwd=REPO, timeout=300):
+            log(f'Semantica {step} failed; graph left as it was')
+            return False
+    log('Semantica graph rebuilt')
+    return True
+
+
 def daily(now: float, state: dict) -> list[str]:
-    """Dead branches on origin and in the owner's clone; stale worktree graphs."""
+    """Dead branches on origin and in the owner's clone; stale worktree and document graphs."""
     alerts = []
     seen = set()
     for name, check in (('dead branch', dead_branches), ('local branch', local_branches)):
@@ -1158,12 +1184,13 @@ def daily(now: float, state: dict) -> list[str]:
     state_keys = {key: value for key, value in state.items() if key in seen or key.startswith(DAILY_KEYS)}
     state.clear()
     state.update(state_keys)
-    try:
-        refresh_graphs()
-    except OverBudget:
-        raise
-    except Exception as error:
-        log(f'graph refresh failed: {type(error).__name__}: {error}')
+    for name, refresh in (('graph refresh', refresh_graphs), ('Semantica refresh', refresh_semantica)):
+        try:
+            refresh()
+        except OverBudget:
+            raise
+        except Exception as error:
+            log(f'{name} failed: {type(error).__name__}: {error}')
     import daily_digest
     try:
         daily_digest.digest(now, state)
