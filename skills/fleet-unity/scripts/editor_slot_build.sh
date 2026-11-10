@@ -31,7 +31,7 @@ case "${1:-}" in -h|--help) ;; *) python "F:/Programowanie/my-claude-workflow/sk
 PROJECT=""
 METHOD=""
 LOG=""
-UNITY="F:/Unity Editors/7000.0.0a12/Editor/Unity.exe"
+UNITY=""
 RETRY=1
 REIMPORT_TIMEOUT=25
 
@@ -54,6 +54,10 @@ while [ $# -gt 0 ]; do
 done
 
 [ -n "$PROJECT" ] && [ -n "$METHOD" ] || usage
+if [ -z "$UNITY" ]; then
+  VERSION=$(sed -n 's/^m_EditorVersion: *//p' "$PROJECT/ProjectSettings/ProjectVersion.txt" 2>/dev/null | tr -d '\r')
+  UNITY="F:/Unity Editors/$VERSION/Editor/Unity.exe"
+fi
 [ -x "$UNITY" ] || { echo "no Unity at $UNITY" >&2; exit 2; }
 [ -d "$PROJECT" ] || { echo "no project at $PROJECT" >&2; exit 2; }
 [ -n "$LOG" ] || LOG="$PROJECT/Logs/editor_slot_build.log"
