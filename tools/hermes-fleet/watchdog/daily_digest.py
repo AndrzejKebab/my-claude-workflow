@@ -271,6 +271,26 @@ def guard_refusals(since: float) -> str:
     return 'Workspace guard refusals: ' + (', '.join(f'{p} {n}' for p, n in sorted(counts.items())) or 'none')
 
 
+def tool_use(since: float) -> str:
+    """fleet_run runs since `since`, most-used first, with how many each stopped and why (#40)."""
+    path = board.STATE_FILE.parent / 'runs.jsonl'
+    runs: dict[str, list[str]] = {}
+    if path.exists():
+        for line in path.read_text(encoding='utf-8').splitlines():
+            try:
+                entry = json.loads(line)
+            except ValueError:
+                continue
+            if entry.get('at', 0) >= since:
+                runs.setdefault(entry.get('tool') or '?', []).append(entry.get('reason') or '?')
+    parts = []
+    for tool, reasons in sorted(runs.items(), key=lambda item: -len(item[1])):
+        stops = sorted({r for r in reasons if r != 'finished'})
+        detail = ', '.join(f'{reasons.count(r)} {r}' for r in stops)
+        parts.append(f'{tool} {len(reasons)}' + (f' ({detail})' if detail else ''))
+    return 'Tool runs (fleet_run): ' + (', '.join(parts[:12]) or 'none')
+
+
 def digest(now: float, state: dict) -> None:
     """Called by `daily`: build the facts, then send them or hand them to the Advisor's batch."""
     since = float(state.get('digest#last') or now - 86400)
@@ -285,8 +305,8 @@ def digest(now: float, state: dict) -> None:
              *changed,
              'Lesson checks: ' + (', '.join(f'{n} {action}' for action, n in sorted(actions.items())) or 'none'),
              '', 'Long PRs: ' + (', '.join(f'#{p["number"]} ({p["why"]}) sent to the Advisor' for p in long) or 'none new'),
-             *again, guard_refusals(since), '', *supervision(), advisor_usage(now, state),
-             'Not counted here yet: per-PR figures (#21) and tool use (#40).']
+             *again, guard_refusals(since), tool_use(since), '', *supervision(), advisor_usage(now, state),
+             'Not counted here yet: per-PR figures (#21).']
     text = '\n'.join(lines)
     data = board.STATE_FILE.parent
     facts, notes, pending = (data / f'digest-{day}.md', data / f'digest-{day}-advisor.md',

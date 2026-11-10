@@ -91,6 +91,23 @@ class Fff(Base):
         self.assertIsNone(self.pre('terminal', command='grep -c ok F:/x/build.log'))
 
 
+class NewScript(Base):
+    def test_a_new_script_in_scratch_is_sent_to_the_toolbox_first_then_passes(self):
+        target = self.dir / '.scratch' / 'count_chunks.py'
+        first = self.pre('write_file', path=str(target), content='print(1)\n')
+        self.assertEqual(first['action'], 'block')
+        self.assertIn('skill', first['message'])
+        self.assertIsNone(self.pre('write_file', path=str(target), content='print(1)\n', now=1010.0))
+
+    def test_an_existing_script_or_a_non_script_passes(self):
+        (self.dir / '.scratch').mkdir()
+        existing = self.dir / '.scratch' / 'old.py'
+        existing.write_text('x = 1\n', encoding='utf-8')
+        self.assertIsNone(self.pre('write_file', path=str(existing), content='x = 2\n'))
+        self.assertIsNone(self.pre('write_file', path=str(self.dir / '.scratch' / 'notes.md'), content='x'))
+        self.assertIsNone(self.pre('write_file', path=str(self.dir / 'Assets' / 'New.cs'), content='class A {}'))
+
+
 class NoHedge(unittest.TestCase):
     def test_trailing_offer_keeps_the_bot_going(self):
         result = fh.pre_verify('Fixed the mesh seam. Want me to also run the tests?')

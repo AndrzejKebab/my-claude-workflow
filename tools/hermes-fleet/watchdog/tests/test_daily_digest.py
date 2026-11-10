@@ -185,6 +185,22 @@ class LongPrs(Base):
         self.assertIn('history comment', self.woken[0][1])
 
 
+class ToolUse(Base):
+    def test_runs_are_counted_by_tool_with_stops_named(self):
+        log = board.STATE_FILE.parent / 'runs.jsonl'
+        log.parent.mkdir(parents=True, exist_ok=True)
+        now = time.time()
+        rows = [('editor_slot_build', 'finished'), ('editor_slot_build', 'deadline'), ('mem_guard', 'finished'),
+                ('editor_slot_build', 'finished')]
+        log.write_text(''.join(json.dumps({'at': now - 60, 'bot': 'worker-1', 'tool': t, 'reason': r}) + '\n'
+                               for t, r in rows) + json.dumps({'at': now - 9 * 86400, 'tool': 'old', 'reason': 'x'}),
+                       encoding='utf-8')
+        line = dd.tool_use(now - 86400)
+        self.assertIn('editor_slot_build 3 (1 deadline)', line)
+        self.assertIn('mem_guard 1', line)
+        self.assertNotIn('old', line)
+
+
 class AdvisorUsage(Base):
     def test_weekly_figure_is_the_difference_between_snapshots(self):
         path = board.HERMES_ROOT / 'profiles' / 'advisor' / 'state.db'

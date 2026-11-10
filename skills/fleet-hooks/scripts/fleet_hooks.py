@@ -47,6 +47,21 @@ FFF_ADVICE = ('Search code with the FFF tools, not grep, rg, find or search_file
               '`mcp_fff_find_files` (file names), `mcp_fff_multi_grep` (several patterns at once). They index your '
               'workspace and rank by what you use. If FFF cannot answer this one (a path outside your workspace, or '
               'FFF is not loaded), run the same command again and it goes through.')
+SCRIPT_SUFFIXES = {'.py', '.sh', '.ps1', '.cs', '.js', '.ts'}
+NEW_SCRIPT_ADVICE = ('Before writing a new script, look for one that already does the job: the skill list in your '
+                     'prompt (read one with `skill_view <name>`; the toolbox skills start with `fleet-`), and the '
+                     "game's `.agents/skills`. If one exists, use it or add a flag to it instead of a copy. If none "
+                     'fits, write this file again and it goes through.')
+
+
+def new_scratch_script(path: str) -> bool:
+    """A script file that does not exist yet, being written into a scratch folder (#40)."""
+    target = Path(path)
+    parts = {part.lower() for part in target.parts}
+    in_scratch = '.scratch' in parts or ('cache' in parts and 'scratch' in parts)
+    return in_scratch and target.suffix.lower() in SCRIPT_SUFFIXES and not target.exists()
+
+
 SEGMENT = re.compile(r'\s*(\|\||&&|;|\|)\s*')
 RECURSIVE_GREP = re.compile(r'^(sudo\s+)?(grep|egrep)\s+(.*\s)?(-[a-zA-Z]*[rR][a-zA-Z]*|--recursive)\b')
 RG = re.compile(r'^(rg|ag)\s')
@@ -175,6 +190,12 @@ def pre_tool(tool: str, args: dict, session: str, state: State, now: float, cwd:
     if tool == 'search_files':
         repo = graph_for(str(args.get('path') or ''), cwd)
         return fff_nudge(digest(session, json.dumps(args, sort_keys=True)), state, now, repo)
+    if tool == 'write_file' and new_scratch_script(str(args.get('path') or '')):
+        nudged = state.data.setdefault('fff', {})
+        key = digest(session, 'new-script', str(args.get('path')))
+        if now - nudged.get(key, -1e18) > FFF_RETRY_SECONDS:
+            nudged[key] = now
+            return block(NEW_SCRIPT_ADVICE)
     if tool in ('write_file', 'patch'):
         path = str(args.get('path') or '')
         if not path or not comment_wall.is_code(path, '')[0] and Path(path).suffix:

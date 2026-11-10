@@ -13,6 +13,8 @@ finish a turn that edited code (`pre_verify`). Each refusal says what to do inst
   for how things connect; for literal text, at `mcp_fff_grep`, `mcp_fff_find_files`, `mcp_fff_multi_grep`
   (FFF indexes your workspace). The same command run again goes through, for paths neither covers. `grep` on a
   pipe passes. Worker graphs are rebuilt daily by the watchdog.
+- **Look before you write a script.** The first `write_file` of a new script into a scratch folder is refused
+  with where to look (the skill list, the game's `.agents/skills`); writing it again goes through.
 - **Read AGENTS.md and CONTEXT.md whole**: no `limit`/`offset`, no `head`/`tail` (from `bin/cc-whole-file-reads`).
 - **No spin**: a command that does nothing (`echo .`, `true`) is refused; the same command more than 6 times in
   120 s is refused. Use `background: true` with `notify_on_complete: true` for long runs.
