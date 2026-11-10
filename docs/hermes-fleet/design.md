@@ -86,7 +86,7 @@ Terms are defined in [CONTEXT.md](CONTEXT.md). Settled with the owner, 2026-11-0
   - General tools moved with shims at the old `bot-tools/` paths: `fleet-unity` (process, build, test, cache, `.meta` helpers), `fleet-dev`, `fleet-discord`, `fleet-hermes`, `fleet_board` into `fleet-github`. Fixed while moving: no `--help` in `empty_worktree_scratch` (which deletes), `clone_flip_watch` and `crash_capture` (both ran their job on `--help`), `editor_slot_build` (`--help` exited 2), and a cp1250 crash in `label.py --dry-run`. The 60 `bot-tools/` references in SOULs keep working through the shims; `bot-tools/` is untracked, so the shims live outside git.
   - The game's own probes and scripts move in a Worker PR: [AndrzejKebab/VoxelGame#439](https://github.com/AndrzejKebab/VoxelGame/issues/439) (`ready`). After it merges, each bot's `external_dirs` gains its checkout's `.agents/skills`.
   - #40 in the hooks: the first write of a new script into a scratch folder is refused with where to look; a retry goes through. The digest lists `fleet_run` runs per tool with their stops, and toolbox scripts unused for 60 days (only those in git that long) for the Advisor to retire.
-  - Open: where the `external/` tools (edhm, timber-and-stone) go.
+  - The `external/` tools (edhm, timber-and-stone) were retired by the owner on 2026-11-10, into `bot-tools/retired/external/`.
 
 ## Running mode
 
