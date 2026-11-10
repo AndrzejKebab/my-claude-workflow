@@ -295,6 +295,81 @@ def outage_alerts(state: dict) -> list[str]:
 
 
 FLEET = ('advisor', 'manager', 'reviewer') + tuple(f'worker-{n}' for n in range(1, 6))
+GATEWAY_STOP = re.compile(r'gateway\.run: Stopping gateway')
+TURN_START = re.compile(r'agent\.turn_context: conversation turn:')
+TURN_END = re.compile(r'agent\.conversation_loop: Turn ended: reason=(\S+)')
+NOTICE_PROC = re.compile(r'"session_id": "(proc_[0-9a-f]+)"')
+
+
+def _tail_lines(path: Path) -> list[str]:
+    try:
+        with open(path, 'rb') as handle:
+            handle.seek(max(0, path.stat().st_size - LOG_TAIL_BYTES))
+            return handle.read().decode('utf-8', errors='replace').splitlines()
+    except OSError:
+        return []
+
+
+def _clock(line: str) -> float:
+    try:
+        return time.mktime(time.strptime(line[:19], '%Y-%m-%d %H:%M:%S'))
+    except ValueError:
+        return 0.0
+
+
+def last_gateway_stop() -> float:
+    stops = [_clock(line) for line in _tail_lines(HERMES_ROOT / 'logs' / 'gateway.log') if GATEWAY_STOP.search(line)]
+    return max(stops, default=0.0)
+
+
+def lost_turn(profile: str) -> str:
+    """What the last gateway stop took from this bot, or ''. A stop ends the turn in flight, and the process
+    registry it drops held every pending background-process notice (Worker-3, 2026-11-10 02:31)."""
+    stop = last_gateway_stop()
+    if not stop:
+        return ''
+    lines = _tail_lines(HERMES_ROOT / 'profiles' / profile / 'logs' / 'agent.log')
+    if any(TURN_START.search(line) and _clock(line) > stop for line in lines):
+        return ''
+    when = time.strftime('%H:%M', time.localtime(stop))
+    ends = [match.group(1) for line in lines if (match := TURN_END.search(line))]
+    if ends and 'gateway_shutdown' in ends[-1]:
+        return f'the gateway stopped at {when} and interrupted your turn'
+    try:
+        con = sqlite3.connect(f'file:{HERMES_ROOT / "profiles" / profile / "state.db"}?mode=ro', uri=True)
+        try:
+            row = con.execute("select content, timestamp from messages where role = 'tool' and timestamp > ? "
+                              "and content like '%Background process started%' "
+                              "and content like '%\"notify_on_complete\": true%' order by timestamp desc limit 1",
+                              (stop - 86400,)).fetchone()
+            if not row or row[1] > stop or not (match := NOTICE_PROC.search(row[0])):
+                return ''
+            delivered = con.execute("select 1 from messages where role = 'user' and timestamp > ? and content like ?",
+                                    (row[1], f'%{match.group(1)}%')).fetchone()
+        finally:
+            con.close()
+    except sqlite3.Error:
+        return ''
+    if delivered:
+        return ''
+    return (f'the gateway stopped at {when} while your background process {match.group(1)} ran, so its completion '
+            'notice never reached you')
+
+
+def restart_wakes(state: dict) -> list[str]:
+    """Wake each bot once per gateway stop that took its turn or a pending background notice."""
+    stop, woken = last_gateway_stop(), []
+    for profile in FLEET:
+        key = f'lostturn#{profile}#{stop:.0f}'
+        if not stop or state.get(key) or turn_running(profile) or provider_down(profile):
+            continue
+        why = lost_turn(profile)
+        if why and wake(profile, f'Watchdog: {why}. Check the result yourself (the process output, your log), then '
+                                 'carry on with your item; a blocker goes where your SOUL says, in this turn.'):
+            state[key] = time.time()
+            woken.append(profile)
+            log(f'{profile} woken after the gateway stop: {why}')
+    return woken
 
 
 def workspace(profile: str) -> Path:
@@ -1338,6 +1413,7 @@ def board_audit(now: float, state: dict) -> list[str]:
 
     alerts = outage_alerts(state)
     probe_outages(now)
+    restart_wakes(state)
     # Tell the owner once per exact combination of PRs, ever. He may have allowed it; repeating is spam.
     told = set(state.get('multijob#told') or [])
     for worker, numbers in sorted(extra.items()):
@@ -1589,7 +1665,7 @@ def board_audit(now: float, state: dict) -> list[str]:
             log(line)
 
     kept = ('ownerreply#', 'finalping#', 'finalwake#', 'labelfix#', 'waitreview#', 'stray#', 'sprawl#', 'multijob#',
-            'outage#')
+            'outage#', 'lostturn#')
     state_keys = {key: value for key, value in state.items()
                   if key in seen or key == 'signing_watermark' or key.startswith(kept)}
     state.clear()
