@@ -19,6 +19,24 @@ Record `skipped` for an item you did not check in spot mode, so the 1-in-5 count
 disagreement needs `--why` and a draft lesson (`fleet-lessons`). Categories: `self-check-analysis`,
 `answers`, `issues`, `passes`, `plans`.
 
+## Daily-batch audit (Reviewer's Issues to Fix, Manager's explanatory answers)
+
+1. List what they actually posted since the last batch. Bots post through the owner's account, so filter by
+   the signer on the first line, not the author:
+   ```
+   gh api "repos/<owner/name>/issues/comments?since=<ISO>&per_page=100" --paginate \
+     --jq '.[]|select(.body|test("^# (Reviewer|Manager)"))|"\(.created_at) \(.issue_url|split("/")|last) \(.id)"'
+   ```
+   Reviews (`gh pr view <N> --json reviews`) for PRs from `gh search prs --updated ">=<date>"`. Manager's
+   answers to Workers are DMs: read the tail of its newest `profiles/manager/sessions/request_dump_*.json`.
+2. If nothing turns up, check that the bots ran before writing "nothing to audit": grep
+   `profiles/<bot>/logs/agent.log` for `402`/`429`/`Insufficient Balance`. The watchdog's "worked since
+   yesterday" counts failed turns too. An outage goes to the owner's notes first; it is his (provider or config).
+3. For each item: `should-check`, judge it against the issue, the decision records (and the records that
+   amend them) and the owner's rulings, then `record`. Record nothing when there were no items.
+4. A wrong item goes back to the Worker next morning as an Issue to Fix ("revert item N from yesterday,
+   because …"), and one notes line per disagreement.
+
 ## Programs started
 
 None. The ledger is one JSON line per check.

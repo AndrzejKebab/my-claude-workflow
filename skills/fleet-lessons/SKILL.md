@@ -39,6 +39,22 @@ The test for the home: does it hold outside this project? Yes is General, no is 
 found by search until the Advisor accepts it (the owner, until the Advisor exists); `accept` and `retire`
 are not yours to run.
 
+## Accept, retire (Advisor only)
+
+```
+python F:\Programowanie\my-claude-workflow\skills\fleet-lessons/scripts/lesson.py accept --home <home> --sha <commit> \
+    --skill F:\Programowanie\my-claude-workflow\skills\fleet-lessons/SKILL.md <slug>
+python F:\Programowanie\my-claude-workflow\skills\fleet-lessons/scripts/lesson.py retire --home <home> --reason "<why untrue now>" <slug>
+```
+
+- `--sha` is required: the commit the lesson was verified at, stamped as `Verified: <date> at <sha>`. Use
+  the head the evidence came from (the PR head, or `origin/main` for a process lesson).
+- Pass `--skill` with this SKILL.md, or the General index above stays stale until someone refreshes it.
+- `add --domain <d>` files the accepted lesson under `<home>/<d>/`; use `fleet` for process lessons that
+  hold for every bot, `hermes` for tool and runtime behaviour.
+- After `add`, read the "related, check it is not the same lesson" line: merge into the named lesson
+  instead of accepting a second copy of one rule.
+
 ## Programs started
 
 None. `lesson.py` only reads and writes markdown in the homes it is given.
@@ -48,6 +64,11 @@ None. `lesson.py` only reads and writes markdown in the homes it is given.
 ```
 $ python scripts/lesson.py search --home ../../memory/shared "heredoc blocked headless"
 ../../memory/shared/hermes/headless-heredoc.md  BLOCKED: Command flagged as dangerous (script execution via heredoc) in a headless turn
+```
+
+```
+$ python scripts/lesson.py accept --home ../../memory/shared --sha 1eb1ec8f --skill SKILL.md owner-question-check-decisions
+accepted: ..\..\memory\shared\fleet\owner-question-check-decisions.md
 ```
 
 ## Example run
@@ -62,5 +83,9 @@ memory\shared\hermes\headless-heredoc.md  BLOCKED: Command flagged as dangerous 
 Paths are relative to the General home.
 
 <!-- lessons-index:start -->
+- A census or invariant counter reads the same large number in every run, across different worlds → [A defect counter needs a test on the legitimate shape it must not count, not only on the defect](fleet/counter-red-on-legit-shape.md)
+- A Worker asks A or B on a contract (what a pass reads, what a stage waits on) and you are about to open a needs-owner question → [Before asking the owner a spec question, check the accepted decision records; a question they answer is decided, not asked](fleet/owner-question-check-decisions.md)
+- You are writing a label reason or a Waiting line that says what the author is still doing → [Before writing what a PR still owes, read its latest review round; do not restate an older status](fleet/read-latest-round-before-status.md)
+- A PR or issue shows no author or Manager activity for days and you are about to name a cause (Worker stuck, lane capacity, baseline moved) → [Before naming why work stalled, check that the bots ran at all](fleet/stall-check-bot-alive.md)
 - BLOCKED: Command flagged as dangerous (script execution via heredoc) in a headless turn → [In a headless turn, run scripts from a file, not inline](hermes/headless-heredoc.md)
 <!-- lessons-index:end -->
