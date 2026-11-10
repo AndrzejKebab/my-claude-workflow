@@ -89,6 +89,15 @@ Terms are defined in [CONTEXT.md](CONTEXT.md). Settled with the owner, 2026-11-0
   - The `external/` tools (edhm, timber-and-stone) were retired by the owner on 2026-11-10, into `bot-tools/retired/external/`.
   - Semantica (owner, 2026-11-10): the game's document graph (`.memory`, `.project-state`, `Docs`; 299 nodes) is served to every bot by its own `semantica` MCP server on the main clone's `semantica-graph.json`, with only the read tools (`query_graph`, `query_decisions`, `find_precedents`, `get_causal_chain`, `get_graph_summary`, `get_graph_analytics`): eight servers writing one file could corrupt it. `daily` rebuilds the graph (extract 6 s, import 3 s, measured) when a source document is newer than it. Doc searches are pointed at it first. One idle server measured about 15 MB. Takes effect at the next gateway restart.
 
+## Provider outages
+
+A bot is down when its newest model-provider refusal (HTTP 401–403 or 429, `Non-retryable client error` in its
+`logs/agent.log`) is newer than its newest turn that got an answer (`Turn ended: reason=text_response|tool`). While
+down it is not woken (wakes, stall counts, stray nudges and the Reviewer queue skip it) and does not count as
+"worked" for the daily audit; the owner is told once per outage with the bots, the refusal and when it began.
+Found by the Advisor's first batch: the DeepSeek balance ran out on 2026-11-06 18:22 and Manager, Reviewer and
+Workers 1, 3 and 4 failed every turn after it while the watchdog kept waking them.
+
 ## First live runs (2026-11-10)
 
 `daily` caught up at 01:32 after Hermes had been closed since 05:03 the day before; it built the digest and woke the Advisor for 7 long PRs; `board-audit` sent the digest with the Advisor's notes at 01:48. The Advisor's FFF connected. Its batch accepted four lessons (`memory/shared/fleet/`) and wrote `skills/fleet-github/references/long-pr-triage.md` and a daily-audit section in `fleet-supervision`.

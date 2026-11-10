@@ -87,7 +87,8 @@ def trends(now: float) -> tuple[list[str], list[str], bool]:
         if parts:
             counts.append(f'{who}: ' + ', '.join(parts))
     since = now - 86400
-    active = any(ts >= since for bot in ('reviewer', 'manager') for ts in data[bot][0])
+    # A bot whose provider refuses every call still records turns; those are not work to audit.
+    active = any(ts >= since for bot in ('reviewer', 'manager') if not board.provider_down(bot) for ts in data[bot][0])
     if len(dates) < TRIGGER['base_days'] + TRIGGER['window_days']:
         counts.append(f'(trend trigger needs {TRIGGER["base_days"] + TRIGGER["window_days"]} live days; '
                       f'{len(dates)} so far)')

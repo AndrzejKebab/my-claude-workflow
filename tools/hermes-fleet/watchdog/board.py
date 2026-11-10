@@ -223,6 +223,54 @@ def gateway_live() -> bool:
     return state.get('gateway_state') == 'running' and process_alive(record.get('pid'), None)
 
 
+GOOD_TURN = re.compile(r'agent\.conversation_loop: Turn ended: reason=(text_response|tool)')
+PROVIDER_FAIL = re.compile(r"Non-retryable client error: Error code: (40[1-3]|429)\b.*?'message': '([^'(]+)")
+LOG_TAIL_BYTES = 2_000_000
+_DOWN_CACHE: dict[str, str] = {}
+
+
+def provider_down(profile: str) -> str:
+    """Why this bot's model provider refuses every call, or ''. Down when its newest provider refusal is newer than its
+    newest turn that got an answer; a wake then only produces another refusal (the 2026-11-06 balance outage)."""
+    if profile in _DOWN_CACHE:
+        return _DOWN_CACHE[profile]
+    path = HERMES_ROOT / 'profiles' / profile / 'logs' / 'agent.log'
+    try:
+        with open(path, 'rb') as handle:
+            handle.seek(max(0, path.stat().st_size - LOG_TAIL_BYTES))
+            lines = handle.read().decode('utf-8', errors='replace').splitlines()
+    except OSError:
+        lines = []
+    since, reason = '', ''
+    for line in lines:
+        if GOOD_TURN.search(line):
+            since, reason = '', ''
+        elif match := PROVIDER_FAIL.search(line):
+            since = since or line[:16]
+            reason = f'HTTP {match.group(1)} {match.group(2).strip()}'
+    _DOWN_CACHE[profile] = f'{reason} since {since}' if reason else ''
+    return _DOWN_CACHE[profile]
+
+
+def outage_alerts(state: dict) -> list[str]:
+    """One owner line per outage: which bots, which refusal, since when."""
+    down = {profile: provider_down(profile) for profile in FLEET}
+    down = {profile: why for profile, why in down.items() if why}
+    if not down:
+        return []
+    key = 'outage#' + _digest('|'.join(sorted(f'{p}:{w}' for p, w in down.items())))
+    if state.get(key):
+        return []
+    state[key] = time.time()
+    first = min(why.split(' since ')[1] for why in down.values())
+    kinds = sorted({why.split(' since ')[0] for why in down.values()})
+    return [f'Model provider down for {", ".join(sorted(down))}: {"; ".join(kinds)} (first refusal {first}). '
+            'Every wake fails until it is fixed (balance, key or plan), so the watchdog does not wake them meanwhile.']
+
+
+FLEET = ('advisor', 'manager', 'reviewer') + tuple(f'worker-{n}' for n in range(1, 6))
+
+
 def workspace(profile: str) -> Path:
     if profile.startswith('worker-'):
         return (REPO / WORKTREE_PATTERN.format(n=profile.split('-')[-1])).resolve()
@@ -232,6 +280,9 @@ def workspace(profile: str) -> Path:
 def wake(profile: str, text: str) -> bool:
     if not DRY_RUN and not gateway_live():
         log(f'no live gateway: {profile} not woken')
+        return False
+    if provider_down(profile):
+        log(f'{profile} not woken: its model provider is down ({provider_down(profile)})')
         return False
     text = dm_text(text)
     handle, dm_file = tempfile.mkstemp(prefix='watchdog-', suffix='.txt')
@@ -1007,6 +1058,7 @@ def configure(repo: Path, hermes_root: Path, data_dir: Path, job: str, config: d
     WORKTREE_PATTERN = config['worker_worktree']
     KEPT_BRANCHES = set(config.get('kept_branches', []))
     SEMANTICA = config.get('semantica') or {}
+    _DOWN_CACHE.clear()
     ALERT_PROFILE, ALERT_CHANNEL = config['alerts']['profile'], config['alerts']['channel']
     HERMES_EXE = HERMES_ROOT / 'hermes-agent' / '.hermes' / 'bin' / 'hermes.exe'
     DM_RUNNER = HERMES_ROOT / 'hermes-agent' / 'tools' / 'bot_mode_dm.py'
@@ -1258,7 +1310,7 @@ def board_audit(now: float, state: dict) -> list[str]:
             continue
         by_worker[item['worker']] = item
 
-    alerts = []
+    alerts = outage_alerts(state)
     # Tell the owner once per exact combination of PRs, ever. He may have allowed it; repeating is spam.
     told = set(state.get('multijob#told') or [])
     for worker, numbers in sorted(extra.items()):
@@ -1294,6 +1346,9 @@ def board_audit(now: float, state: dict) -> list[str]:
         label = f'{"PR" if item["kind"] == "pr" else "issue"} #{item["number"]}'
 
         running = turn_running(profile)
+        if item['number'] in parked_numbers or provider_down(profile):  # a bot whose provider refuses cannot stall
+            state[key] = {'wakes': 0, 'last_wake': 0.0, 'alerted': False}
+            continue
         if item['number'] in parked_numbers:
             state[key] = {'wakes': 0, 'last_wake': 0.0, 'alerted': False}
             if DRY_RUN:
@@ -1350,6 +1405,8 @@ def board_audit(now: float, state: dict) -> list[str]:
     key = 'reviewer#queue'
     seen.add(key)
     record = state.get(key, {'wakes': 0, 'last_wake': 0.0, 'alerted': False, 'prs': []})
+    if provider_down('reviewer'):
+        queue = []  # its provider refuses: waking it or calling it stalled helps nobody
     numbers = sorted(item['number'] for item in queue)
     if not queue:
         record = {'wakes': 0, 'last_wake': 0.0, 'alerted': False, 'prs': []}
@@ -1444,6 +1501,8 @@ def board_audit(now: float, state: dict) -> list[str]:
             state.setdefault(key, now)
         for key, profile, line, message in strays:
             number = key.split('#')[2]
+            if provider_down(profile):
+                continue  # not counted: an outage is not the bot ignoring a nudge
             record = nudge_record(state, key, profile)
             if record['alerted'] or (record['wakes'] and now - record['last_wake'] < STALE_LABEL_MINUTES * 60):
                 continue
@@ -1502,7 +1561,8 @@ def board_audit(now: float, state: dict) -> list[str]:
         for line in signed_lines:
             log(line)
 
-    kept = ('ownerreply#', 'finalping#', 'finalwake#', 'labelfix#', 'waitreview#', 'stray#', 'sprawl#', 'multijob#')
+    kept = ('ownerreply#', 'finalping#', 'finalwake#', 'labelfix#', 'waitreview#', 'stray#', 'sprawl#', 'multijob#',
+            'outage#')
     state_keys = {key: value for key, value in state.items()
                   if key in seen or key == 'signing_watermark' or key.startswith(kept)}
     state.clear()
