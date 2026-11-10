@@ -49,6 +49,17 @@ class Outage(unittest.TestCase):
             self.assertFalse(board.wake('worker-3', 'x'))
         popen.assert_not_called()
 
+    def test_a_down_bot_is_probed_once_its_newest_refusal_is_an_hour_old(self):
+        self.log('worker-1', GOOD, BROKE)
+        self.log('worker-3', GOOD, AGAIN)
+        refused = time.mktime(time.strptime('2026-11-10 01:49:07', '%Y-%m-%d %H:%M:%S'))
+        with mock.patch.object(board, 'wake', return_value=True) as wake:
+            probed = board.probe_outages(refused + 30 * 60)
+        self.assertEqual(probed, ['worker-1'])
+        self.assertTrue(wake.call_args.kwargs['probe'])
+        with mock.patch.object(board, 'wake', return_value=True):
+            self.assertEqual(board.probe_outages(refused + 61 * 60), ['worker-1', 'worker-3'])
+
     def test_the_owner_hears_once_per_outage(self):
         self.log('worker-1', GOOD, BROKE)
         self.log('manager', GOOD, BROKE)

@@ -95,6 +95,8 @@ A bot is down when its newest model-provider refusal (HTTP 401–403 or 429, `No
 `logs/agent.log`) is newer than its newest turn that got an answer (`Turn ended: reason=text_response|tool`). While
 down it is not woken (wakes, stall counts, stray nudges and the Reviewer queue skip it) and does not count as
 "worked" for the daily audit; the owner is told once per outage with the bots, the refusal and when it began.
+Only an answered turn ends an outage, so each down bot gets one probe wake once its newest refusal is an hour old;
+a probe that fails adds a refusal and resets the hour.
 Found by the Advisor's first batch: the DeepSeek balance ran out on 2026-11-06 18:22 and Manager, Reviewer and
 Workers 1, 3 and 4 failed every turn after it while the watchdog kept waking them.
 

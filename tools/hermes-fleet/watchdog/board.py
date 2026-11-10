@@ -226,12 +226,12 @@ def gateway_live() -> bool:
 GOOD_TURN = re.compile(r'agent\.conversation_loop: Turn ended: reason=(text_response|tool)')
 PROVIDER_FAIL = re.compile(r"Non-retryable client error: Error code: (40[1-3]|429)\b.*?'message': '([^'(]+)")
 LOG_TAIL_BYTES = 2_000_000
-_DOWN_CACHE: dict[str, str] = {}
+PROBE_MINUTES = 60
+_DOWN_CACHE: dict[str, tuple[str, float]] = {}
 
 
-def provider_down(profile: str) -> str:
-    """Why this bot's model provider refuses every call, or ''. Down when its newest provider refusal is newer than its
-    newest turn that got an answer; a wake then only produces another refusal (the 2026-11-06 balance outage)."""
+def _outage(profile: str) -> tuple[str, float]:
+    """(why the provider refuses, epoch of the newest refusal), or ('', 0.0)."""
     if profile in _DOWN_CACHE:
         return _DOWN_CACHE[profile]
     path = HERMES_ROOT / 'profiles' / profile / 'logs' / 'agent.log'
@@ -241,15 +241,41 @@ def provider_down(profile: str) -> str:
             lines = handle.read().decode('utf-8', errors='replace').splitlines()
     except OSError:
         lines = []
-    since, reason = '', ''
+    since, reason, last = '', '', 0.0
     for line in lines:
         if GOOD_TURN.search(line):
-            since, reason = '', ''
+            since, reason, last = '', '', 0.0
         elif match := PROVIDER_FAIL.search(line):
             since = since or line[:16]
             reason = f'HTTP {match.group(1)} {match.group(2).strip()}'
-    _DOWN_CACHE[profile] = f'{reason} since {since}' if reason else ''
+            try:
+                last = time.mktime(time.strptime(line[:19], '%Y-%m-%d %H:%M:%S'))
+            except ValueError:
+                pass
+    _DOWN_CACHE[profile] = (f'{reason} since {since}' if reason else '', last)
     return _DOWN_CACHE[profile]
+
+
+def provider_down(profile: str) -> str:
+    """Why this bot's model provider refuses every call, or ''. Down when its newest provider refusal is newer than its
+    newest turn that got an answer; a wake then only produces another refusal (the 2026-11-06 balance outage)."""
+    return _outage(profile)[0]
+
+
+def probe_outages(now: float) -> list[str]:
+    """Wake each down bot once its newest refusal is PROBE_MINUTES old. Only a call that works ends an outage, and a
+    down bot gets no other wake, so without this a topped-up balance never reaches it."""
+    probed = []
+    for profile in FLEET:
+        why, last = _outage(profile)
+        if not why or now - last < PROBE_MINUTES * 60 or turn_running(profile):
+            continue
+        text = (f'Watchdog: your model provider refused your calls ({why}). This wake checks whether it works again. '
+                'Answer in one line, then carry on with your usual work.')
+        if wake(profile, text, probe=True):
+            probed.append(profile)
+            log(f'{profile} probed: {why}')
+    return probed
 
 
 def outage_alerts(state: dict) -> list[str]:
@@ -265,7 +291,7 @@ def outage_alerts(state: dict) -> list[str]:
     first = min(why.split(' since ')[1] for why in down.values())
     kinds = sorted({why.split(' since ')[0] for why in down.values()})
     return [f'Model provider down for {", ".join(sorted(down))}: {"; ".join(kinds)} (first refusal {first}). '
-            'Every wake fails until it is fixed (balance, key or plan), so the watchdog does not wake them meanwhile.']
+            'Every wake fails until it is fixed (balance, key or plan), so the watchdog only probes them once an hour.']
 
 
 FLEET = ('advisor', 'manager', 'reviewer') + tuple(f'worker-{n}' for n in range(1, 6))
@@ -277,11 +303,11 @@ def workspace(profile: str) -> Path:
     return HERMES_ROOT / 'profiles' / profile
 
 
-def wake(profile: str, text: str) -> bool:
+def wake(profile: str, text: str, probe: bool = False) -> bool:
     if not DRY_RUN and not gateway_live():
         log(f'no live gateway: {profile} not woken')
         return False
-    if provider_down(profile):
+    if provider_down(profile) and not probe:
         log(f'{profile} not woken: its model provider is down ({provider_down(profile)})')
         return False
     text = dm_text(text)
@@ -1311,6 +1337,7 @@ def board_audit(now: float, state: dict) -> list[str]:
         by_worker[item['worker']] = item
 
     alerts = outage_alerts(state)
+    probe_outages(now)
     # Tell the owner once per exact combination of PRs, ever. He may have allowed it; repeating is spam.
     told = set(state.get('multijob#told') or [])
     for worker, numbers in sorted(extra.items()):
@@ -1346,7 +1373,7 @@ def board_audit(now: float, state: dict) -> list[str]:
         label = f'{"PR" if item["kind"] == "pr" else "issue"} #{item["number"]}'
 
         running = turn_running(profile)
-        if item['number'] in parked_numbers or provider_down(profile):  # a bot whose provider refuses cannot stall
+        if provider_down(profile):  # a bot whose provider refuses cannot stall
             state[key] = {'wakes': 0, 'last_wake': 0.0, 'alerted': False}
             continue
         if item['number'] in parked_numbers:
