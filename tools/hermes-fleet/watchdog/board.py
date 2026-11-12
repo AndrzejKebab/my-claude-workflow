@@ -490,7 +490,7 @@ def labelled_items(label: str) -> list[dict]:
     items = []
     for command in (('issue', 'list'), ('pr', 'list')):
         raw = run(tool('gh'), *command, '-R', GITHUB_REPO, '--state', 'open', '--label', label,
-                  '--json', 'number,title,url,updatedAt,labels', '--limit', '100')
+                  '--json', 'number,title,url,updatedAt,labels,body', '--limit', '100')
         for entry in json.loads(raw or '[]'):
             if any(item['number'] == entry['number'] for item in items):
                 continue
@@ -554,7 +554,9 @@ def labelled_items(label: str) -> list[dict]:
                     entry['reviewer_answered'] = True
                     entry['reviewer_at'] = max(entry['reviewer_at'], entry['review_submitted_at'])
             entry['labels'] = [label_entry['name'] for label_entry in entry.get('labels') or []]
-            entry['worker'] = next((name.split(':', 1)[1] for name in entry['labels']
+            entry['hold'], entry['held_by'] = hold_of(
+                entry['labels'], [entry.get('body') or ''] + [c.get('body') or '' for c in comments])
+            entry['worker'] =next((name.split(':', 1)[1] for name in entry['labels']
                                     if name.startswith('worker:')), '')
             # Only the item's author counts as movement: a Manager comment on a Worker's PR is a
             # conversation, not work, and counting it made a silent Worker look active.
@@ -865,6 +867,24 @@ def local_branches(now: float, state: dict) -> tuple[list[tuple[str, str, str]],
     return wakes, reports, seen
 
 
+STATUS_LABELS = ('ready', 'in-progress', 'waits-for-review', 'in-review', 'waits-for-final-review',
+                 'waits-for-eye-review', 'blocked', 'needs-owner')
+BLOCKED_BY = re.compile(r'blocked by\s+((?:#\d{1,5}(?:\s*(?:,|and|&)\s*)?)+)', re.I)
+
+
+def hold_of(labels: list[str], texts: list[str], state=None) -> tuple[str, list[int]]:
+    """`on-hold` means waiting on another item, named by `Blocked by #N` in the body or a comment:
+    'held' while one of them is open, 'released' once all closed, 'unnamed' when none is named."""
+    if 'on-hold' not in labels:
+        return '', []
+    numbers = sorted({int(n) for text in texts for match in BLOCKED_BY.finditer(text or '')
+                      for n in re.findall(r'#(\d+)', match.group(1))})
+    if not numbers:
+        return 'unnamed', []
+    state = state or issue_state
+    return ('held' if any(state(n) == 'OPEN' for n in numbers) else 'released'), numbers
+
+
 def parked(item: dict, now: float) -> bool:
     """True when someone declared a wait on this item and it has not run out.
 
@@ -872,6 +892,8 @@ def parked(item: dict, now: float) -> bool:
     must be newer than the last work, so a stale note cannot park an item forever, and an `until
     HH:MM` expires 15 minutes after that time so a missed slot is caught rather than trusted.
     """
+    if item.get('hold') == 'held':
+        return True
     if not item.get('waiting_reason'):
         return False
     declared = _stamp(item.get('wait_declared_at') or '')
@@ -1011,8 +1033,11 @@ def stray_labels(now: float, skip: set[int] = frozenset()) -> tuple[list[tuple[s
     def stray(key: str, line: str, profile: str, message: str) -> None:
         strays.append((key, profile, line, message))
 
+    def unheld(label: str) -> list[dict]:
+        return [item for item in labelled_items(label) if not item.get('hold')]  # `on-hold` has its own loop
+
     # `waits-for-review` — queued for Reviewer. Nobody has started reviewing.
-    for item in labelled_items('waits-for-review'):
+    for item in unheld('waits-for-review'):
         key = f'stray#waits-for-review#{item["number"]}#{item["labelled_at"]}'
         seen.append(key)
         if not signed_ago(item['labelled_at'], STALE_LABEL_MINUTES, now):
@@ -1030,7 +1055,7 @@ def stray_labels(now: float, skip: set[int] = frozenset()) -> tuple[list[tuple[s
         # Not answered: the Reviewer queue wakes the Reviewer and tells the owner.
 
     # `in-review` — the Reviewer has it open. This is minutes of work, so hours mean it was abandoned.
-    for item in labelled_items('in-review'):
+    for item in unheld('in-review'):
         key = f'stray#in-review#{item["number"]}#{item["labelled_at"]}'
         seen.append(key)
         if not signed_ago(item['labelled_at'], IN_REVIEW_MINUTES, now):
@@ -1047,7 +1072,7 @@ def stray_labels(now: float, skip: set[int] = frozenset()) -> tuple[list[tuple[s
         # Not answered: the Reviewer queue wakes the Reviewer and tells the owner.
 
     # `in-progress` — the author is working. A long silence means they stopped without saying so.
-    for item in labelled_items('in-progress'):
+    for item in unheld('in-progress'):
         key = f'stray#in-progress#{item["number"]}#{item["labelled_at"]}'
         seen.append(key)
         wait = _hours(int((now - _stamp(item['labelled_at'])) / 60))
@@ -1111,9 +1136,10 @@ def stray_labels(now: float, skip: set[int] = frozenset()) -> tuple[list[tuple[s
 
     # `blocked` — the author cannot continue until someone answers. Two ways it goes wrong: the answer
     # came and the label stayed (the author now has work and looks stuck), or nobody answers.
-    for item in labelled_items('blocked'):
+    for item in unheld('blocked'):
         key = f'stray#blocked#{item["number"]}#{item["labelled_at"]}'
         seen.append(key)
+        item_labels = set(item.get('labels') or [])
         if parked(item, now):
             # Held by an open dependency: the decision is taken and there is nobody to chase.
             continue
@@ -1131,12 +1157,45 @@ def stray_labels(now: float, skip: set[int] = frozenset()) -> tuple[list[tuple[s
                   f'in-progress with a one-line comment `Label: blocked → in-progress — <why>`, and carry on. '
                   f'If the answer does not unblock you, say exactly what is still missing on the PR.')
         elif signed_ago(item['labelled_at'], STALE_LABEL_MINUTES, now):
-            stray(key, f'#{item["number"]} ({item["kind"]}, {author}) blocked {wait} and nobody has '
-                       f'answered.',
-                  'manager',
-                  f'{item["kind"]} #{item["number"]} {item["title"]} ({item["url"]}) has been blocked for '
-                  f'{wait} with no answer. Read the blocker, answer it or relay it to the owner as an '
-                  f'Owner-inbox question, and set the label back to in-progress when it is answered.')
+            if 'question' in item_labels:
+                stray(key, f'#{item["number"]} ({item["kind"]}, {author}) blocked {wait} on a worker '
+                           f'question that nobody has answered.',
+                      'manager',
+                      f'{item["kind"]} #{item["number"]} {item["title"]} ({item["url"]}) is '
+                      f'`blocked` + `question`: the {author} is waiting on an answer, not on another item. '
+                      f'Read the question and answer it, or relay it to the owner as an Owner-inbox '
+                      f'question.')
+            else:
+                stray(key, f'#{item["number"]} ({item["kind"]}, {author}) blocked {wait} and nobody has '
+                           f'answered.',
+                      'manager',
+                      f'{item["kind"]} #{item["number"]} {item["title"]} ({item["url"]}) has been blocked for '
+                      f'{wait} with no answer. Read the blocker, answer it or relay it to the owner as an '
+                      f'Owner-inbox question, and set the label back to in-progress when it is answered.')
+
+    # `on-hold` — waiting on another item. Quiet while that item is open; the author owes the next step
+    # once it closes, or when the hold names nothing to wait on.
+    for item in labelled_items('on-hold'):
+        key = f'stray#on-hold#{item["number"]}#{item["labelled_at"]}'
+        seen.append(key)
+        if item.get('hold') == 'held' or not signed_ago(item['labelled_at'], STALE_LABEL_MINUTES, now):
+            continue
+        author = f'worker-{item["worker"]}' if item['worker'] else 'manager'
+        status = next((name for name in item.get('labels') or [] if name in STATUS_LABELS), 'in-progress')
+        if item.get('hold') == 'released':
+            deps = ', '.join(f'#{n}' for n in item.get('held_by') or [])
+            stray(key, f'#{item["number"]} ({item["kind"]}, {author}) is on-hold behind {deps}, which closed.',
+                  author,
+                  f'{item["kind"]} #{item["number"]} {item["title"]} ({item["url"]}) is on-hold behind {deps}, '
+                  f'and that is closed now. Drop the hold and carry on: `label.py {item["number"]} --to '
+                  f'{"in-progress" if status == "blocked" else status} --remove on-hold --signer <You> '
+                  f'--reason "{deps} closed"`.')
+        else:
+            stray(key, f'#{item["number"]} ({item["kind"]}, {author}) is on-hold but names no item it waits on.',
+                  author,
+                  f'{item["kind"]} #{item["number"]} {item["title"]} ({item["url"]}) carries on-hold but names no '
+                  f'item it waits on, so nobody can tell when it is free. Write `Blocked by #N` in its body or a '
+                  f'comment, or drop the hold (`label.py ... --remove on-hold`).')
 
     return [entry for entry in strays if int(entry[0].split('#')[2]) not in skip], seen
 
@@ -1494,7 +1553,7 @@ def board_audit(now: float, state: dict) -> list[str]:
                     pushed = item['head_committed_at'] or item['author_at']
                     if not (item['is_pr'] and item['reviewer_at'] and item['reviewer_at'] > pushed):
                         continue  # the author holds this one
-                if any(entry['number'] == item['number'] for entry in queue):
+                if any(entry['number'] == item['number'] for entry in queue) or item.get('hold') == 'held':
                     continue
                 if label == 'waits-for-review' and item['reviewer_answered']:
                     continue  # it answered (comment or review); whether the label moved is the audit's job
