@@ -2,7 +2,7 @@
 
 Symptom: a command is refused by approvals.deny and you are about to say the work belongs to someone else by rule
 Domain: fleet
-Verified: pending
+Verified: 2026-11-11 at 2c3c2faa
 
 ## What to do
 

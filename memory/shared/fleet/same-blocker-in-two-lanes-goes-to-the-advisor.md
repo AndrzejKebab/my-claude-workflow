@@ -2,7 +2,7 @@
 
 Symptom: a second Worker reports a failure you have already seen in another lane (a toolchain upgrade, a cache, a process nobody can kill)
 Domain: fleet
-Verified: pending
+Verified: 2026-11-11 at 2c3c2faa
 
 ## What to do
 

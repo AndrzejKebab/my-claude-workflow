@@ -22,6 +22,80 @@ Run builds and players through `fleet-run`, and hold the seat (`fleet-seat`) for
 | `clone_flip_watch.py` | `--repo <clone> --out <log>`: on every branch change of the clone, logs a process snapshot, so whoever moved the checkout is named. spawns: git. |
 | `meta_integrity.py` | Every `.cs` under `Assets/` has a committed `.meta` and no `.meta` is orphaned: `--ref` (default `origin/main`) or `--staged`. Exit 1 on findings. spawns: git. |
 
+## A build's provenance file and its executable live in different directories
+
+A game's build wrapper that accepts `--output` may still write `build-info.json` to its **own** default
+(`<project>/Builds/Benchmark/Client/build-info.json`) while the player lands in the directory you named. Two
+consequences, both of which have produced false evidence:
+
+- the provenance gate reads the file at the **default** path, never at the output directory — looking only beside
+the exe reports "no build-info" and tempts you to hand the run over on trust;
+- the stale file from an earlier build stays in that default directory, so **check `branchSha` against the head you
+  meant to build and the file's mtime against the exe's**, not the folder's existence. An exe at `01:56` with
+  `branchSha` naming the previous commit is the normal shape of a build you did not actually make.
+
+Quote the pair in the report — `build-info.json` `branchSha = <sha>` with its mtime, and the exe path with its
+time — and treat a mismatch as no build at all.
+
+## A compile count is only fresh if the log was new
+
+A compile tool that reads a fixed path (`Logs/batch-compile.log`, `Logs/batch-compile.jsonl`) will happily report
+the previous run's numbers: the command returns, the counts look identical to the last attempt, and a cache fix
+that actually worked reads as a failure that did not. Delete those logs before starting the run, then quote the
+log's own mtime beside the counts. `unity-test-failures.py --stale` is the same guard for results XML — refuse
+any file older than the run that was supposed to write it.
+
+**Two counts, never one.** A run can be `exit code 0` with zero `error CS` and still print dozens of console
+errors: the wrapper reports `console: N error(s)`, typically job-reflection noise
+(`Failed to create job reflection data`, `MethodAccessException … CreateJobReflectionData()`). Report it as
+"exit 0, `error CS` count 0, N console errors of the <class> kind"; calling that "0 errors" or "clean console" is a
+false claim that a later reader will trust. When the wrapper's own counts disagree with a plain grep of the log,
+the wrapper is describing console entries and the grep is describing compiler diagnostics — say which one you
+quoted.
+
+## A binary pinned by git-lfs is only real once the object is pushed
+
+A plugin `.dll`/`.so` stored through git-lfs looks pinned in the diff while its **content object may never have
+left your machine**: `git lfs ls-files` marks it absent, the working file falls back to whatever the clone
+already had, and a test whose subject is the binary's contents (a node/type count, a version string) fails on
+every clone except yours.
+
+- After committing a binary, run `git lfs push origin <branch>` explicitly, then verify from a **fresh clone**
+  (`--depth 1 --branch <branch>` with LFS enabled) that the file's size and a byte-string count are right.
+- Treat a binary-content test as an LFS liveness check, not just a behaviour check: when it fails on a clean
+  clone and passes on yours, look at `git lfs ls-files` before touching the code.
+
+## A hung Editor outlives the shell kill
+
+`Stop-Process -Id <pid>` and `taskkill /F /PID <pid>` can return without killing a wedged batch Editor: the
+process stays alive, keeps `Temp/UnityLockfile`, and every later batchmode run exits 1 moments after
+`[Licensing::IpcConnector] Successfully connected` — before any test or compile output.
+
+- Confirm the state by **pid read-back** (`unity_procs.py ps`, `Get-Process -Id <pid>`), never by the kill
+  command's exit status. A command that reports success while the process survives is the normal shape here.
+- The route that works is `unity_procs.py kill --worktree <name> --batch-only --yes`, scoped to your worktree.
+- Never delete `Temp/UnityLockfile` while its holder is alive: a stale lock is a symptom, and deleting it
+  under a running holder is how two Editors end up on one project. A lock that stays `Device or resource busy`
+  with no process of yours listed means the holder is someone else's — ask, do not clear.
+- A refusal that lands **after** licensing connects and **before** tests is the lock/seat path, not a licence
+  denial. Say which of the two it is when reporting; conflating them sends the coordinator to the wrong problem.
+
+## A gitignored leftover is invisible to merges
+
+`Assets/` is mostly gitignored in some projects (`/Assets/*` with explicit re-includes), so a package folder, a
+generated settings file or a stray tool left behind by an older setup survives every merge, never shows in
+`git status`, and is absent from the main clone that everyone measures against. When a worktree compiles and the
+main clone does not — or the reverse — list the same directory in both and run `git check-ignore -v <path>`
+before reading any code. Recipe and ordering for a cold worktree: `references/worktree-cold-compile.md`.
+
+## Deleting under `Packages/` needs a link check first
+
+Some worktrees carry `Packages/` entries that are junctions into folders outside the repository; a recursive
+delete follows the link and empties the target. Before any `rm -rf` under `Packages/`, check the attributes —
+`os.lstat` plus `FILE_ATTRIBUTE_REPARSE_POINT` — and treat a reparse point as "report it, do not delete".
+`clear_caches.py` refuses links for the same reason: prefer it, or delete explicit paths, never a wildcard.
+A plain directory still is not free to remove — say which folder, who asked, and why the count needs it.
+
 Example run (real output, 2026-11-09):
 
 ```

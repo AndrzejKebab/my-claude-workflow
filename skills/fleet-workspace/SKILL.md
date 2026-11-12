@@ -29,6 +29,13 @@ right. Write `"$TMPDIR/x"` or a scratch path; never `/tmp/x` (a Windows program 
 write: the Unity editors and CLI, Unity and game logs and crash reports, installed programs. Anything else is
 the owner's. If you need a path added, ask the owner through Manager; do not retry the refused path another way.
 
+## Patterns that look like paths
+
+The guard reads every path-like token in a command, and that includes regex alternatives. A privacy grep
+such as `grep -E "F:/|C:/Users|<username>"` is refused as "outside your work folders". Put the patterns,
+one per line, in a scratch file and run `grep -c -i -F -f "$TMPDIR/privacy.pat"`. The same applies to any
+`sed` or `grep` expression that names a drive or a home folder.
+
 ## The guard
 
 `scripts/workspace_guard.py` is a Hermes `pre_tool_call` hook, set in each bot's `config.yaml`. Its refusals
