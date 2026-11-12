@@ -97,6 +97,13 @@ def comment_problems(body: str, signer: str, allow_paths: bool = False) -> list[
     return problems
 
 
+def _filled(text: str, name: str) -> bool:
+    """A `## Name` section or a `Name:` line with real content; a template's `<...>` placeholder is not content."""
+    content = _section(text, name) + '\n' + '\n'.join(re.findall(rf'^\W*{name}:\s*(.*)$', text, re.M))
+    content = re.sub(r'<[^>\n]*>|<!--.*?-->', '', content, flags=re.S)
+    return bool(re.search(r'[^\W\d_]', content))  # a letter: a bare `1.` list marker is not content
+
+
 def criteria(issue_body: str) -> list[str]:
     return _items(_section(issue_body, 'Acceptance criteria'))
 
@@ -122,9 +129,9 @@ def ready_problems(pr_body: str, issue_body: str, is_bug: bool, comments: list[s
         problems.append(f'the PR body\'s `## Evidence` has {given} line(s) for {wanted} acceptance criteria: one '
                         f'`- <criterion>: <command> -> <result>` line each')
     if is_bug:
-        for line in ('Cause', 'Reproduction'):
-            if not re.search(rf'^\W*{line}:\s*\S', pr_body, re.M):
-                problems.append(f'bug PR: the body needs a `{line}:` line (confirmed with unity-diagnose)')
+        for name in ('Cause', 'Reproduction'):
+            if not any(_filled(text, name) for text in (issue_body, pr_body)):
+                problems.append(f'bug: the issue needs its `## {name}` section filled in (confirmed with unity-diagnose)')
         if not _approved(comments, 'approach approved', ('Advisor',), owner_counts=True):
             problems.append('bug PR: no "Approach approved" comment from the Advisor (or the owner) yet')
     return problems

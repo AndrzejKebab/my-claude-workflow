@@ -33,15 +33,12 @@ produce that same refusal — fix both together.
   right and `ready` is the honest label: post the ruling as a comment so the item is not silent, and move it to
   `in-progress` when the draft PR exists. Never fake the move by labelling it `in-progress` without a PR.
 - `--to waits-for-review` on a PR needs `## Evidence` with one line per acceptance criterion; on a bug,
-  also `Cause:`, `Reproduction:` and an `Approach approved` comment from the Advisor or the owner. A body
-  full of verification prose under a `## Verification` heading does **not** satisfy it: the heading must be
-  `## Evidence` and each line must read `- <criterion>: <command> -> <result>`. When that is the refusal,
-  append the section with `gh pr edit <N> --body-file` (still allowed) and re-run the label once; do not
-  retype the whole body and do not retry the label unchanged.
-  - **`Cause:` and `Reproduction:` are one-line fields, not headings.** The check is a regex on a line that
-    begins (after any list marker) with the literal `Cause:` or `Reproduction:` followed by content. A
-    `## Cause` heading with the reasoning under it is refused, so write `Cause: <one sentence>` — the same
-    paragraph can follow below it if the reasoning needs room.
+  also the issue's filled `## Reproduction` and `## Cause` (a `Cause:` line in the issue or PR also counts; a
+  `<...>` placeholder does not) and an `Approach approved` comment from the Advisor or the owner. A body full of
+  verification prose under a `## Verification` heading does **not** satisfy it: the heading must be `## Evidence`
+  and each line must read `- <criterion>: <command> -> <result>`. When that is the refusal, append the section
+  with `gh pr edit <N> --body-file` (still allowed) and re-run the label once; do not retype the whole body and do
+  not retry the label unchanged.
   - **The section name must be exactly `## Evidence`.** A heading like `## Evidence at <sha> (built client)`
     wins the lookup and then contains no `- ` lines, so the tool reports `0 line(s) for N acceptance criteria`
     while a correct-looking section sits further down. Give the run log its own heading (`## Run at <sha>`) and

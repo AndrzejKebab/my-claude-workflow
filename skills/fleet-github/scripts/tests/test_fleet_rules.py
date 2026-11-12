@@ -99,6 +99,19 @@ class ReadyForReview(unittest.TestCase):
         owner = ['Approach approved, go ahead']
         self.assertEqual(r.ready_problems(pr, ISSUE, is_bug=True, comments=owner), [])
 
+    def test_bug_cause_and_reproduction_may_live_in_the_issue_as_sections(self):
+        issue = ISSUE + ('\n## Reproduction\n\n1. snow-probe MODE=trees at 4308235\n\n'
+                         '## Cause\n\nThe merge lets a snow plan replace a trunk plan, shown by the probe.\n')
+        pr = '## What this PR does\n\nx\n\n## Evidence\n\n- a: x\n- b: y\n'
+        approved = ['# Advisor\n\nApproach approved: trunk wins the merge.']
+        self.assertEqual(r.ready_problems(pr, issue, is_bug=True, comments=approved), [])
+
+    def test_an_unfilled_template_section_does_not_count(self):
+        issue = ISSUE + '\n## Reproduction\n\n1. <steps any bot can run>\n\n## Cause\n\n<one sentence>\n'
+        pr = '## Evidence\n\n- a: x\n- b: y\n'
+        problems = r.ready_problems(pr, issue, is_bug=True, comments=['# Advisor\n\nApproach approved'])
+        self.assertEqual(len(problems), 2)
+
 
 class IssueSide(unittest.TestCase):
     def test_issue_without_a_linked_pr_cannot_wait_for_review(self):
